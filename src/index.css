@@ -1,0 +1,1737 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   LIQUID GLASS UI DESIGN SYSTEM
+   Premium glassmorphism with smooth animations
+   ============================================ */
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* Liquid Glass Color Palette */
+  --glass-bg: rgba(22, 27, 34, 0.7);
+  --glass-bg-light: rgba(22, 27, 34, 0.5);
+  --glass-bg-dark: rgba(13, 17, 23, 0.85);
+  --glass-border: rgba(48, 54, 61, 0.5);
+  --glass-border-light: rgba(88, 166, 255, 0.15);
+  --glass-glow: rgba(88, 166, 255, 0.1);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
+
+  /* Accent Colors */
+  --accent-primary: #58a6ff;
+  --accent-secondary: #238636;
+  --accent-gradient-start: #58a6ff;
+  --accent-gradient-end: #a371f7;
+
+  color-scheme: dark;
+  color: #c9d1d9;
+  background-color: #0d1117;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  width: 100%;
+  background:
+    radial-gradient(ellipse at 10% 20%, rgba(88, 166, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 80%, rgba(163, 113, 247, 0.06) 0%, transparent 50%),
+    linear-gradient(180deg, #0d1117 0%, #0a0d12 100%);
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================
+   LIQUID GLASS CORE UTILITIES
+   ============================================ */
+
+/* Glass Panel Effect */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    0 8px 32px var(--glass-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glass-panel-light {
+  background: var(--glass-bg-light);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-panel-dark {
+  background: var(--glass-bg-dark);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1px solid var(--glass-border);
+}
+
+/* Glass Glow Effect */
+.glass-glow {
+  box-shadow:
+    0 0 30px var(--glass-glow),
+    0 8px 32px var(--glass-shadow);
+}
+
+/* Glass Border with Gradient */
+.glass-border-gradient {
+  position: relative;
+}
+
+.glass-border-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--glass-border-light), transparent 50%, var(--glass-border-light));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ============================================
+   GLASS BUTTONS & INTERACTIVE ELEMENTS
+   ============================================ */
+
+.glass-button {
+  background: rgba(88, 166, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 10px;
+  padding: 8px 16px;
+  color: #58a6ff;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-button:hover {
+  background: rgba(88, 166, 255, 0.2);
+  border-color: rgba(88, 166, 255, 0.4);
+  box-shadow: 0 0 20px rgba(88, 166, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.glass-button:active {
+  transform: translateY(0);
+}
+
+.glass-button-primary {
+  background: linear-gradient(135deg, rgba(88, 166, 255, 0.3), rgba(163, 113, 247, 0.2));
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  color: white;
+}
+
+.glass-button-primary:hover {
+  background: linear-gradient(135deg, rgba(88, 166, 255, 0.4), rgba(163, 113, 247, 0.3));
+  border-color: rgba(88, 166, 255, 0.5);
+  box-shadow: 0 0 30px rgba(88, 166, 255, 0.3);
+}
+
+/* ============================================
+   GLASS INPUT FIELDS
+   ============================================ */
+
+.glass-input {
+  background: rgba(13, 17, 23, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #c9d1d9;
+  transition: all 0.3s ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: rgba(88, 166, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+}
+
+.glass-input::placeholder {
+  color: rgba(139, 148, 158, 0.7);
+}
+
+/* ============================================
+   GLASS TABS
+   ============================================ */
+
+.glass-tab {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  color: #8b949e;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.glass-tab:hover {
+  color: #c9d1d9;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.glass-tab.active {
+  color: #58a6ff;
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.glass-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  height: 2px;
+  background: #58a6ff;
+  border-radius: 2px;
+}
+
+/* ============================================
+   CUSTOM SCROLLBAR - GLASS STYLE
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(13, 17, 23, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(48, 54, 61, 0.8);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(88, 166, 255, 0.6);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(88, 166, 255, 0.3);
+  border-radius: 3px;
+}
+
+/* ============================================
+   GLASS CARD STYLES
+   ============================================ */
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  border-color: var(--glass-border-light);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.glass-card-sm {
+  padding: 12px;
+  border-radius: 12px;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes glass-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes glass-pulse {
+
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes glass-float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.4s ease-out forwards;
+}
+
+.animate-glass-pulse {
+  animation: glass-pulse 2s ease-in-out infinite;
+}
+
+.animate-glass-float {
+  animation: glass-float 3s ease-in-out infinite;
+}
+
+/* Glass Shimmer Loading Effect */
+.glass-shimmer {
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      transparent 100%);
+  background-size: 200% 100%;
+  animation: glass-shimmer 1.5s infinite;
+}
+
+@keyframes gradient-xy {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient-xy {
+  animation: gradient-xy 3s ease infinite;
+}
+
+@keyframes sparkle-float {
+  0% {
+    transform: translateY(0) scale(0);
+    opacity: 0;
+  }
+
+  50% {
+    transform: translateY(-10px) scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(-20px) scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 4s linear infinite;
+}
+
+/* ============================================
+   RESIZE HANDLES - GLASS STYLE
+   ============================================ */
+
+.glass-resize-handle {
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(48, 54, 61, 0.5),
+      transparent);
+  transition: all 0.3s ease;
+}
+
+.glass-resize-handle:hover {
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(88, 166, 255, 0.4),
+      transparent);
+}
+
+.glass-resize-handle-vertical {
+  background: linear-gradient(180deg,
+      transparent,
+      rgba(48, 54, 61, 0.5),
+      transparent);
+}
+
+.glass-resize-handle-vertical:hover {
+  background: linear-gradient(180deg,
+      transparent,
+      rgba(88, 166, 255, 0.4),
+      transparent);
+}
+
+/* ============================================
+   TYPOGRAPHY UTILITIES
+   ============================================ */
+
+.text-glass-muted {
+  color: rgba(139, 148, 158, 0.8);
+}
+
+.text-glass-gradient {
+  background: linear-gradient(135deg, #58a6ff, #a371f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================
+   CODE BLOCK GLASS STYLING
+   ============================================ */
+
+.glass-code-block {
+  background: rgba(13, 17, 23, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.glass-code-block pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.glass-code-header {
+  background: rgba(22, 27, 34, 0.5);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ============================================
+   TOOLTIP GLASS STYLE
+   ============================================ */
+
+.glass-tooltip {
+  background: var(--glass-bg-dark);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #c9d1d9;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* ============================================
+   SELECTION STYLE
+   ============================================ */
+
+::selection {
+  background: rgba(88, 166, 255, 0.3);
+  color: #fff;
+}
+
+::-moz-selection {
+  background: rgba(88, 166, 255, 0.3);
+  color: #fff;
+}
+
+/* ============================================
+   PREMIUM GLASS TERMINAL
+   ============================================ */
+
+.glass-terminal {
+  background: linear-gradient(135deg,
+      rgba(13, 17, 23, 0.95) 0%,
+      rgba(22, 27, 34, 0.9) 100%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(48, 54, 61, 0.6);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-terminal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(88, 166, 255, 0.05) 0%, transparent 40%),
+    radial-gradient(ellipse at 0% 100%, rgba(35, 134, 54, 0.05) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+.glass-terminal-header {
+  background: linear-gradient(90deg,
+      rgba(48, 54, 61, 0.4) 0%,
+      rgba(22, 27, 34, 0.6) 100%);
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.glass-terminal-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.glass-terminal-dots span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.glass-terminal-dots span:nth-child(1) {
+  background: linear-gradient(135deg, #ff5f57, #d64045);
+  box-shadow: 0 0 8px rgba(255, 95, 87, 0.4);
+}
+
+.glass-terminal-dots span:nth-child(2) {
+  background: linear-gradient(135deg, #febc2e, #e6a600);
+  box-shadow: 0 0 8px rgba(254, 188, 46, 0.4);
+}
+
+.glass-terminal-dots span:nth-child(3) {
+  background: linear-gradient(135deg, #28c840, #1ea32e);
+  box-shadow: 0 0 8px rgba(40, 200, 64, 0.4);
+}
+
+.glass-terminal-body {
+  padding: 16px;
+  font-family: 'SF Mono', 'Fira Code', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ============================================
+   PREMIUM GLASS BADGES & CHIPS
+   ============================================ */
+
+.glass-badge {
+  background: rgba(88, 166, 255, 0.1);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #58a6ff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.glass-badge-success {
+  background: rgba(35, 134, 54, 0.15);
+  border-color: rgba(35, 134, 54, 0.3);
+  color: #3fb950;
+}
+
+.glass-badge-warning {
+  background: rgba(254, 188, 46, 0.15);
+  border-color: rgba(254, 188, 46, 0.3);
+  color: #febc2e;
+}
+
+.glass-badge-error {
+  background: rgba(248, 81, 73, 0.15);
+  border-color: rgba(248, 81, 73, 0.3);
+  color: #f85149;
+}
+
+/* ============================================
+   PREMIUM GLASS EXPLANATION PANEL
+   ============================================ */
+
+.glass-explanation {
+  background: linear-gradient(180deg,
+      rgba(22, 27, 34, 0.8) 0%,
+      rgba(13, 17, 23, 0.9) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  position: relative;
+}
+
+.glass-explanation::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(163, 113, 247, 0.3) 50%,
+      transparent 100%);
+}
+
+.glass-explanation-header {
+  background: linear-gradient(90deg,
+      rgba(163, 113, 247, 0.08) 0%,
+      transparent 100%);
+  border-bottom: 1px solid rgba(163, 113, 247, 0.15);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.glass-explanation-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, rgba(163, 113, 247, 0.2), rgba(88, 166, 255, 0.1));
+  border: 1px solid rgba(163, 113, 247, 0.3);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a371f7;
+}
+
+/* ============================================
+   PREMIUM GLASS ANALYSIS CARDS
+   ============================================ */
+
+.glass-analysis-card {
+  background: linear-gradient(135deg,
+      rgba(22, 27, 34, 0.7) 0%,
+      rgba(13, 17, 23, 0.8) 100%);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  border-radius: 14px;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-analysis-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+      var(--card-accent, #58a6ff),
+      transparent);
+  opacity: 0.6;
+}
+
+.glass-analysis-card:hover {
+  border-color: rgba(88, 166, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.glass-analysis-card.warning {
+  --card-accent: #febc2e;
+}
+
+.glass-analysis-card.error {
+  --card-accent: #f85149;
+}
+
+.glass-analysis-card.success {
+  --card-accent: #3fb950;
+}
+
+.glass-analysis-card.info {
+  --card-accent: #58a6ff;
+}
+
+/* ============================================
+   PREMIUM GLASS RUN BUTTON
+   ============================================ */
+
+.glass-run-button {
+  background: linear-gradient(135deg,
+      rgba(35, 134, 54, 0.3) 0%,
+      rgba(40, 200, 64, 0.2) 100%);
+  border: 1px solid rgba(35, 134, 54, 0.4);
+  border-radius: 10px;
+  padding: 8px 16px;
+  color: #3fb950;
+  font-weight: 600;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-run-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent);
+  transform: translateX(-100%);
+  transition: transform 0.5s ease;
+}
+
+.glass-run-button:hover {
+  background: linear-gradient(135deg,
+      rgba(35, 134, 54, 0.4) 0%,
+      rgba(40, 200, 64, 0.3) 100%);
+  border-color: rgba(40, 200, 64, 0.6);
+  box-shadow: 0 0 25px rgba(40, 200, 64, 0.25);
+  transform: translateY(-1px);
+}
+
+.glass-run-button:hover::before {
+  transform: translateX(100%);
+}
+
+.glass-run-button:disabled {
+  background: rgba(48, 54, 61, 0.3);
+  border-color: rgba(48, 54, 61, 0.4);
+  color: rgba(139, 148, 158, 0.5);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ============================================
+   PREMIUM GLASS HEADER BAR
+   ============================================ */
+
+.glass-header {
+  background: linear-gradient(90deg,
+      rgba(22, 27, 34, 0.9) 0%,
+      rgba(22, 27, 34, 0.7) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+
+.glass-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(88, 166, 255, 0.2) 30%,
+      rgba(88, 166, 255, 0.2) 70%,
+      transparent 100%);
+}
+
+/* ============================================
+   GLASS STATUS INDICATORS
+   ============================================ */
+
+.glass-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.glass-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.glass-status-dot.online {
+  background: #3fb950;
+  box-shadow: 0 0 10px rgba(63, 185, 80, 0.5);
+}
+
+/* ============================================
+   INLINE AI LOADING
+   ============================================ */
+
+/* Spinner - Professional CLI Loop */
+@keyframes ai-spinner-loop {
+  0% {
+    content: '⠋ Processing...';
+  }
+
+  10% {
+    content: '⠙ Processing...';
+  }
+
+  20% {
+    content: '⠹ Processing...';
+  }
+
+  30% {
+    content: '⠸ Processing...';
+  }
+
+  40% {
+    content: '⠼ Processing...';
+  }
+
+  50% {
+    content: '⠴ Processing...';
+  }
+
+  60% {
+    content: '⠦ Processing...';
+  }
+
+  70% {
+    content: '⠧ Processing...';
+  }
+
+  80% {
+    content: '⠇ Processing...';
+  }
+
+  90% {
+    content: '⠏ Processing...';
+  }
+}
+
+/* The decoration class used by Monaco's afterContentClassName */
+.ai-loading-spinner::after {
+  content: '⏳ Generating...';
+
+  /* Typography */
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 16px;
+  padding: 2px 8px;
+  border-radius: 4px;
+
+  /* Modern AI Violet */
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.1);
+  border: 1px solid rgba(192, 132, 252, 0.2);
+
+  /* Simple animation */
+  display: inline-block;
+  animation: ai-spinner-loop 800ms linear infinite;
+}
+
+
+
+/* Optional: Add a real spinner using a background image or another pseudo if supported, 
+   but simplistic text/icon animation is safer for Monaco decorations. */
+
+/* ============================================
+   AI COMMENT STYLING
+   ============================================ */
+
+.ai-comment-decoration {
+  /* Professional Matte Violet */
+  color: #c084fc !important;
+
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-style: italic;
+  font-weight: 500;
+  /* Regular weight for cleaner look */
+
+  /* No glows/gradients - purely semantic color distinction */
+  background: none;
+  text-shadow: none;
+  -webkit-text-fill-color: initial;
+}
+
+.ai-comment-line {
+  background: linear-gradient(90deg,
+      rgba(192, 132, 252, 0.05) 0%,
+      transparent 100%);
+}
+
+.ai-comment-glyph {
+  border-left: 2px solid #e879f9;
+}
+
+/* Line highlight when AI is processing - using opacity for smooth animation */
+.glass-line-highlight {
+  background: linear-gradient(90deg,
+      rgba(192, 132, 252, 0.12) 0%,
+      rgba(192, 132, 252, 0.04) 50%,
+      transparent 100%) !important;
+  position: relative;
+}
+
+/* Use a pseudo-element for the pulse to avoid layout shifts */
+.glass-line-highlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+      rgba(192, 132, 252, 0.15) 0%,
+      rgba(192, 132, 252, 0.05) 50%,
+      transparent 100%);
+  opacity: 0;
+  animation: ai-line-opacity-pulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes ai-line-opacity-pulse {
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.glass-status-dot.offline {
+  background: #f85149;
+  box-shadow: 0 0 10px rgba(248, 81, 73, 0.5);
+}
+
+.glass-status-dot.pending {
+  background: #febc2e;
+  box-shadow: 0 0 10px rgba(254, 188, 46, 0.5);
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 10px currentColor;
+  }
+
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 20px currentColor;
+  }
+}
+
+/* ============================================
+   GLASS DIVIDERS
+   ============================================ */
+
+.glass-divider {
+  height: 1px;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(48, 54, 61, 0.8) 20%,
+      rgba(48, 54, 61, 0.8) 80%,
+      transparent);
+  margin: 12px 0;
+}
+
+.glass-divider-vertical {
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(180deg,
+      transparent,
+      rgba(48, 54, 61, 0.8) 20%,
+      rgba(48, 54, 61, 0.8) 80%,
+      transparent);
+  margin: 0 12px;
+}
+
+/* ============================================
+   PREMIUM EMPTY STATE
+   ============================================ */
+
+.glass-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.glass-empty-state-icon {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg,
+      rgba(88, 166, 255, 0.1) 0%,
+      rgba(163, 113, 247, 0.1) 100%);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.glass-empty-state-icon::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 28px;
+  background: linear-gradient(135deg,
+      rgba(88, 166, 255, 0.2),
+      transparent,
+      rgba(163, 113, 247, 0.2));
+  opacity: 0.5;
+  animation: glass-pulse 3s ease-in-out infinite;
+}
+
+/* ============================================
+   PERFORMANCE METER GLASS
+   ============================================ */
+
+.glass-meter {
+  height: 6px;
+  background: rgba(13, 17, 23, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.glass-meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #58a6ff, #a371f7);
+  border-radius: 3px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.glass-meter-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent);
+  animation: glass-shimmer 2s infinite;
+}
+
+/* ============================================
+   AI TOGGLE BUTTON ANIMATIONS
+   Premium interactive effects
+   ============================================ */
+
+/* Sparkle/Twinkle Animation */
+@keyframes ai-sparkle {
+
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1);
+  }
+
+  25% {
+    transform: scale(1.1) rotate(-5deg);
+    filter: brightness(1.2);
+  }
+
+  50% {
+    transform: scale(1.05) rotate(5deg);
+    filter: brightness(1.4);
+  }
+
+  75% {
+    transform: scale(1.15) rotate(-3deg);
+    filter: brightness(1.2);
+  }
+}
+
+/* Continuous pulse glow for active state */
+@keyframes ai-glow-pulse {
+
+  0%,
+  100% {
+    box-shadow:
+      0 0 8px rgba(168, 85, 247, 0.3),
+      0 0 16px rgba(168, 85, 247, 0.15);
+  }
+
+  50% {
+    box-shadow:
+      0 0 16px rgba(168, 85, 247, 0.5),
+      0 0 32px rgba(168, 85, 247, 0.25),
+      0 0 48px rgba(168, 85, 247, 0.1);
+  }
+}
+
+/* Orbiting particles animation */
+@keyframes ai-orbit {
+  0% {
+    transform: rotate(0deg) translateX(20px) rotate(0deg);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: rotate(360deg) translateX(20px) rotate(-360deg);
+    opacity: 0;
+  }
+}
+
+/* Secondary orbit */
+@keyframes ai-orbit-reverse {
+  0% {
+    transform: rotate(360deg) translateX(16px) rotate(-360deg);
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 0.7;
+  }
+
+  85% {
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: rotate(0deg) translateX(16px) rotate(0deg);
+    opacity: 0;
+  }
+}
+
+/* Shimmer sweep effect */
+@keyframes ai-shimmer-sweep {
+  0% {
+    transform: translateX(-100%) skewX(-15deg);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(200%) skewX(-15deg);
+    opacity: 0;
+  }
+}
+
+/* Icon float animation */
+@keyframes ai-icon-float {
+
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-2px) scale(1.05);
+  }
+}
+
+/* Ripple effect on click */
+@keyframes ai-ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Border gradient rotation */
+@keyframes ai-border-rotate {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Star burst animation */
+@keyframes ai-star-burst {
+  0% {
+    transform: scale(0) rotate(0deg);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.5) rotate(180deg);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(0) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* AI Toggle Button Base Styles */
+.ai-toggle-btn {
+  position: relative;
+  overflow: visible;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ai-toggle-btn::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 10px;
+  padding: 2px;
+  background: linear-gradient(135deg,
+      rgba(168, 85, 247, 0.4),
+      rgba(139, 92, 246, 0.2),
+      rgba(88, 166, 255, 0.4));
+  background-size: 200% 200%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.ai-toggle-btn:hover::before {
+  opacity: 1;
+  animation: ai-border-rotate 3s linear infinite;
+}
+
+.ai-toggle-btn.active::before {
+  opacity: 1;
+  animation: ai-border-rotate 2s linear infinite;
+}
+
+/* Active state glow */
+.ai-toggle-btn.active {
+  animation: ai-glow-pulse 2s ease-in-out infinite;
+}
+
+/* Orbiting particles container */
+.ai-toggle-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ai-toggle-particles .particle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a855f7, #6366f1);
+  box-shadow: 0 0 6px rgba(168, 85, 247, 0.8);
+}
+
+.ai-toggle-btn.active .particle:nth-child(1) {
+  animation: ai-orbit 3s linear infinite;
+  animation-delay: 0s;
+}
+
+.ai-toggle-btn.active .particle:nth-child(2) {
+  animation: ai-orbit-reverse 2.5s linear infinite;
+  animation-delay: 0.5s;
+}
+
+.ai-toggle-btn.active .particle:nth-child(3) {
+  animation: ai-orbit 4s linear infinite;
+  animation-delay: 1s;
+}
+
+/* Shimmer sweep effect */
+.ai-toggle-shimmer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.ai-toggle-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.15),
+      transparent);
+  opacity: 0;
+}
+
+.ai-toggle-btn:hover .ai-toggle-shimmer::after {
+  animation: ai-shimmer-sweep 1.2s ease-out;
+}
+
+/* Icon animation on hover */
+.ai-toggle-icon {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ai-toggle-btn:hover .ai-toggle-icon {
+  animation: ai-icon-float 1s ease-in-out infinite;
+}
+
+.ai-toggle-btn.active .ai-toggle-icon {
+  animation: ai-sparkle 2s ease-in-out infinite;
+}
+
+/* Ripple effect element */
+.ai-toggle-ripple {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.ai-toggle-ripple .ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.4), transparent);
+  animation: ai-ripple 0.6s ease-out forwards;
+}
+
+/* Star burst effect on toggle */
+.ai-toggle-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ai-toggle-stars .star {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  opacity: 0;
+}
+
+.ai-toggle-stars .star::before,
+.ai-toggle-stars .star::after {
+  content: '';
+  position: absolute;
+  background: linear-gradient(135deg, #a855f7, #8b5cf6);
+}
+
+.ai-toggle-stars .star::before {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+}
+
+.ai-toggle-stars .star::after {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.ai-toggle-btn.burst .star:nth-child(1) {
+  animation: ai-star-burst 0.5s ease-out forwards;
+  animation-delay: 0s;
+}
+
+.ai-toggle-btn.burst .star:nth-child(2) {
+  animation: ai-star-burst 0.5s ease-out forwards;
+  animation-delay: 0.05s;
+  transform: rotate(45deg);
+}
+
+.ai-toggle-btn.burst .star:nth-child(3) {
+  animation: ai-star-burst 0.5s ease-out forwards;
+  animation-delay: 0.1s;
+  transform: rotate(22.5deg);
+}
+
+.ai-toggle-btn.burst .star:nth-child(4) {
+  animation: ai-star-burst 0.5s ease-out forwards;
+  animation-delay: 0.15s;
+  transform: rotate(67.5deg);
+}
+
+/* ============================================
+   AI CHAT - PERFORMANCE OPTIMIZED ANIMATIONS
+   GPU-accelerated using transform/opacity only
+   ============================================ */
+
+/* Smooth fade in animation */
+@keyframes ai-fade-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Fade up with stagger support */
+@keyframes ai-fade-in-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Message appear - GPU optimized */
+@keyframes ai-message-appear {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Float animation for orb */
+@keyframes ai-float-slow {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-10px) scale(1.02); }
+}
+
+/* Pulse for ambient effects */
+@keyframes ai-pulse-slow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+/* Gentle pulse for loading */
+@keyframes ai-pulse-gentle {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Loading bar animation */
+@keyframes ai-loading-bar {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Gradient shift for input glow */
+@keyframes ai-gradient-xy {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Fast shimmer for input focus */
+@keyframes ai-shimmer-fast {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Cursor blink */
+@keyframes ai-cursor-blink {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* Animation utility classes */
+.ai-animate-fade-in { animation: ai-fade-in 0.6s ease-out forwards; }
+.ai-animate-fade-in-up { animation: ai-fade-in-up 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.ai-animate-message { animation: ai-message-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.ai-animate-float { animation: ai-float-slow 6s ease-in-out infinite; }
+.ai-animate-pulse-slow { animation: ai-pulse-slow 4s ease-in-out infinite; }
+.ai-animate-pulse-gentle { animation: ai-pulse-gentle 2s ease-in-out infinite; }
+.ai-animate-loading-bar { animation: ai-loading-bar 1.5s ease-in-out infinite; }
+.ai-animate-gradient { animation: ai-gradient-xy 3s ease infinite; background-size: 400% 400%; }
+.ai-animate-shimmer { animation: ai-shimmer-fast 1.5s ease-in-out infinite; }
+.ai-animate-cursor-blink { animation: ai-cursor-blink 1s ease-in-out infinite; }
+
+/* Delay utilities */
+.ai-delay-100 { animation-delay: 100ms; }
+.ai-delay-200 { animation-delay: 200ms; }
+.ai-delay-300 { animation-delay: 300ms; }
+
+/* GPU hints for animate elements */
+.ai-gpu-accelerated {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Scroll to bottom button */
+.ai-scroll-btn {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 25;
+}
+
+.ai-scroll-btn.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+/* Reaction buttons */
+.ai-reaction-btn {
+  padding: 4px 8px;
+  border-radius: 16px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.ai-reaction-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.1);
+}
+
+.ai-reaction-btn.active {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+/* Character counter */
+.ai-char-counter {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: color 0.2s ease;
+}
+
+.ai-char-counter.warning {
+  color: #f59e0b;
+}
+
+.ai-char-counter.danger {
+  color: #ef4444;
+}
+
+/* Context chip */
+.ai-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  color: rgba(167, 139, 250, 0.9);
+  transition: all 0.2s ease;
+}
+
+.ai-context-chip:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+/* Skeleton loading */
+.ai-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: ai-shimmer-fast 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.ai-skeleton-line {
+  height: 14px;
+  margin-bottom: 8px;
+}
+
+.ai-skeleton-line:last-child {
+  width: 60%;
+}
+
+/* Keyboard shortcut hint */
+.ai-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+}
+/* ============================================
+   PREMIUM CHAT ANIMATIONS
+   ============================================ */
+
+@keyframes message-appear {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-appear {
+  animation: message-appear 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Typing Indicator */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  width: fit-content;
+  backdrop-filter: blur(10px);
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background: linear-gradient(135deg, #58a6ff, #a371f7);
+  border-radius: 50%;
+  animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-dot:nth-child(2) { animation-delay: -0.16s; }
+.typing-dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* Input Focus Glow */
+.input-focus-glow {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-focus-glow:focus-within {
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2), 0 0 20px rgba(88, 166, 255, 0.1);
+  border-color: rgba(88, 166, 255, 0.4);
+  background: rgba(13, 17, 23, 0.6);
+}

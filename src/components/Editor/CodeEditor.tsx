@@ -1,0 +1,923 @@
+import React, { useRef, useCallback, useState, useEffect } from 'react';
+import Editor from '@monaco-editor/react';
+import type { OnMount } from '@monaco-editor/react';
+import type * as Monaco from 'monaco-editor';
+import { useProject } from '../../context/ProjectContext';
+import { getCodeSuggestion, cancelPendingRequest } from '../../utils/codeSuggestionService';
+import { checkCodeErrors } from '../../utils/diagnosticsService';
+import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, GitBranch, Play, Zap } from 'lucide-react';
+import { ModernAILogo } from '../Icons/ModernAILogo';
+import { useTerminal } from '../../context/TerminalContext';
+
+// Language detection helper
+const getLanguage = (fileName: string): string => {
+    if (!fileName) return 'typescript';
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    const langMap: Record<string, string> = {
+        'ts': 'typescript', 'tsx': 'typescript',
+        'js': 'javascript', 'jsx': 'javascript',
+        'py': 'python', 'java': 'java',
+        'c': 'c', 'cpp': 'cpp', 'h': 'c', 'hpp': 'cpp',
+        'go': 'go', 'rs': 'rust', 'rb': 'ruby',
+        'php': 'php', 'swift': 'swift', 'kt': 'kotlin',
+        'css': 'css', 'scss': 'scss', 'json': 'json',
+        'md': 'markdown', 'html': 'html', 'sh': 'shell', 'bash': 'shell'
+    };
+    return langMap[ext || ''] || 'typescript';
+};
+
+interface CodeEditorProps {
+    isAiOpen?: boolean;
+    onToggleAi?: () => void;
+}
+
+export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) => {
+    const { activeFile, updateFileContent } = useProject();
+    const { runCode, isRunning } = useTerminal();
+    const monacoRef = useRef<typeof Monaco | null>(null);
+    const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+    const completionProviderRef = useRef<Monaco.IDisposable | null>(null);
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const activeFileRef = useRef(activeFile);
+
+    useEffect(() => {
+        activeFileRef.current = activeFile;
+    }, [activeFile]);
+
+    // Editor State
+    // Editor State - Persisted
+    const [cursorPosition, setCursorPosition] = useState({ lineNumber: 1, column: 1 });
+
+    const [fontSize, setFontSize] = useState(() => {
+        const saved = localStorage.getItem('editor_fontSize');
+        return saved ? parseInt(saved, 10) : 14;
+    });
+
+    const [wordWrap, setWordWrap] = useState<'on' | 'off'>(() => {
+        return (localStorage.getItem('editor_wordWrap') as 'on' | 'off') || 'off';
+    });
+
+    const [showMinimap, setShowMinimap] = useState(() => {
+        return localStorage.getItem('editor_showMinimap') === 'true';
+    });
+
+    const [isSuggestionsEnabled, setIsSuggestionsEnabled] = useState(() => {
+        const saved = localStorage.getItem('editor_isSuggestionsEnabled');
+        return saved !== null ? saved === 'true' : true;
+    });
+
+    const isSuggestionsEnabledRef = useRef(isSuggestionsEnabled);
+
+    // Persist changes
+    useEffect(() => { localStorage.setItem('editor_fontSize', fontSize.toString()); }, [fontSize]);
+    useEffect(() => { localStorage.setItem('editor_wordWrap', wordWrap); }, [wordWrap]);
+    useEffect(() => { localStorage.setItem('editor_showMinimap', String(showMinimap)); }, [showMinimap]);
+    useEffect(() => {
+        localStorage.setItem('editor_isSuggestionsEnabled', String(isSuggestionsEnabled));
+        isSuggestionsEnabledRef.current = isSuggestionsEnabled;
+    }, [isSuggestionsEnabled]);
+
+    // Diagnostics State
+    const [isChecking, setIsChecking] = useState(false);
+    const [hasErrors, setHasErrors] = useState(false);
+    const [_isAiProcessing, setIsAiProcessing] = useState(false);
+    const [activeAiLine, setActiveAiLine] = useState<number | null>(null);
+    const [editorReady, setEditorReady] = useState(false);
+
+
+
+    // Run diagnostics
+    const runDiagnostics = async () => {
+        if (!activeFile || !monacoRef.current || !editorRef.current) return;
+
+        setIsChecking(true);
+        const code = activeFile.content || '';
+        const fileName = activeFile.name;
+        const model = editorRef.current.getModel();
+
+        try {
+            const result = await checkCodeErrors(code, fileName);
+
+            if (model) {
+                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', result.markers);
+            }
+
+            setHasErrors(result.isError);
+        } catch (error) {
+            console.error('Failed to run diagnostics:', error);
+        } finally {
+            setIsChecking(false);
+        }
+    };
+
+    const handleEditorChange = (value: string | undefined) => {
+        if (activeFile && value !== undefined) {
+            updateFileContent(activeFile.id, value);
+        }
+    };
+
+    // Force update editor content when activeFile changes content (e.g. from AI)
+    useEffect(() => {
+        if (editorRef.current && activeFile) {
+            const currentContent = editorRef.current.getValue();
+            if (currentContent !== activeFile.content) {
+                editorRef.current.setValue(activeFile.content || '');
+            }
+        }
+    }, [activeFile?.content]);
+
+    // Track if we're currently processing an AI command (to prevent re-triggering)
+    const isProcessingAiCommandRef = useRef(false);
+
+    // Auto-replace AI comments when user types semicolon
+    const handleAiCommentAutoReplace = useCallback(async (
+        editor: Monaco.editor.IStandaloneCodeEditor,
+        monaco: typeof Monaco,
+        lineNumber: number,
+        lineContent: string
+    ) => {
+        // Check if it's an AI command pattern (now supports inline)
+        // Matches: [code] /// [command];
+        const match = lineContent.match(/^(.*?)\/\/\/\s*(.+);$/);
+        if (!match) return;
+
+        // Prevent re-triggering while processing
+        if (isProcessingAiCommandRef.current) return;
+        isProcessingAiCommandRef.current = true;
+
+        const commandText = match[2].trim();
+        const model = editor.getModel();
+        if (!model) {
+            isProcessingAiCommandRef.current = false;
+            return;
+        }
+
+        console.log('[AI Auto-Replace] Detected command:', commandText, 'on line:', lineNumber);
+
+        // Show loading state
+        setIsAiProcessing(true);
+        setActiveAiLine(lineNumber);
+
+        try {
+            const currentFile = activeFileRef.current;
+            const fileName = currentFile?.name || 'untitled.ts';
+            const language = getLanguage(fileName);
+            const code = model.getValue();
+            const cursorOffset = model.getOffsetAt({ lineNumber, column: lineContent.length + 1 });
+
+            // Call the AI service
+            const result = await getCodeSuggestion({
+                code,
+                cursorPosition: cursorOffset,
+                language,
+                fileName
+            });
+
+            // Handle cancellation
+            if (result?.error === 'Cancelled') {
+                console.log('[AI Auto-Replace] Request was cancelled');
+                return;
+            }
+
+            console.log('[AI Auto-Replace] Result:', result);
+
+            // Check if we have valid generated code (explicit length check)
+            if (result && result.text && result.text.length > 0) {
+                // Apply indentation/formatting to generated code
+                const generatedCode = result.text;
+
+                // If this was an inline comment, we might want to preserve the prefix
+                // usage: let x = 1; /// change to 2; -> let x = 2; (AI usually returns full line)
+                // But if AI returns just the snippet, we might need to handle it.
+                // For now, assume AI returns the replacement for the *entire line* or *block* if it was a modification.
+
+                // If the result looks like a direct replacement, use it.
+
+                console.log('[AI Auto-Replace] Inserting code:', generatedCode.substring(0, 100) + '...');
+
+                // Replace the ENTIRE line (including the code before the comment) with the new code
+                // This allows "let x = 1; /// change to 2;" -> "let x = 2;"
+                const range = new monaco.Range(
+                    lineNumber,
+                    1,
+                    lineNumber,
+                    lineContent.length + 1
+                );
+
+                // Apply the edit
+                editor.executeEdits('ai-auto-replace', [{
+                    range,
+                    text: generatedCode,
+                    forceMoveMarkers: true
+                }]);
+
+                // Move cursor to end of inserted code
+                const newLines = generatedCode.split('\n');
+                const newEndLine = lineNumber + newLines.length - 1;
+                const newEndColumn = newLines[newLines.length - 1].length + 1;
+                editor.setPosition({ lineNumber: newEndLine, column: newEndColumn });
+                editor.focus();
+
+                console.log('[AI Auto-Replace] Code inserted successfully');
+            } else if (result?.error) {
+                // Show the specific error from the AI service
+                console.warn('[AI Auto-Replace] Error from service:', result.error);
+                const range = new monaco.Range(lineNumber, lineContent.length + 1, lineNumber, lineContent.length + 1);
+                editor.executeEdits('ai-auto-replace', [{
+                    range,
+                    text: ` // AI: ${result.error}`,
+                    forceMoveMarkers: true
+                }]);
+            } else {
+                console.warn('[AI Auto-Replace] No code generated, result was:', result);
+                const range = new monaco.Range(lineNumber, lineContent.length + 1, lineNumber, lineContent.length + 1);
+                editor.executeEdits('ai-auto-replace', [{
+                    range,
+                    text: ' // AI: No response - try again',
+                    forceMoveMarkers: true
+                }]);
+            }
+        } catch (error) {
+            console.error('[AI Auto-Replace] Error:', error);
+            // Add error feedback to the editor
+            const range = new monaco.Range(lineNumber, lineContent.length + 1, lineNumber, lineContent.length + 1);
+            editor.executeEdits('ai-auto-replace', [{
+                range,
+                text: ' // AI: Error - try again',
+                forceMoveMarkers: true
+            }]);
+        } finally {
+            setIsAiProcessing(false);
+            setActiveAiLine(null);
+            isProcessingAiCommandRef.current = false;
+        }
+    }, []);
+
+    // Effect to listen for content changes and trigger AI auto-replace
+    // Uses debouncing to handle rapid typing and edge cases
+    useEffect(() => {
+        if (!editorRef.current || !monacoRef.current) return;
+
+        const editor = editorRef.current;
+        const monaco = monacoRef.current;
+        let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const disposable = editor.onDidChangeModelContent((e) => {
+            // Clear any pending debounce
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+
+            // Skip if already processing
+            if (isProcessingAiCommandRef.current) return;
+
+            // Check if the change includes a semicolon (handles paste and multi-char inputs)
+            const changes = e.changes;
+            let triggerLine: number | null = null;
+
+            for (const change of changes) {
+                if (change.text.includes(';')) {
+                    const model = editor.getModel();
+                    if (!model) continue;
+
+                    // Check the affected line(s)
+                    const startLine = change.range.startLineNumber;
+                    const endLine = change.range.startLineNumber + (change.text.split('\n').length - 1);
+
+                    for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
+                        const lineContent = model.getLineContent(lineNum);
+                        // Check if this line matches the AI command pattern (now supports inline)
+                        if (/^(.*?)\/\/\/\s*.+;$/.test(lineContent)) {
+                            triggerLine = lineNum;
+                            break;
+                        }
+                    }
+                    if (triggerLine) break;
+                }
+            }
+
+            if (triggerLine !== null) {
+                const model = editor.getModel();
+                if (!model) return;
+
+                const lineNum = triggerLine;
+
+                // Small debounce to ensure typing is complete
+                debounceTimer = setTimeout(() => {
+                    // Double-check the line still matches (user might have continued typing)
+                    const currentLineContent = model.getLineContent(lineNum);
+                    if (/^(.*?)\/\/\/\s*.+;$/.test(currentLineContent) && !isProcessingAiCommandRef.current) {
+                        handleAiCommentAutoReplace(editor, monaco, lineNum, currentLineContent);
+                    }
+                }, 50); // 50ms debounce
+            }
+        });
+
+        return () => {
+            disposable.dispose();
+            if (debounceTimer) clearTimeout(debounceTimer);
+        };
+    }, [handleAiCommentAutoReplace, editorReady]);
+
+    // ESC key listener to cancel AI requests
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isProcessingAiCommandRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[AI] ESC pressed - cancelling request');
+
+                // Cancel the AI request first
+                cancelPendingRequest();
+
+                // Use requestAnimationFrame to batch the state updates
+                // This prevents visual glitches by ensuring updates happen in sync
+                requestAnimationFrame(() => {
+                    isProcessingAiCommandRef.current = false;
+                    setIsAiProcessing(false);
+                    setActiveAiLine(null);
+                });
+            }
+        };
+
+        // Use capture phase to intercept before Monaco handles ESC
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, []);
+
+    // AI Comment Decoration Logic - Split into static and loading collections
+    const commentDecorationsRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
+    const loadingDecorationRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
+
+    // Update static comment decorations (only on content change)
+    const updateCommentDecorations = useCallback(() => {
+        if (!editorRef.current || !monacoRef.current) return;
+
+        const model = editorRef.current.getModel();
+        if (!model) return;
+
+        const content = model.getValue();
+        const lines = content.split('\n');
+        const newDecorations: Monaco.editor.IModelDeltaDecoration[] = [];
+
+        lines.forEach((line, index) => {
+            // Check for /// pattern
+            if (line.indexOf('///') !== -1) {
+                const startCol = line.indexOf('///') + 1;
+                // Always highlight the AI command part, even if incomplete (while typing)
+                newDecorations.push({
+                    range: new monacoRef.current!.Range(index + 1, startCol, index + 1, line.length + 1),
+                    options: {
+                        isWholeLine: false,
+                        inlineClassName: 'ai-comment-decoration',
+                    }
+                });
+            }
+        });
+
+        if (commentDecorationsRef.current) {
+            commentDecorationsRef.current.clear();
+        }
+        commentDecorationsRef.current = editorRef.current.createDecorationsCollection(newDecorations);
+    }, []);
+
+    // Update loading decoration separately (only when activeAiLine changes)
+    const updateLoadingDecoration = useCallback(() => {
+        if (!editorRef.current || !monacoRef.current) return;
+
+        // Clear existing loading decoration
+        if (loadingDecorationRef.current) {
+            loadingDecorationRef.current.clear();
+            loadingDecorationRef.current = null;
+        }
+
+        // Add new loading decoration if there's an active AI line
+        if (activeAiLine !== null) {
+            loadingDecorationRef.current = editorRef.current.createDecorationsCollection([{
+                range: new monacoRef.current!.Range(activeAiLine, 1, activeAiLine, 1),
+                options: {
+                    isWholeLine: true,
+                    afterContentClassName: 'ai-loading-spinner',
+                    className: 'glass-line-highlight'
+                }
+            }]);
+        }
+    }, [activeAiLine]);
+
+    // Update comment decorations on content change
+    useEffect(() => {
+        if (editorRef.current) {
+            const disposable = editorRef.current.onDidChangeModelContent(() => {
+                updateCommentDecorations();
+            });
+            return () => disposable.dispose();
+        }
+    }, [updateCommentDecorations]);
+
+    // Update loading decoration when activeAiLine changes
+    useEffect(() => {
+        updateLoadingDecoration();
+    }, [updateLoadingDecoration]);
+
+    // Initial decoration update
+    useEffect(() => {
+        if (editorRef.current && activeFile) {
+            updateCommentDecorations();
+        }
+    }, [activeFile, updateCommentDecorations]);
+
+
+    // Fetch suggestion from API
+    const fetchSuggestion = async (
+        model: Monaco.editor.ITextModel,
+        position: Monaco.Position,
+        monaco: typeof Monaco
+    ) => {
+        const code = model.getValue();
+        const offset = model.getOffsetAt(position);
+        const currentActiveFile = activeFileRef.current;
+        const fileName = currentActiveFile?.name || 'untitled.ts';
+        const language = getLanguage(fileName);
+
+        try {
+            const result = await getCodeSuggestion({
+                code,
+                cursorPosition: offset,
+                language,
+                fileName
+            });
+
+            if (!result || result.text === null || result.text === undefined) {
+                return { items: [] };
+            }
+
+            if (!result.isModify && result.text === '') {
+                return { items: [] };
+            }
+
+            if (result.isModify && result.startOffset !== undefined) {
+                const startPos = model.getPositionAt(result.startOffset);
+                const endPos = position;
+
+                // Create a range that covers the command (and old code if refactoring)
+                // This ensures the ghost text replaces the command when accepted.
+                const range = new monaco.Range(
+                    startPos.lineNumber,
+                    startPos.column,
+                    endPos.lineNumber,
+                    endPos.column
+                );
+
+                return {
+                    items: [{
+                        insertText: result.text,
+                        range: range
+                    }]
+                };
+            }
+
+            // Fallback for simple insertions (though most AI commands are isModify=true now)
+            const range = new monaco.Range(
+                position.lineNumber,
+                position.column,
+                position.lineNumber,
+                position.column
+            );
+
+            return {
+                items: [{
+                    insertText: result.text,
+                    range: range
+                }]
+            };
+        } catch (error) {
+            console.error('Error fetching suggestion:', error);
+            return { items: [] };
+        }
+    };
+
+    // Keep a ref to the latest fetchSuggestion to avoid stale closures in the provider
+    const fetchSuggestionRef = useRef(fetchSuggestion);
+    fetchSuggestionRef.current = fetchSuggestion;
+
+    // Register inline completion provider
+    const registerInlineCompletionProvider = useCallback((monaco: typeof Monaco) => {
+        // Dispose existing provider
+        if (completionProviderRef.current) {
+            completionProviderRef.current.dispose();
+        }
+
+        completionProviderRef.current = monaco.languages.registerInlineCompletionsProvider(
+            ['typescript', 'javascript', 'python', 'java', 'c', 'cpp', 'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'css', 'scss', 'json', 'markdown', 'html', 'shell'],
+            {
+                provideInlineCompletions: async (model, position, context, token) => {
+                    // Logic to check trigger
+                    const lineContent = model.getLineContent(position.lineNumber);
+
+                    // Check if this is a completed AI command (ends with ;)
+                    // These are handled by handleAiCommentAutoReplace, so skip them here
+                    const isCompletedAiCommand = /^\s*\/\/\/\s*.+;\s*$/.test(lineContent);
+                    if (isCompletedAiCommand) {
+                        console.log('[CodeEditor] Skipping inline completion - completed AI command handled by auto-replace');
+                        return { items: [] };
+                    }
+
+                    // Check for in-progress /// commands (without semicolon) - don't auto-suggest
+                    // User should complete their command with ; to trigger AI
+                    const isAiCommand = /\/\/\//.test(lineContent);
+
+                    // Only provide suggestions for regular code, not /// commands in progress
+                    if (isAiCommand) {
+                        console.log('[CodeEditor] Skipping inline completion - AI command in progress, waiting for semicolon');
+                        return { items: [] };
+                    }
+
+                    console.log('[CodeEditor] InlineCompletion Triggered. Line:', position.lineNumber, 'Content:', lineContent);
+
+                    if (!isSuggestionsEnabledRef.current) {
+                        return { items: [] };
+                    }
+
+                    if (context.triggerKind === monaco.languages.InlineCompletionTriggerKind.Automatic) {
+                        if (debounceTimerRef.current) {
+                            clearTimeout(debounceTimerRef.current);
+                        }
+
+                        return new Promise((resolve) => {
+                            debounceTimerRef.current = setTimeout(async () => {
+                                if (token.isCancellationRequested || !isSuggestionsEnabledRef.current) {
+                                    resolve({ items: [] });
+                                    return;
+                                }
+
+                                try {
+                                    // Use REF to get latest function
+                                    const suggestion = await fetchSuggestionRef.current(model, position, monaco);
+                                    resolve(suggestion);
+                                } catch (error) {
+                                    console.error('[CodeEditor] Error fetching suggestion:', error);
+                                    resolve({ items: [] });
+                                }
+                            }, 800);
+                        });
+                    }
+
+                    // Direct trigger (e.g., from explicit request)
+                    try {
+                        return await fetchSuggestionRef.current(model, position, monaco);
+                    } catch (error) {
+                        console.error('[CodeEditor] Error fetching suggestion:', error);
+                        return { items: [] };
+                    }
+                },
+                disposeInlineCompletions: () => { }
+            }
+        );
+    }, []);
+
+    // Format Document
+    const handleFormat = () => {
+        editorRef.current?.getAction('editor.action.formatDocument')?.run();
+    };
+
+    const handleEditorMount: OnMount = (editor, monaco) => {
+        monacoRef.current = monaco;
+        editorRef.current = editor;
+
+        monaco.editor.defineTheme('github-dark', {
+            base: 'vs-dark',
+            inherit: true,
+            rules: [],
+            colors: {
+                'editor.background': '#0d1117',
+                'editor.foreground': '#c9d1d9',
+                'editorLineNumber.foreground': '#8b949e',
+                'editor.lineHighlightBackground': '#161b22',
+                'editorCursor.foreground': '#58a6ff',
+                'editor.selectionBackground': '#30363d',
+                'editor.inactiveSelectionBackground': '#30363d'
+            }
+        });
+        monaco.editor.setTheme('github-dark');
+
+        editor.onDidChangeCursorPosition((e) => {
+            setCursorPosition({
+                lineNumber: e.position.lineNumber,
+                column: e.position.column
+            });
+        });
+
+        monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.ESNext,
+            allowNonTsExtensions: true,
+            moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+            module: monaco.languages.typescript.ModuleKind.CommonJS,
+            noEmit: true,
+            esModuleInterop: true,
+            jsx: monaco.languages.typescript.JsxEmit.React,
+            reactNamespace: 'React',
+            allowJs: true,
+            typeRoots: ['node_modules/@types'],
+            lib: ['dom', 'dom.iterable', 'esnext'],
+            strict: false,
+            noImplicitAny: false,
+        });
+
+        monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.ESNext,
+            allowNonTsExtensions: true,
+            allowJs: true,
+        });
+
+        registerInlineCompletionProvider(monaco);
+
+        editor.updateOptions({
+            inlineSuggest: { enabled: true, mode: 'subwordSmart' },
+            quickSuggestions: true,
+            suggestOnTriggerCharacters: true,
+        });
+
+        // Signal that editor is ready - this triggers effects that depend on the editor
+        setEditorReady(true);
+    };
+
+    const language = getLanguage(activeFile?.name || '');
+
+    if (!activeFile) {
+        return (
+            <div className="w-full h-full bg-transparent flex flex-col items-center justify-center text-muted glass-panel-light">
+                <div className="relative mb-6">
+                    <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full animate-glass-pulse" />
+                    <div className="relative p-8 rounded-full bg-gradient-to-br from-white/5 to-transparent border border-white/10">
+                        <Code size={64} className="text-white/20" />
+                    </div>
+                </div>
+                <p className="text-lg font-medium text-white/40">Select a file to start coding</p>
+                <div className="mt-6 text-sm text-white/30 flex gap-6">
+                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
+                        <kbd className="text-xs bg-white/10 px-1.5 py-0.5 rounded">⌘P</kbd> Search files
+                    </span>
+                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
+                        <kbd className="text-xs bg-white/10 px-1.5 py-0.5 rounded">⌘⇧F</kbd> Search code
+                    </span>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="w-full h-full bg-transparent flex flex-col relative group">
+            {/* Glass Toolbar */}
+            <div className="h-11 bg-gradient-to-r from-white/5 to-transparent border-b border-white/10 flex items-center justify-between px-3 shrink-0 backdrop-blur-sm">
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                    {/* Check Errors Button */}
+                    <button
+                        onClick={runDiagnostics}
+                        disabled={isChecking}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                            ${hasErrors
+                                ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/30'
+                                : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'}
+                        `}
+                        title="Check for Errors"
+                    >
+                        {isChecking ? <Loader2 size={12} className="animate-spin" /> : hasErrors ? <AlertCircle size={12} /> : <CheckCircle size={12} />}
+                        <span>Check</span>
+                    </button>
+
+                    <div className="w-px h-5 bg-white/10 mx-1" />
+
+                    {/* Code Suggestions Toggle */}
+                    <button
+                        onClick={() => setIsSuggestionsEnabled(prev => !prev)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all
+                            ${isSuggestionsEnabled
+                                ? 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/20'
+                                : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
+                        `}
+                        title={isSuggestionsEnabled ? "Disable AI Suggestions" : "Enable AI Suggestions"}
+                    >
+                        <Zap size={12} className={isSuggestionsEnabled ? "fill-yellow-400" : ""} />
+                        <span>AI</span>
+                    </button>
+
+                    <div className="w-px h-5 bg-white/10 mx-1" />
+
+                    {/* Format */}
+                    <button
+                        onClick={handleFormat}
+                        className="px-2.5 py-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded-lg text-xs font-medium transition-all"
+                        title="Format Document (Shift+Alt+F)"
+                    >
+                        Format
+                    </button>
+
+                    {/* Word Wrap */}
+                    <button
+                        onClick={() => setWordWrap(w => w === 'on' ? 'off' : 'on')}
+                        className={`p-1.5 rounded-lg transition-all ${wordWrap === 'on' ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                        title="Toggle Word Wrap"
+                    >
+                        <WrapText size={14} />
+                    </button>
+
+                    {/* Minimap */}
+                    <button
+                        onClick={() => setShowMinimap(m => !m)}
+                        className={`p-1.5 rounded-lg transition-all ${showMinimap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                        title="Toggle Minimap"
+                    >
+                        <Map size={14} />
+                    </button>
+
+                    <div className="w-px h-5 bg-white/10 mx-1" />
+
+                    {/* Font Size */}
+                    <div className="flex items-center gap-0.5 bg-white/5 rounded-lg border border-white/10 px-1">
+                        <button
+                            onClick={() => setFontSize(s => Math.max(10, s - 1))}
+                            className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
+                        >
+                            <Minus size={12} />
+                        </button>
+                        <span className="text-xs text-white/70 w-5 text-center font-mono">{fontSize}</span>
+                        <button
+                            onClick={() => setFontSize(s => Math.min(24, s + 1))}
+                            className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
+                        >
+                            <Plus size={12} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3 relative mr-2">
+                    <span className="text-[10px] text-blue-300 font-bold uppercase tracking-wider bg-blue-500/10 px-2.5 py-1 rounded-md border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]">
+                        {language}
+                    </span>
+
+                    <button
+                        onClick={() => {
+                            if (activeFile) {
+                                runCode(activeFile.content || '', language);
+                            }
+                        }}
+                        disabled={isRunning || !activeFile}
+                        className="glass-run-button py-1 px-3 text-[11px] h-7"
+                    >
+                        {isRunning ? (
+                            <>
+                                <Loader2 size={12} className="animate-spin" />
+                                <span>Running...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Play size={12} />
+                                <span>Run</span>
+                            </>
+                        )}
+                    </button>
+
+                    {/* AI Sidebar Toggle - Interactive Animated */}
+                    {onToggleAi && (
+                        <button
+                            onClick={(e) => {
+                                // Add burst animation class
+                                const btn = e.currentTarget;
+                                btn.classList.add('burst');
+
+                                // Create ripple effect
+                                const rippleContainer = btn.querySelector('.ai-toggle-ripple');
+                                if (rippleContainer) {
+                                    const ripple = document.createElement('span');
+                                    ripple.className = 'ripple';
+                                    rippleContainer.appendChild(ripple);
+                                    setTimeout(() => ripple.remove(), 600);
+                                }
+
+                                // Remove burst class after animation
+                                setTimeout(() => btn.classList.remove('burst'), 500);
+
+                                onToggleAi();
+                            }}
+                            className={`
+                                ai-toggle-btn group relative h-8 flex items-center justify-center gap-2 rounded-lg border transition-all duration-300 ease-out
+                                ${isAiOpen
+                                    ? 'active pl-3 pr-3.5 bg-gradient-to-r from-purple-600/25 to-violet-600/20 border-purple-400/40'
+                                    : 'px-3 bg-white/[0.03] border-white/[0.08] text-white/60 hover:bg-purple-500/10 hover:border-purple-400/30 hover:text-purple-100'
+                                }
+                            `}
+                            title={isAiOpen ? "Close AI Sidebar" : "Open AI Sidebar"}
+                        >
+                            {/* Shimmer sweep effect */}
+                            <div className="ai-toggle-shimmer" />
+
+                            {/* Ripple container */}
+                            <div className="ai-toggle-ripple" />
+
+                            {/* Orbiting particles (visible when active) */}
+                            <div className="ai-toggle-particles">
+                                <span className="particle" />
+                                <span className="particle" />
+                                <span className="particle" />
+                            </div>
+
+                            {/* Star burst effect */}
+                            <div className="ai-toggle-stars">
+                                <span className="star" />
+                                <span className="star" />
+                                <span className="star" />
+                                <span className="star" />
+                            </div>
+
+                            {/* Icon with animation class */}
+                            <ModernAILogo className={`
+                                ai-toggle-icon w-4 h-4 shrink-0 relative z-10 transition-all duration-300
+                                ${isAiOpen
+                                    ? "text-purple-200 drop-shadow-[0_0_10px_rgba(168,85,247,0.6)] scale-110"
+                                    : "opacity-60 group-hover:opacity-100 group-hover:scale-110 group-hover:text-purple-300"
+                                }
+                            `} />
+
+                            {/* Label */}
+                            <span className={`
+                                text-[11px] font-semibold tracking-wider whitespace-nowrap transition-all duration-300 relative z-10 uppercase
+                                ${isAiOpen
+                                    ? 'text-purple-100 drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]'
+                                    : 'text-white/70 group-hover:text-purple-200'
+                                }
+                            `}>
+                                AI
+                            </span>
+
+                            {/* Active indicator dot */}
+                            {isAiOpen && (
+                                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-gradient-to-r from-purple-400 to-violet-400 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
+                            )}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Editor Area */}
+            <div className="flex-1 min-h-0 relative">
+                <Editor
+                    height="100%"
+                    language={language}
+                    value={activeFile?.content || ''}
+                    theme="github-dark"
+                    onChange={handleEditorChange}
+                    onMount={handleEditorMount}
+                    options={{
+                        minimap: { enabled: showMinimap },
+                        wordWrap: wordWrap,
+                        fontSize: fontSize,
+                        padding: { top: 20, bottom: 20 },
+                        inlineSuggest: { enabled: true, mode: 'subwordSmart' },
+                        quickSuggestions: true,
+                        suggestOnTriggerCharacters: true,
+                        tabCompletion: 'on',
+                        scrollBeyondLastLine: true,
+                        smoothScrolling: true,
+                        cursorBlinking: 'smooth',
+                        cursorSmoothCaretAnimation: 'on',
+                        renderLineHighlight: 'all',
+                    }}
+                />
+            </div>
+
+            {/* Glass Status Bar */}
+            <div className="h-7 bg-gradient-to-r from-primary/90 to-primary/70 text-white text-[11px] flex items-center justify-between px-3 shrink-0 select-none font-medium backdrop-blur-sm">
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+                        <GitBranch size={11} />
+                        <span>main</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+                        <CheckCircle size={11} />
+                        <span>0</span>
+                        <AlertCircle size={11} className="ml-1" />
+                        <span>0</span>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+                        Ln {cursorPosition.lineNumber}, Col {cursorPosition.column}
+                    </div>
+                    <div className="w-px h-3 bg-white/30" />
+                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+                        UTF-8
+                    </div>
+                    <div className="w-px h-3 bg-white/30" />
+                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all font-semibold">
+                        {language.toUpperCase()}
+                    </div>
+                    <div className="w-px h-3 bg-white/30" />
+                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+                        Prettier
+                    </div>
+                </div>
+            </div>
+        </div >
+    );
+};
