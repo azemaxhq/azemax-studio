@@ -1,8 +1,6 @@
-// Piston API - Free online code execution
-// API Docs: https://github.com/engineer-man/piston
-// No authentication required
-
-const PISTON_API_URL = 'https://emkc.org/api/v2/piston';
+// Local execution API endpoint (replaces Piston)
+// Handled by server/index.cjs local execution
+const PISTON_API_URL = 'http://localhost:3001/api';
 
 export interface ExecutionResult {
     language: string;

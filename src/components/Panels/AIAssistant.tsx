@@ -45,21 +45,6 @@ const flattenFileTree = (nodes: FileNode[], depth = 0, maxDepth = 2): string => 
     return result;
 };
 
-// Helper to format relative time (e.g., "5m ago", "2h ago")
-const getRelativeTime = (timestamp: number): string => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-};
-
 
 // Custom Gemini-style Animated Logo
 const GeminiLogo = ({ size = 24, className = "" }: { size?: number, className?: string }) => {
@@ -336,25 +321,25 @@ const MessageItem = React.memo(({
             );
         },
         h1({ children, ...props }: any) {
-            return <h1 className="text-xl font-semibold text-[#e6edf3] mt-6 mb-3 pb-2 border-b border-[#30363d]" {...props}>{children}</h1>;
+            return <h1 className="text-[22px] font-semibold text-[#e6edf3] mt-8 mb-4 pb-2 border-b border-[#30363d]" {...props}>{children}</h1>;
         },
         h2({ children, ...props }: any) {
-            return <h2 className="text-lg font-semibold text-[#e6edf3] mt-5 mb-2" {...props}>{children}</h2>;
+            return <h2 className="text-[18px] font-semibold text-[#e6edf3] mt-6 mb-3" {...props}>{children}</h2>;
         },
         h3({ children, ...props }: any) {
-            return <h3 className="text-base font-semibold text-[#e6edf3] mt-4 mb-2" {...props}>{children}</h3>;
+            return <h3 className="text-[16px] font-medium text-[#e6edf3] mt-5 mb-2" {...props}>{children}</h3>;
         },
         p({ children, ...props }: any) {
-            return <p className="leading-7 mb-3 text-[#c9d1d9] last:mb-0" {...props}>{children}</p>;
+            return <p className="leading-[1.7] mb-4 text-[#c9d1d9] last:mb-0" {...props}>{children}</p>;
         },
         ul({ children, ...props }: any) {
-            return <ul className="list-disc list-outside ml-5 mb-3 space-y-1.5 text-[#c9d1d9]" {...props}>{children}</ul>;
+            return <ul className="list-disc list-outside ml-6 mb-4 space-y-2 text-[#c9d1d9]" {...props}>{children}</ul>;
         },
         ol({ children, ...props }: any) {
-            return <ol className="list-decimal list-outside ml-5 mb-3 space-y-1.5 text-[#c9d1d9]" {...props}>{children}</ol>;
+            return <ol className="list-decimal list-outside ml-6 mb-4 space-y-2 text-[#c9d1d9]" {...props}>{children}</ol>;
         },
         li({ children, ...props }: any) {
-            return <li className="pl-1 leading-7" {...props}>{children}</li>;
+            return <li className="pl-1 leading-[1.7]" {...props}>{children}</li>;
         },
         blockquote({ children, ...props }: any) {
             return (
@@ -1100,7 +1085,7 @@ User Request: "${userMessageText}"
 
 INSTRUCTIONS:
 1. If the user's request is a greeting, question, or general conversation UNRELATED to the code, simply answer it naturally. DO NOT explain why you are not modifying the code. IGNORE the file context if it is not relevant.
-2. If the user wants to MODIFY, REFACTOR, or UPDATE the code, return the COMPLETE updated file content inside a single markdown code block.
+2. If the user wants to WRITE, CREATE, IMPLEMENT, MODIFY, REFACTOR, or UPDATE the code, return the COMPLETE updated file content inside a single markdown code block.
 3. If providing updated code, do NOT truncate it. Return the full file.
 `;
                 // Try streaming 
@@ -1124,8 +1109,13 @@ INSTRUCTIONS:
                         fullResponse += chunk;
                         const now = Date.now();
                         if (now - lastUpdateTime > THROTTLE_MS) {
-                            // Use requestAnimationFrame for smoother updates
-                            requestAnimationFrame(() => setStreamingText(fullResponse));
+                            const capturedRequestId = requestId;
+                            const capturedResponse = fullResponse;
+                            requestAnimationFrame(() => {
+                                if (currentRequestIdRef.current === capturedRequestId) {
+                                    setStreamingText(capturedResponse);
+                                }
+                            });
                             lastUpdateTime = now;
                         }
                     }
@@ -1142,10 +1132,18 @@ INSTRUCTIONS:
 
                 const codeBlockMatch = responseText.match(/```(?:\w+)?\n([\s\S]*?)```/);
 
-                if (codeBlockMatch && (userMessageText.match(/(update|change|add|refactor|fix|modify)/i))) {
+                if (codeBlockMatch && (userMessageText.match(/(write|create|implement|update|change|add|refactor|fix|modify)/i))) {
                     const newContent = codeBlockMatch[1].trim();
                     updateFileContent(activeFile.id, newContent);
-                    responseText = `${responseText}\n\n**I have updated ${activeFile.name} with these changes.**`;
+                    
+                    // Strip the code block from the chat response
+                    const strippedResponse = responseText.replace(/```(?:\w+)?\n([\s\S]*?)```/, '').trim();
+                    
+                    if (strippedResponse === '') {
+                        responseText = `✅ **I have updated \`${activeFile.name}\` directly in the editor with your changes.**`;
+                    } else {
+                        responseText = `${strippedResponse}\n\n✅ **I have updated \`${activeFile.name}\` directly in the editor.**`;
+                    }
                 }
             } else {
                 try {
@@ -1168,8 +1166,13 @@ INSTRUCTIONS:
                         fullResponse += chunk;
                         const now = Date.now();
                         if (now - lastUpdateTime > THROTTLE_MS) {
-                            // Use requestAnimationFrame for smoother updates
-                            requestAnimationFrame(() => setStreamingText(fullResponse));
+                            const capturedRequestId = requestId;
+                            const capturedResponse = fullResponse;
+                            requestAnimationFrame(() => {
+                                if (currentRequestIdRef.current === capturedRequestId) {
+                                    setStreamingText(capturedResponse);
+                                }
+                            });
                             lastUpdateTime = now;
                         }
                     }
@@ -1203,13 +1206,14 @@ INSTRUCTIONS:
             // Remove the action blocks from the displayed text to keep UI clean
             responseText = responseText.replace(/```action\s*[\s\S]*?```/gi, '').trim();
 
-            // CRITICAL FIX: Clear streaming text FIRST, before adding the AI message
-            // This prevents the race condition where both streaming and final message are visible
+            // CRITICAL FIX: Clear streaming text and current request id FIRST, before adding the AI message.
+            // Nulling currentRequestIdRef ensures any late requestAnimationFrame from the stream won't re-apply streaming text (no duplicate).
             setStreamingText('');
             abortControllerRef.current = null;
+            currentRequestIdRef.current = null;
 
             // Append AI Response (only if we have something and this request hasn't been processed)
-            if (responseText && currentRequestIdRef.current === requestId && !processedRequestsRef.current.has(requestId)) {
+            if (responseText && !processedRequestsRef.current.has(requestId)) {
                 // Mark this request as processed
                 processedRequestsRef.current.add(requestId);
 
@@ -1540,6 +1544,29 @@ INSTRUCTIONS:
                             title="Toggle History"
                         >
                             <History size={18} strokeWidth={2} className="opacity-80" />
+                        </button>
+                    </div>
+
+                    {/* Center - Chat Title */}
+                    <div className="flex-1 min-w-0 flex items-center justify-center px-3 relative z-10">
+                        <button
+                            onClick={() => {
+                                if (!currentSessionId) return;
+                                const session = sessions.find(s => s.id === currentSessionId);
+                                const currentTitle = session?.title || 'New Chat';
+                                const newTitle = prompt('Rename chat:', currentTitle);
+                                if (newTitle != null && newTitle.trim() !== '') {
+                                    setSessions(prev =>
+                                        prev.map(s =>
+                                            s.id === currentSessionId ? { ...s, title: newTitle.trim(), updatedAt: Date.now() } : s
+                                        )
+                                    );
+                                }
+                            }}
+                            className="max-w-full w-full px-4 py-2 rounded-xl text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all duration-200 text-center truncate"
+                            title={`${currentSession?.title || 'New Chat'} — Click to rename`}
+                        >
+                            <span className="block truncate">{currentSession?.title || 'New Chat'}</span>
                         </button>
                     </div>
 

@@ -3,11 +3,12 @@ import Editor from '@monaco-editor/react';
 import type { OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useProject } from '../../context/ProjectContext';
-import { getCodeSuggestion, cancelPendingRequest } from '../../utils/codeSuggestionService';
+import { getCodeSuggestion, cancelPendingRequest, getInlineCompletion } from '../../utils/codeSuggestionService';
 import { checkCodeErrors } from '../../utils/diagnosticsService';
-import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, GitBranch, Play, Zap } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, GitBranch, Play, Zap, AlignLeft } from 'lucide-react';
 import { ModernAILogo } from '../Icons/ModernAILogo';
 import { useTerminal } from '../../context/TerminalContext';
+import { useDebounceCallback } from '../../hooks/useDebounce';
 
 // Language detection helper
 const getLanguage = (fileName: string): string => {
@@ -19,7 +20,7 @@ const getLanguage = (fileName: string): string => {
         'py': 'python', 'java': 'java',
         'c': 'c', 'cpp': 'cpp', 'h': 'c', 'hpp': 'cpp',
         'go': 'go', 'rs': 'rust', 'rb': 'ruby',
-        'php': 'php', 'swift': 'swift', 'kt': 'kotlin',
+        'php': 'php', 'cs': 'csharp', 'swift': 'swift', 'kt': 'kotlin',
         'css': 'css', 'scss': 'scss', 'json': 'json',
         'md': 'markdown', 'html': 'html', 'sh': 'shell', 'bash': 'shell'
     };
@@ -29,6 +30,8 @@ const getLanguage = (fileName: string): string => {
 interface CodeEditorProps {
     isAiOpen?: boolean;
     onToggleAi?: () => void;
+    isSidebarOpen?: boolean;
+    onToggleSidebar?: () => void;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) => {
@@ -39,9 +42,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const completionProviderRef = useRef<Monaco.IDisposable | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const activeFileRef = useRef(activeFile);
+    /** Cache last non-empty selection so Explain Selection still works after focus leaves editor */
+    const lastSelectionRef = useRef<{ fileId: string; text: string; language: string; fileName?: string } | null>(null);
 
     useEffect(() => {
         activeFileRef.current = activeFile;
+        if (activeFile?.id !== lastSelectionRef.current?.fileId) {
+            lastSelectionRef.current = null;
+        }
     }, [activeFile]);
 
     // Editor State
@@ -80,9 +88,30 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     // Diagnostics State
     const [isChecking, setIsChecking] = useState(false);
     const [hasErrors, setHasErrors] = useState(false);
+    const [isCheckSuccess, setIsCheckSuccess] = useState(false);
+    const [isFormatting, setIsFormatting] = useState(false);
     const [_isAiProcessing, setIsAiProcessing] = useState(false);
     const [activeAiLine, setActiveAiLine] = useState<number | null>(null);
     const [editorReady, setEditorReady] = useState(false);
+
+    // Responsive toolbar sizing
+    const toolbarLeftRef = useRef<HTMLDivElement>(null);
+    const [toolbarSize, setToolbarSize] = useState<'full' | 'compact' | 'mini'>('full');
+
+    useEffect(() => {
+        const el = toolbarLeftRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                const w = entry.contentRect.width;
+                if (w >= 520) setToolbarSize('full');
+                else if (w >= 340) setToolbarSize('compact');
+                else setToolbarSize('mini');
+            }
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
 
 
@@ -90,33 +119,106 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const runDiagnostics = async () => {
         if (!activeFile || !monacoRef.current || !editorRef.current) return;
 
+        console.log('Starting diagnostics for file:', activeFile.name);
         setIsChecking(true);
+        setHasErrors(false);
+        setIsCheckSuccess(false);
+        
         const code = activeFile.content || '';
         const fileName = activeFile.name;
         const model = editorRef.current.getModel();
 
         try {
-            const result = await checkCodeErrors(code, fileName);
+            // Clear existing markers first
+            if (model) {
+                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', []);
+            }
+
+            // If code is empty, consider it valid
+            if (!code.trim()) {
+                console.log('Empty code, considering valid');
+                setIsCheckSuccess(true);
+                setTimeout(() => setIsCheckSuccess(false), 2000);
+                return;
+            }
+
+            const result = await checkCodeErrors(code, fileName, monacoRef.current || undefined);
+            console.log('Diagnostics result:', result);
 
             if (model) {
                 monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', result.markers);
             }
 
-            setHasErrors(result.isError);
+            // Determine if there are actual errors (not warnings)
+            const hasActualErrors = result.markers.some(marker => marker.severity === 8); // Severity.Error = 8
+            
+            setHasErrors(hasActualErrors);
+            if (!hasActualErrors) {
+                console.log('No errors detected, showing success');
+                setIsCheckSuccess(true);
+                setTimeout(() => setIsCheckSuccess(false), 3000); // Show success for 3 seconds
+            } else {
+                console.log('Errors detected:', result.markers.length);
+                setIsCheckSuccess(false);
+            }
         } catch (error) {
             console.error('Failed to run diagnostics:', error);
+            setHasErrors(true);
+            // Show a generic error marker
+            if (model) {
+                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', [{
+                    startLineNumber: 1,
+                    startColumn: 1,
+                    endLineNumber: 1,
+                    endColumn: 1000,
+                    message: 'Syntax check failed: ' + (error as Error).message,
+                    severity: 8,
+                    source: 'System'
+                }]);
+            }
         } finally {
             setIsChecking(false);
         }
     };
 
+    // Debounced save to project state
+    const debouncedSave = useDebounceCallback((id: string, content: string) => {
+        updateFileContent(id, content);
+    }, 500);
+
     const handleEditorChange = (value: string | undefined) => {
+        // Clear check status when user starts typing
+        if (isCheckSuccess) setIsCheckSuccess(false);
+        if (hasErrors) setHasErrors(false);
+        
+        // Clear markers when user starts typing to avoid stale errors
+        if (editorRef.current && monacoRef.current) {
+            const model = editorRef.current.getModel();
+            if (model) {
+                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', []);
+            }
+        }
+        
         if (activeFile && value !== undefined) {
-            updateFileContent(activeFile.id, value);
+            debouncedSave(activeFile.id, value);
         }
     };
 
+    // Add keyboard shortcut for syntax checking (Ctrl/Cmd + .)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+                e.preventDefault();
+                runDiagnostics();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [runDiagnostics]);
+
     // Force update editor content when activeFile changes content (e.g. from AI)
+    // We only update if it differs from what the editor already holds
     useEffect(() => {
         if (editorRef.current && activeFile) {
             const currentContent = editorRef.current.getValue();
@@ -124,7 +226,43 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 editorRef.current.setValue(activeFile.content || '');
             }
         }
-    }, [activeFile?.content]);
+    }, [activeFile?.id, activeFile?.content]);
+
+    // Explain Selection: respond to request from Explanation panel
+    useEffect(() => {
+        const sendSelection = (detail: { selection: string; language: string; fileName?: string }) => {
+            window.dispatchEvent(new CustomEvent('editor-selection', { detail }));
+        };
+        const handler = () => {
+            const file = activeFileRef.current;
+            if (!file) {
+                sendSelection({ selection: '', language: 'plaintext', fileName: undefined });
+                return;
+            }
+            const language = getLanguage(file.name || '');
+            const cached = lastSelectionRef.current?.fileId === file.id ? lastSelectionRef.current : null;
+
+            const readFromEditor = () => {
+                const editor = editorRef.current;
+                if (!editor) {
+                    if (cached) sendSelection({ selection: cached.text, language: cached.language, fileName: cached.fileName });
+                    else sendSelection({ selection: '', language, fileName: file.name });
+                    return;
+                }
+                const model = editor.getModel();
+                const selection = editor.getSelection();
+                let selectionText = model && selection ? model.getValueInRange(selection) : '';
+                if ((!selectionText || selectionText.trim() === '') && cached) {
+                    selectionText = cached.text;
+                }
+                sendSelection({ selection: selectionText, language, fileName: file.name });
+            };
+
+            requestAnimationFrame(readFromEditor);
+        };
+        window.addEventListener('request-editor-selection', handler);
+        return () => window.removeEventListener('request-editor-selection', handler);
+    }, []);
 
     // Track if we're currently processing an AI command (to prevent re-triggering)
     const isProcessingAiCommandRef = useRef(false);
@@ -447,27 +585,31 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 fileName
             });
 
-            if (!result || result.text === null || result.text === undefined) {
-                return { items: [] };
-            }
+            // If getCodeSuggestion returned a result (/// command), use it
+            if (result && result.text !== null && result.text !== undefined && result.text !== '') {
+                if (result.isModify && result.startOffset !== undefined) {
+                    const startPos = model.getPositionAt(result.startOffset);
+                    const endPos = position;
+                    const range = new monaco.Range(
+                        startPos.lineNumber,
+                        startPos.column,
+                        endPos.lineNumber,
+                        endPos.column
+                    );
+                    return {
+                        items: [{
+                            insertText: result.text,
+                            range: range
+                        }]
+                    };
+                }
 
-            if (!result.isModify && result.text === '') {
-                return { items: [] };
-            }
-
-            if (result.isModify && result.startOffset !== undefined) {
-                const startPos = model.getPositionAt(result.startOffset);
-                const endPos = position;
-
-                // Create a range that covers the command (and old code if refactoring)
-                // This ensures the ghost text replaces the command when accepted.
                 const range = new monaco.Range(
-                    startPos.lineNumber,
-                    startPos.column,
-                    endPos.lineNumber,
-                    endPos.column
+                    position.lineNumber,
+                    position.column,
+                    position.lineNumber,
+                    position.column
                 );
-
                 return {
                     items: [{
                         insertText: result.text,
@@ -476,20 +618,30 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 };
             }
 
-            // Fallback for simple insertions (though most AI commands are isModify=true now)
-            const range = new monaco.Range(
-                position.lineNumber,
-                position.column,
-                position.lineNumber,
-                position.column
-            );
+            // No /// command detected — try general inline completion
+            const inlineResult = await getInlineCompletion({
+                code,
+                cursorPosition: offset,
+                language,
+                fileName
+            });
 
-            return {
-                items: [{
-                    insertText: result.text,
-                    range: range
-                }]
-            };
+            if (inlineResult && inlineResult.text) {
+                const range = new monaco.Range(
+                    position.lineNumber,
+                    position.column,
+                    position.lineNumber,
+                    position.column
+                );
+                return {
+                    items: [{
+                        insertText: inlineResult.text,
+                        range: range
+                    }]
+                };
+            }
+
+            return { items: [] };
         } catch (error) {
             console.error('Error fetching suggestion:', error);
             return { items: [] };
@@ -577,7 +729,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     // Format Document
     const handleFormat = () => {
+        setIsFormatting(true);
         editorRef.current?.getAction('editor.action.formatDocument')?.run();
+        setTimeout(() => setIsFormatting(false), 600);
     };
 
     const handleEditorMount: OnMount = (editor, monaco) => {
@@ -605,6 +759,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 lineNumber: e.position.lineNumber,
                 column: e.position.column
             });
+        });
+
+        editor.onDidChangeCursorSelection((e) => {
+            const model = editor.getModel();
+            const sel = e.selection;
+            if (!model || !sel) return;
+            const text = model.getValueInRange(sel);
+            if (text.trim().length > 0 && activeFileRef.current) {
+                lastSelectionRef.current = {
+                    fileId: activeFileRef.current.id,
+                    text,
+                    language: getLanguage(activeFileRef.current.name || ''),
+                    fileName: activeFileRef.current.name
+                };
+            }
+            // Do not clear cache when selection collapses (e.g. on blur) so Explain Selection still has the last selection
         });
 
         monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
@@ -645,7 +815,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     if (!activeFile) {
         return (
-            <div className="w-full h-full bg-transparent flex flex-col items-center justify-center text-muted glass-panel-light">
+            <div className="w-full h-full bg-transparent flex flex-col items-center justify-center text-muted glass-panel-light relative group">
                 <div className="relative mb-6">
                     <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full animate-glass-pulse" />
                     <div className="relative p-8 rounded-full bg-gradient-to-br from-white/5 to-transparent border border-white/10">
@@ -667,30 +837,48 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     return (
         <div className="w-full h-full bg-transparent flex flex-col relative group">
-            {/* Glass Toolbar */}
-            <div className="h-11 bg-gradient-to-r from-white/5 to-transparent border-b border-white/10 flex items-center justify-between px-3 shrink-0 backdrop-blur-sm">
-                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            {/* Toolbar */}
+            <div className="h-11 bg-[#0d1117] border-b border-white/10 flex items-center justify-between px-3 shrink-0">
+                <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden transition-all duration-200 ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
                     {/* Check Errors Button */}
                     <button
                         onClick={runDiagnostics}
                         disabled={isChecking}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
-                            ${hasErrors
-                                ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/30'
-                                : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'}
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                            ${toolbarSize === 'full' ? 'gap-1.5 px-3 py-1.5' : 'gap-1 px-1.5 py-1'}
+                            ${isChecking 
+                                ? 'text-zinc-400 bg-white/5 border border-transparent animate-pulse'
+                                : hasErrors
+                                    ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/30'
+                                    : isCheckSuccess
+                                        ? 'bg-green-500/15 text-green-300 border border-green-500/30'
+                                        : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'}
                         `}
-                        title="Check for Errors"
+                        title="Check for syntax errors"
                     >
-                        {isChecking ? <Loader2 size={12} className="animate-spin" /> : hasErrors ? <AlertCircle size={12} /> : <CheckCircle size={12} />}
-                        <span>Check</span>
+                        {isChecking ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : hasErrors ? (
+                            <AlertCircle size={12} />
+                        ) : isCheckSuccess ? (
+                            <CheckCircle size={12} className="text-green-300" />
+                        ) : (
+                            <CheckCircle size={12} />
+                        )}
+                        {toolbarSize === 'full' && (
+                            <span>
+                                {isChecking ? 'Checking...' : hasErrors ? 'Has Errors' : isCheckSuccess ? 'No Errors' : 'Check'}
+                            </span>
+                        )}
                     </button>
 
-                    <div className="w-px h-5 bg-white/10 mx-1" />
+                    <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                     {/* Code Suggestions Toggle */}
                     <button
                         onClick={() => setIsSuggestionsEnabled(prev => !prev)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all
+                            ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isSuggestionsEnabled
                                 ? 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/20'
                                 : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
@@ -698,59 +886,75 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         title={isSuggestionsEnabled ? "Disable AI Suggestions" : "Enable AI Suggestions"}
                     >
                         <Zap size={12} className={isSuggestionsEnabled ? "fill-yellow-400" : ""} />
-                        <span>AI</span>
+                        {toolbarSize === 'full' && <span>AI</span>}
                     </button>
 
-                    <div className="w-px h-5 bg-white/10 mx-1" />
+                    <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                     {/* Format */}
                     <button
                         onClick={handleFormat}
-                        className="px-2.5 py-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded-lg text-xs font-medium transition-all"
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                            ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
+                            ${isFormatting
+                                ? 'text-green-400 bg-green-400/10 border border-green-400/20'
+                                : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
+                        `}
                         title="Format Document (Shift+Alt+F)"
                     >
-                        Format
+                        {isFormatting ? <CheckCircle size={12} /> : <AlignLeft size={12} />}
+                        {toolbarSize === 'full' && <span>{isFormatting ? 'Formatted' : 'Format'}</span>}
                     </button>
 
                     {/* Word Wrap */}
                     <button
                         onClick={() => setWordWrap(w => w === 'on' ? 'off' : 'on')}
-                        className={`p-1.5 rounded-lg transition-all ${wordWrap === 'on' ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                            ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
+                            ${wordWrap === 'on' ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
                         title="Toggle Word Wrap"
                     >
-                        <WrapText size={14} />
+                        <WrapText size={12} />
+                        {toolbarSize === 'full' && <span>Wrap</span>}
                     </button>
 
                     {/* Minimap */}
                     <button
                         onClick={() => setShowMinimap(m => !m)}
-                        className={`p-1.5 rounded-lg transition-all ${showMinimap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                            ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
+                            ${showMinimap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
                         title="Toggle Minimap"
                     >
-                        <Map size={14} />
+                        <Map size={12} />
+                        {toolbarSize === 'full' && <span>Map</span>}
                     </button>
 
-                    <div className="w-px h-5 bg-white/10 mx-1" />
+                    {toolbarSize !== 'mini' && (
+                        <>
+                            <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'compact' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
-                    {/* Font Size */}
-                    <div className="flex items-center gap-0.5 bg-white/5 rounded-lg border border-white/10 px-1">
-                        <button
-                            onClick={() => setFontSize(s => Math.max(10, s - 1))}
-                            className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
-                        >
-                            <Minus size={12} />
-                        </button>
-                        <span className="text-xs text-white/70 w-5 text-center font-mono">{fontSize}</span>
-                        <button
-                            onClick={() => setFontSize(s => Math.min(24, s + 1))}
-                            className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
-                        >
-                            <Plus size={12} />
-                        </button>
-                    </div>
+                            {/* Font Size */}
+                            <div className="shrink-0 flex items-center gap-0.5 bg-white/5 rounded-lg border border-white/10 px-1">
+                                <button
+                                    onClick={() => setFontSize(s => Math.max(10, s - 1))}
+                                    className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
+                                >
+                                    <Minus size={12} />
+                                </button>
+                                <span className="text-xs text-white/70 w-5 text-center font-mono">{fontSize}</span>
+                                <button
+                                    onClick={() => setFontSize(s => Math.min(24, s + 1))}
+                                    className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
+                                >
+                                    <Plus size={12} />
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
 
-                <div className="flex items-center gap-3 relative mr-2">
+                <div className="flex items-center gap-3 relative mr-2 shrink-0">
                     <span className="text-[10px] text-blue-300 font-bold uppercase tracking-wider bg-blue-500/10 px-2.5 py-1 rounded-md border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]">
                         {language}
                     </span>
@@ -758,7 +962,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     <button
                         onClick={() => {
                             if (activeFile) {
-                                runCode(activeFile.content || '', language);
+                                // Dispatch event to switch to terminal tab first
+                                window.dispatchEvent(new CustomEvent('run-button-clicked'));
+                                
+                                // Small delay to allow tab switching before running code
+                                setTimeout(() => {
+                                    runCode(activeFile.content || '', language, activeFile.name);
+                                }, 100);
                             }
                         }}
                         disabled={isRunning || !activeFile}
@@ -881,6 +1091,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         cursorBlinking: 'smooth',
                         cursorSmoothCaretAnimation: 'on',
                         renderLineHighlight: 'all',
+                        tabSize: 4,
+                        insertSpaces: true,
+                        detectIndentation: false,
+                        autoIndent: 'advanced',
                     }}
                 />
             </div>

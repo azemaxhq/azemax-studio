@@ -134,8 +134,8 @@ export const parseCommentCommand = (
         };
     }
 
-    // Try hash comments for Python
-    if (language === 'python' || language === 'ruby' || language === 'shell') {
+    // Try hash comments for Python, Ruby, Shell
+    if (language === 'python' || language === 'ruby' || language === 'shell' || language === 'bash') {
         const hashMatch = line.match(COMMAND_PATTERNS.hashComment);
         if (hashMatch) {
             return {
@@ -255,7 +255,7 @@ export async function* streamGenerateFromComment(
         callbacks?.onComplete?.(result);
         return result;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         const err = error instanceof Error ? error : new Error(String(error));
 
         if (err.name === 'AbortError' || err.message.includes('cancel')) {
@@ -316,10 +316,11 @@ export const generateFromComment = async (
             replaceRange: calculateReplaceRange(command),
         };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         return {
             success: false,
-            error: error.message || 'Generation failed',
+            error: errorMessage || 'Generation failed',
         };
 
     } finally {

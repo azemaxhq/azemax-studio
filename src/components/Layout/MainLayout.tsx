@@ -1,5 +1,8 @@
 import React from 'react';
+import { Layers, BookOpen } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../Sidebar/Sidebar';
+import { ExplanationSidebar } from '../Sidebar/ExplanationSidebar';
 import { CodeEditor } from '../Editor/CodeEditor';
 import { AIAssistant } from '../Panels/AIAssistant';
 import { BottomPanel } from '../Panels/BottomPanel';
@@ -26,6 +29,13 @@ export const MainLayout: React.FC = () => {
     const [leftSidebarWidth, setLeftSidebarWidth] = React.useState(() => loadState('layout-left-sidebar-width', 256));
     const [bottomPanelHeight, setBottomPanelHeight] = React.useState(() => loadState('layout-bottom-panel-height', 256));
     const [isAiSidebarOpen, setIsAiSidebarOpen] = React.useState(() => loadState('layout-ai-sidebar-open', 1) === 1);
+    const [isLeftSidebarOpen, setIsLeftSidebarOpen] = React.useState(() => loadState('layout-left-sidebar-open', 1) === 1);
+    const [leftSidebarView, setLeftSidebarView] = React.useState<'explorer' | 'explanation'>(() => {
+        try {
+            const v = localStorage.getItem('layout-left-sidebar-view');
+            return (v === 'explanation' ? 'explanation' : 'explorer') as 'explorer' | 'explanation';
+        } catch { return 'explorer'; }
+    });
     const [resizingSide, setResizingSide] = React.useState<'left' | 'right' | 'bottom' | null>(null);
 
     // Persistence effects
@@ -45,9 +55,53 @@ export const MainLayout: React.FC = () => {
         localStorage.setItem('layout-ai-sidebar-open', isAiSidebarOpen ? '1' : '0');
     }, [isAiSidebarOpen]);
 
+    React.useEffect(() => {
+        localStorage.setItem('layout-left-sidebar-open', isLeftSidebarOpen ? '1' : '0');
+    }, [isLeftSidebarOpen]);
+
+    React.useEffect(() => {
+        localStorage.setItem('layout-left-sidebar-view', leftSidebarView);
+    }, [leftSidebarView]);
+
+    // Clean up any leftover Lookout localStorage entries
+    React.useEffect(() => {
+        try {
+            const savedView = localStorage.getItem('layout-left-sidebar-view');
+            if (savedView === 'lookout') {
+                localStorage.setItem('layout-left-sidebar-view', 'explorer');
+                setLeftSidebarView('explorer');
+            }
+        } catch (e) {
+            console.warn('Failed to clean up Lookout references:', e);
+        }
+    }, []);
+
     const toggleAiSidebar = React.useCallback(() => {
         setIsAiSidebarOpen(prev => !prev);
     }, []);
+
+    const openExplanation = React.useCallback(() => {
+        if (!isLeftSidebarOpen) {
+            setIsLeftSidebarOpen(true);
+            setLeftSidebarView('explanation');
+        } else if (leftSidebarView === 'explanation') {
+            setIsLeftSidebarOpen(false);
+        } else {
+            setLeftSidebarView('explanation');
+        }
+    }, [isLeftSidebarOpen, leftSidebarView]);
+
+    const openExplorer = React.useCallback(() => {
+        if (!isLeftSidebarOpen) {
+            setIsLeftSidebarOpen(true);
+            setLeftSidebarView('explorer');
+        } else if (leftSidebarView === 'explorer') {
+            setIsLeftSidebarOpen(false);
+        } else {
+            setLeftSidebarView('explorer');
+        }
+    }, [isLeftSidebarOpen, leftSidebarView]);
+
 
     const startResizingRight = React.useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -112,6 +166,10 @@ export const MainLayout: React.FC = () => {
                     // Optional: Try to focus the code editor if possible, but blocking is sufficient
                 }
             }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+                e.preventDefault();
+                setIsLeftSidebarOpen(prev => !prev);
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -129,23 +187,75 @@ export const MainLayout: React.FC = () => {
     }, []);
 
     return (
-        <div className="flex h-screen w-full bg-background text-text overflow-hidden relative">
+        <div className={`flex h-screen w-full bg-background text-text overflow-hidden relative ${resizingSide ? 'select-none' : ''}`}>
+            {/* Resizing Overlay to capture mouse events and prevent iframe swallowing */}
+            {resizingSide && (
+                <div className={`absolute inset-0 z-[100] ${resizingSide === 'bottom' ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
+            )}
+
             {/* Background Glow Effects */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-glass-pulse" />
                 <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl animate-glass-pulse" style={{ animationDelay: '1s' }} />
             </div>
 
-            {/* Left Sidebar (File Explorer) */}
+            {/* Activity Bar (Explorer + Explanation) */}
+            <div className="shrink-0 z-20 flex flex-col items-center justify-start gap-2 py-3 w-[56px] bg-[#0d1117]/80 border-r border-white/[0.04]">
+                <button
+                    onClick={openExplorer}
+                    className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"
+                    title="Explorer (⌘B)"
+                >
+                    <div className={`w-[32px] h-[32px] rounded-[10px] bg-gradient-to-br from-blue-500/20 via-cyan-500/10 to-blue-600/15 border flex items-center justify-center transition-all duration-200 group-hover/toggle:from-blue-500/30 group-hover/toggle:to-blue-600/25 group-hover/toggle:shadow-[0_2px_12px_rgba(59,130,246,0.25)] group-active/toggle:scale-90 ${isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'border-blue-400/30 shadow-[0_2px_8px_rgba(59,130,246,0.2)]' : 'border-blue-400/15 shadow-[0_2px_8px_rgba(59,130,246,0.12)]'}`}>
+                        <Layers size={16} className="text-blue-400 drop-shadow-[0_0_3px_rgba(59,130,246,0.4)] transition-transform duration-200 group-hover/toggle:scale-110" />
+                    </div>
+                    {isLeftSidebarOpen && leftSidebarView === 'explorer' && (
+                        <div className="absolute top-1 right-0.5 w-[7px] h-[7px] rounded-full bg-gradient-to-br from-emerald-400 to-green-500 border-[1.5px] border-[#0d1117] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+                    )}
+                </button>
+                <button
+                    onClick={openExplanation}
+                    className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"
+                    title="Code Explanation"
+                >
+                    <div className={`w-[32px] h-[32px] rounded-[10px] bg-gradient-to-br from-[#a371f7]/20 via-[#58a6ff]/10 to-[#a371f7]/15 border flex items-center justify-center transition-all duration-200 group-hover/toggle:from-[#a371f7]/30 group-hover/toggle:to-[#a371f7]/25 group-hover/toggle:shadow-[0_2px_12px_rgba(163,113,247,0.25)] group-active/toggle:scale-90 ${isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'border-[#a371f7]/40 shadow-[0_2px_8px_rgba(163,113,247,0.2)]' : 'border-[#a371f7]/15 shadow-[0_2px_8px_rgba(163,113,247,0.12)]'}`}>
+                        <BookOpen size={16} className="text-[#a371f7] drop-shadow-[0_0_3px_rgba(163,113,247,0.4)] transition-transform duration-200 group-hover/toggle:scale-110" />
+                    </div>
+                    {isLeftSidebarOpen && leftSidebarView === 'explanation' && (
+                        <div className="absolute top-1 right-0.5 w-[7px] h-[7px] rounded-full bg-gradient-to-br from-emerald-400 to-green-500 border-[1.5px] border-[#0d1117] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+                    )}
+                </button>
+            </div>
+
+            {/* Left Sidebar (Explorer or Explanation) - smooth open/close */}
             <div
-                style={{ width: Math.max(150, leftSidebarWidth) }}
-                className="glass-panel flex flex-col shrink-0 relative z-10 border-r border-white/5 shadow-2xl"
+                style={{
+                    width: isLeftSidebarOpen ? Math.max(150, leftSidebarWidth) : 0,
+                    opacity: isLeftSidebarOpen ? 1 : 0
+                }}
+                className={`glass-panel flex flex-col shrink-0 relative z-10 overflow-hidden ${resizingSide === 'left' ? 'transition-none' : 'transition-all duration-300 ease-in-out'} ${isLeftSidebarOpen ? 'border-r border-white/5 shadow-2xl' : 'border-none'}`}
             >
-                <Sidebar />
+                <AnimatePresence mode="wait" initial={false}>
+                    {leftSidebarView === 'explorer' ? (
+                        <motion.div
+                            key="explorer"
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -8 }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            className="h-full flex flex-col min-w-0 min-h-0"
+                        >
+                            <Sidebar />
+                        </motion.div>
+                    ) : (
+                        <ExplanationSidebar />
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* Left Resize Handle */}
             <div
+                style={{ display: isLeftSidebarOpen ? 'flex' : 'none' }}
                 className="w-1.5 glass-resize-handle cursor-col-resize z-20 flex items-center justify-center shrink-0 hover:w-2 transition-all"
                 onMouseDown={startResizingLeft}
             >
@@ -199,7 +309,7 @@ export const MainLayout: React.FC = () => {
                         width: isAiSidebarOpen ? aiPanelWidth : 0,
                         opacity: isAiSidebarOpen ? 1 : 0,
                     }}
-                    className={`glass-panel flex flex-col shrink-0 border-l border-white/10 transition-all duration-300 ease-in-out ${!isAiSidebarOpen ? 'border-none overflow-hidden' : ''}`}
+                    className={`glass-panel flex flex-col shrink-0 border-l border-white/10 ${resizingSide === 'right' ? 'transition-none' : 'transition-all duration-300 ease-in-out'} ${!isAiSidebarOpen ? 'border-none overflow-hidden' : ''}`}
                 >
                     <div className="flex-1 min-h-0 flex flex-col" style={{ width: aiPanelWidth }}>
                         <AIAssistant />

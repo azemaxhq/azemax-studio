@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, Plus, X, Play, Square, Eraser, Keyboard, Clipboard, Trash, Copy } from 'lucide-react';
+import { Terminal, Plus, X, Play, Square, Eraser, Clipboard, Trash, Copy, Keyboard } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
-import { TerminalLog } from './TerminalLog';
-import { motion, AnimatePresence } from 'framer-motion';
+import { ShellTerminal } from './ShellTerminal';
+import { motion } from 'framer-motion';
 import { ContextMenu } from '../UI/ContextMenu';
 
 export const TerminalPanel: React.FC = () => {
-    const { activeFile } = useProject();
+    const { activeFile, selectedFolder } = useProject();
     const {
         terminals,
         activeTerminalId,
@@ -17,105 +17,76 @@ export const TerminalPanel: React.FC = () => {
         runCode,
         clearTerminal,
         isRunning,
-        setTerminalStdin
+        stopProcess,
+        terminalEventEmitter
     } = useTerminal();
 
-    // Persisted Input State
-    const [isInputOpen, setIsInputOpen] = useState(() => {
-        const saved = localStorage.getItem('terminal_isInputOpen');
-        return saved !== null ? saved === 'true' : true;
-    });
-
-    useEffect(() => {
-        localStorage.setItem('terminal_isInputOpen', String(isInputOpen));
-    }, [isInputOpen]);
-
-    const activeTerminal = terminals.find(t => t.id === activeTerminalId);
+    const [showStdin, setShowStdin] = useState(false);
+    const [stdinContent, setStdinContent] = useState('');
 
     const handleRun = () => {
-        // Detailed Logging for Debugging
-        console.log('[TerminalPanel] Run initiated');
-        console.log('[TerminalPanel] ActiveFile Object:', activeFile);
-
-        if (!activeFile) {
-            console.warn('[TerminalPanel] No active file selected.');
-            return;
-        }
-
-        if (typeof activeFile.content !== 'string') {
-            console.error('[TerminalPanel] Active file content is not a string:', activeFile.content);
-            // Attempt to safeguard
-            if (activeFile.content === undefined || activeFile.content === null) {
-                console.warn('[Terminal] Content is null/undefined. Using empty string.');
-            }
-        }
-
+        if (!activeFile) return;
+        
+        // Dispatch event to switch to terminal tab (though we're already here)
+        window.dispatchEvent(new CustomEvent('run-button-clicked'));
+        
         const content = activeFile.content || '';
-        if (!content && content !== '') {
-            console.warn('[TerminalPanel] Content is falsy but not empty string?');
-        }
-
-        console.log(`[TerminalPanel] Content length: ${content.length}`);
-
-        // Basic language detection
         const name = activeFile.name || 'script.js';
         const ext = name.split('.').pop()?.toLowerCase() || 'js';
 
-        let lang = 'javascript';
-        if (ext === 'py') lang = 'python';
-        else if (ext === 'ts' || ext === 'tsx') lang = 'typescript';
-        else if (ext === 'c') lang = 'c';
-        else if (ext === 'cpp') lang = 'cpp';
-        else if (ext === 'rs') lang = 'rust';
-        else if (ext === 'go') lang = 'go';
-        else if (ext === 'java') lang = 'java';
-        else if (ext === 'sh') lang = 'bash';
+        // Normalized language ids expected by the backend
+        const extensionToLanguage: Record<string, string> = {
+            js: 'javascript',
+            jsx: 'javascript',
+            ts: 'typescript',
+            tsx: 'typescript',
+            py: 'python',
+            python: 'python',
+            c: 'c',
+            cpp: 'cpp',
+            cc: 'cpp',
+            cxx: 'cpp',
+            rs: 'rust',
+            go: 'go',
+            java: 'java',
+            rb: 'ruby',
+            php: 'php',
+            pl: 'perl',
+            swift: 'swift',
+            kt: 'kotlin',
+            scala: 'scala',
+            r: 'r',
+            lua: 'lua',
+            cs: 'csharp',
+            sh: 'bash',
+            bash: 'bash',
+        };
 
-        console.log('[TerminalPanel] Detected language:', lang, 'Extension:', ext);
-
-        runCode(content, lang, activeFile.name);
+        const lang = extensionToLanguage[ext] || 'javascript';
+        runCode(content, lang, name, undefined, stdinContent);
     };
 
-    // Context Menu State
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'terminal' | 'input' } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
-    const handleContextMenu = (e: React.MouseEvent, type: 'terminal' | 'input') => {
+    const handleContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
-        setContextMenu({ x: e.clientX, y: e.clientY, type });
+        setContextMenu({ x: e.clientX, y: e.clientY });
     };
 
-    const handleContextAction = async (action: 'clean' | 'copy' | 'copy-selection' | 'paste' | 'kill' | 'clear-input') => {
+    const handleContextAction = (action: 'clean' | 'copy' | 'copy-selection' | 'paste' | 'kill') => {
         if (!activeTerminalId) return;
-        const term = terminals.find(t => t.id === activeTerminalId);
-
         switch (action) {
             case 'clean':
                 clearTerminal(activeTerminalId);
                 break;
             case 'copy':
-                if (term) {
-                    const content = term.logs.map(l => l.content).join('\n');
-                    navigator.clipboard.writeText(content);
-                }
+                terminalEventEmitter.dispatchEvent(new CustomEvent('copyAll', { detail: { id: activeTerminalId } }));
                 break;
             case 'copy-selection':
-                const selection = window.getSelection()?.toString();
-                if (selection) {
-                    navigator.clipboard.writeText(selection);
-                }
+                terminalEventEmitter.dispatchEvent(new CustomEvent('copySelection', { detail: { id: activeTerminalId } }));
                 break;
             case 'paste':
-                try {
-                    const text = await navigator.clipboard.readText();
-                    if (term && text) {
-                        setTerminalStdin(activeTerminalId, (term.stdin || '') + text);
-                    }
-                } catch (e) {
-                    console.error('Failed to read clipboard', e);
-                }
-                break;
-            case 'clear-input':
-                setTerminalStdin(activeTerminalId, '');
+                terminalEventEmitter.dispatchEvent(new CustomEvent('paste', { detail: { id: activeTerminalId } }));
                 break;
             case 'kill':
                 removeTerminal(activeTerminalId);
@@ -124,26 +95,6 @@ export const TerminalPanel: React.FC = () => {
         setContextMenu(null);
     };
 
-    // const runCodeHandler = () => handleRun(); // Alias to avoid conflict if any
-
-    const getTerminalStatus = (term: any) => {
-        if (activeTerminalId === term.id && isRunning) return 'running';
-
-        // Check if logs exist and analyze outcome
-        if (term.logs.length > 0) {
-            // Check for explicit error log types
-            if (term.logs.some((l: any) => l.type === 'stderr')) return 'error';
-
-            // If strictly just "Exited" system message, it might technically be success, 
-            // but usually we want to confirm valuable output or at least lack of stderr.
-            // For now, simplicity: if not running and not error, it's success.
-            return 'success';
-        }
-
-        return 'idle';
-    };
-
-    // Keyboard Shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (!activeTerminalId) return;
@@ -165,68 +116,62 @@ export const TerminalPanel: React.FC = () => {
     }, [activeTerminalId]);
 
     return (
-        <div className="h-full flex flex-col bg-[#0d1117]/95 backdrop-blur-xl relative overflow-hidden group">
+        <div className="h-full flex flex-col bg-[#0a0d14]/90 backdrop-blur-2xl relative overflow-hidden group border-t border-white/[0.02]">
             {/* Ambient Glow */}
-            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent opacity-50" />
+            <div className="absolute top-0 left-1/4 right-1/4 h-32 bg-blue-500/5 blur-[80px] pointer-events-none" />
 
             {/* Header Bar */}
-            <div className="h-10 flex items-center justify-between px-2 bg-[#0d1117] border-b border-white/5 shrink-0 z-10">
+            <div className="h-[42px] flex items-center justify-between px-3 bg-[#0a0d14] border-b border-white/[0.04] shrink-0 z-10 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)]">
 
                 {/* Tabs Area */}
                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar mask-gradient-right flex-1 min-w-0">
-                    {terminals.map((term) => {
-                        const status = getTerminalStatus(term);
-                        return (
-                            <div
-                                key={term.id}
-                                onClick={() => setActiveTerminalId(term.id)}
+                    {terminals.map((term) => (
+                        <div
+                            key={term.id}
+                            onClick={() => setActiveTerminalId(term.id)}
+                            className={`
+                                relative group/tab flex items-center gap-2 px-3.5 py-1.5 rounded-md cursor-pointer select-none transition-all duration-300 border min-w-[120px] max-w-[200px] text-[12px]
+                                ${activeTerminalId === term.id
+                                    ? 'bg-blue-500/10 text-blue-100 border-blue-500/20 shadow-[0_0_15px_-3px_rgba(59,130,246,0.15)]'
+                                    : 'text-white/40 border-transparent hover:text-white/80 hover:bg-white/[0.03]'}
+                            `}
+                        >
+                            {/* Status Icon */}
+                            {activeTerminalId === term.id && isRunning ? (
+                                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
+                            ) : (
+                                <Terminal size={13} className={activeTerminalId === term.id ? "text-primary" : ""} />
+                            )}
+
+                            <span className="text-[11px] font-medium truncate flex-1">{term.title}</span>
+
+                            {/* Close Button */}
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeTerminal(term.id);
+                                }}
                                 className={`
-                                    relative group/tab flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer select-none transition-all duration-200 border border-transparent min-w-[120px] max-w-[200px]
-                                    ${activeTerminalId === term.id
-                                        ? 'bg-white/10 text-white border-white/10 shadow-lg shadow-black/20'
-                                        : 'text-white/40 hover:text-white/80 hover:bg-white/5'}
+                                    p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-white/20 transition-all
+                                    ${activeTerminalId === term.id ? 'opacity-0 group-hover/tab:opacity-100' : ''}
                                 `}
                             >
-                                {/* Status Icon */}
-                                {status === 'running' ? (
-                                    <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
-                                ) : status === 'error' ? (
-                                    <div className="w-2 h-2 rounded-full bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-                                ) : status === 'success' ? (
-                                    <div className="w-2 h-2 rounded-full bg-green-500/80 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-                                ) : (
-                                    <Terminal size={13} className={activeTerminalId === term.id ? "text-primary" : ""} />
-                                )}
+                                <X size={10} />
+                            </button>
 
-                                <span className="text-[11px] font-medium truncate flex-1">{term.title}</span>
-
-                                {/* Close Button */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeTerminal(term.id);
-                                    }}
-                                    className={`
-                                        p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-white/20 transition-all
-                                        ${activeTerminalId === term.id ? 'opacity-0 group-hover/tab:opacity-100' : ''}
-                                    `}
-                                >
-                                    <X size={10} />
-                                </button>
-
-                                {/* Active Indicator */}
-                                {activeTerminalId === term.id && (
-                                    <motion.div
-                                        layoutId="activeTabIndicator"
-                                        className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-full"
-                                    />
-                                )}
-                            </div>
-                        );
-                    })}
+                            {/* Active Indicator */}
+                            {activeTerminalId === term.id && (
+                                <motion.div
+                                    layoutId="activeTabIndicator"
+                                    className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-full"
+                                />
+                            )}
+                        </div>
+                    ))}
 
                     <button
-                        onClick={createTerminal}
+                        onClick={() => createTerminal(selectedFolder || 'root')}
                         className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-colors ml-1"
                         title="New Terminal"
                     >
@@ -237,15 +182,6 @@ export const TerminalPanel: React.FC = () => {
                 {/* Right Actions Toolbar */}
                 <div className="flex items-center gap-2 pl-4 border-l border-white/5 shrink-0">
 
-                    {/* Input Toggle */}
-                    <button
-                        onClick={() => setIsInputOpen(!isInputOpen)}
-                        className={`p-1.5 rounded-lg transition-all ${isInputOpen ? 'text-primary bg-primary/10' : 'text-white/40 hover:text-white'}`}
-                        title="Toggle Input Panel"
-                    >
-                        <Keyboard size={14} />
-                    </button>
-
                     {/* Clear */}
                     <button
                         onClick={() => activeTerminalId && clearTerminal(activeTerminalId)}
@@ -255,32 +191,60 @@ export const TerminalPanel: React.FC = () => {
                         <Eraser size={14} />
                     </button>
 
+                    {/* Stdin Toggle */}
+                    <button
+                        onClick={() => setShowStdin(!showStdin)}
+                        className={`p-1.5 rounded-lg transition-all ${showStdin ? 'bg-blue-500/20 text-blue-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                        title="Provide Input (stdin)"
+                    >
+                        <Keyboard size={14} />
+                    </button>
+
                     <div className="w-px h-4 bg-white/10" />
 
-                    {/* Run Button */}
+                    {/* Run/Stop Button */}
                     <button
-                        onClick={handleRun}
-                        disabled={isRunning || !activeFile}
+                        onClick={isRunning ? () => activeTerminalId && stopProcess(activeTerminalId) : handleRun}
+                        disabled={!isRunning && !activeFile}
                         className={`
                             flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all
                             ${isRunning
-                                ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                                ? 'bg-gradient-to-r from-red-500/80 to-rose-600/80 hover:from-red-500 hover:to-rose-600 text-white shadow-[0_0_20px_-5px_rgba(244,63,94,0.4)] border border-red-500/30 hover:scale-105 active:scale-95'
                                 : 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/40 hover:scale-105 active:scale-95'}
+                            disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed
                         `}
                     >
-                        {isRunning ? <Square size={10} className="animate-pulse" /> : <Play size={10} fill="currentColor" />}
-                        <span>{isRunning ? 'Running' : 'Run Context'}</span>
+                        {isRunning ? <Square size={10} fill="currentColor" /> : <Play size={10} fill="currentColor" />}
+                        <span>{isRunning ? 'Stop Running' : 'Run Context'}</span>
                     </button>
                 </div>
             </div>
 
+            {/* Stdin Input Panel */}
+            <div className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${showStdin ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                <div className="overflow-hidden">
+                    <div className="border-b border-white/[0.04] bg-[#0a0d14]/50 p-2 shrink-0">
+                        <div className="flex flex-col gap-1">
+                            <div className="text-[10px] font-semibold text-white/40 uppercase tracking-wider px-1">
+                                Standard Input (stdin)
+                            </div>
+                            <textarea
+                                value={stdinContent}
+                                onChange={(e) => setStdinContent(e.target.value)}
+                                placeholder="Type input here before running..."
+                                className="bg-black/20 border border-white/5 rounded-md px-3 py-2 text-xs text-white/80 font-mono focus:outline-none focus:border-blue-500/30 min-h-[60px] max-h-[150px] resize-y placeholder:text-white/20"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
             {/* Content Body */}
             <div className="flex-1 flex overflow-hidden relative">
 
                 {/* Main Log View */}
                 <div
                     className="flex-1 relative min-w-0"
-                    onContextMenu={(e) => handleContextMenu(e, 'terminal')}
+                    onContextMenu={(e) => handleContextMenu(e)}
                 >
                     {terminals.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-white/20 gap-4">
@@ -289,7 +253,7 @@ export const TerminalPanel: React.FC = () => {
                             </div>
                             <p className="font-mono text-sm">No active sessions</p>
                             <button
-                                onClick={createTerminal}
+                                onClick={() => createTerminal(selectedFolder || 'root')}
                                 className="text-xs bg-white/5 border border-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/10 transition-colors"
                             >
                                 Start New Session
@@ -297,10 +261,11 @@ export const TerminalPanel: React.FC = () => {
                         </div>
                     ) : (
                         terminals.map((term) => (
-                            <TerminalLog
+                            <ShellTerminal
                                 key={term.id}
-                                id={term.id}
+                                terminalId={term.id}
                                 visible={activeTerminalId === term.id}
+                                cwd={term.cwd || 'root'}
                             />
                         ))
                     )}
@@ -312,45 +277,17 @@ export const TerminalPanel: React.FC = () => {
                         x={contextMenu.x}
                         y={contextMenu.y}
                         onClose={() => setContextMenu(null)}
-                        items={contextMenu.type === 'terminal' ? [
+                        items={[
                             { label: 'Copy Selection', icon: <Clipboard size={14} />, onClick: () => handleContextAction('copy-selection') },
                             { label: 'Copy All Output', icon: <Copy size={14} />, onClick: () => handleContextAction('copy'), shortcut: 'Cmd+Shift+C' },
+                            { label: 'Paste', icon: <Clipboard size={14} />, onClick: () => handleContextAction('paste'), shortcut: 'Cmd+V' },
                             { label: 'Clear Terminal', icon: <Eraser size={14} />, onClick: () => handleContextAction('clean'), shortcut: 'Cmd+K' },
                             { type: 'separator' },
                             { label: 'Kill Terminal', icon: <Trash size={14} />, onClick: () => handleContextAction('kill'), danger: true }
-                        ] : [
-                            { label: 'Paste', icon: <Clipboard size={14} />, onClick: () => handleContextAction('paste'), shortcut: 'Cmd+V' },
-                            { label: 'Clear Input', icon: <Eraser size={14} />, onClick: () => handleContextAction('clear-input') }
                         ]}
                     />
                 )}
-
-                {/* Resizable Input Sider (Fixed width for MVP, but collapsible) */}
-                <AnimatePresence>
-                    {isInputOpen && activeTerminalId && (
-                        <motion.div
-                            initial={{ width: 0, opacity: 0 }}
-                            animate={{ width: 180, opacity: 1 }}
-                            exit={{ width: 0, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: 'circOut' }}
-                            className="border-l border-white/5 bg-[#0d1117]/50 backdrop-blur-sm flex flex-col"
-                        >
-                            <div className="h-8 flex items-center justify-between px-3 border-b border-white/5 bg-white/[0.02]">
-                                <span className="text-[10px] uppercase font-bold text-white/30 tracking-wider">Stdin Buffer</span>
-                                <div className="w-1.5 h-1.5 rounded-full bg-white/10" />
-                            </div>
-                            <textarea
-                                className="flex-1 bg-transparent text-white/70 text-xs font-mono p-3 resize-none focus:outline-none focus:bg-white/[0.02] placeholder:text-white/10"
-                                placeholder="Type input here..."
-                                value={activeTerminal?.stdin || ''}
-                                onChange={(e) => setTerminalStdin(activeTerminalId, e.target.value)}
-                                onContextMenu={(e) => handleContextMenu(e, 'input')}
-                                spellCheck={false}
-                            />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
             </div>
-        </div>
+        </div >
     );
 };

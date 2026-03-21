@@ -2,8 +2,9 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { FileNode } from '../../utils/mockFileSystem';
 import { useProject } from '../../context/ProjectContext';
 import {
-    ChevronRight, Folder, FolderOpen, Trash2,
-    Search, X, Settings, FileCode
+    Folder, FolderOpen, ChevronRight,
+    Search, X, Settings, FileCode,
+    Trash2, Hash
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -30,6 +31,7 @@ interface InputNodeProps {
 const InputNode = ({ type, depth, initialValue = '', onCommit, onCancel }: InputNodeProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
     const [value, setValue] = useState(initialValue);
+    const [isFocused, setIsFocused] = useState(false);
     const isSubmitting = useRef(false);
 
     useEffect(() => {
@@ -76,31 +78,81 @@ const InputNode = ({ type, depth, initialValue = '', onCommit, onCancel }: Input
         }
     };
 
+    const isFolder = type === 'folder';
+
     return (
-        <div
+        <motion.div
+            initial={{ opacity: 0, x: -12, scale: 0.95, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, x: -8, scale: 0.95, filter: 'blur(4px)' }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             style={{ paddingLeft: `${depth * 16 + 12}px` }}
-            className="flex items-center gap-2 py-2 px-2.5 mx-2 rounded-xl animate-in fade-in zoom-in-95 duration-200 bg-gradient-to-r from-blue-500/10 to-blue-500/5 border border-blue-500/30 shadow-[0_0_25px_rgba(59,130,246,0.12)] backdrop-blur-sm"
+            className={cn(
+                "flex items-center gap-2 py-2 px-2.5 mx-2 mt-1.5 rounded-xl backdrop-blur-md creation-shimmer-border",
+                isFolder
+                    ? "bg-gradient-to-r from-purple-500/12 via-fuchsia-500/8 to-purple-500/5 border border-purple-500/30 creation-shimmer-border-folder animate-creation-glow-folder"
+                    : "bg-gradient-to-r from-blue-500/12 via-cyan-500/8 to-blue-500/5 border border-blue-500/30 animate-creation-glow"
+            )}
         >
+            {/* Chevron placeholder */}
             <span className="opacity-70 shrink-0 w-4 flex justify-center">
-                {type === 'folder' ? <ChevronRight size={14} className="invisible" /> : <span className="w-3" />}
+                {isFolder ? <ChevronRight size={14} className="invisible" /> : <span className="w-3" />}
             </span>
-            <div className="shrink-0">
-                {type === 'folder'
-                    ? <Folder size={16} className="text-blue-400 drop-shadow-sm" />
-                    : <FileCode size={16} className="text-blue-300 drop-shadow-sm" />
+
+            {/* Animated icon */}
+            <div className="shrink-0 animate-creation-icon-bounce">
+                {isFolder
+                    ? <Folder size={16} className="text-purple-400 drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]" />
+                    : <FileCode size={16} className="text-cyan-400 drop-shadow-[0_0_6px_rgba(34,211,238,0.5)]" />
                 }
             </div>
-            <input
-                ref={inputRef}
-                type="text"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onBlur={handleBlur}
-                className="bg-transparent text-white text-sm w-full px-2 py-0.5 focus:outline-none placeholder:text-white/30 font-medium rounded-md"
-                placeholder="Enter name..."
-            />
-        </div>
+
+            {/* Input field with glow */}
+            <div className="flex-1 flex items-center relative">
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onBlur={handleBlur}
+                    onFocus={() => setIsFocused(true)}
+                    className={cn(
+                        "bg-white/[0.03] text-white text-sm w-full px-2.5 py-1 rounded-lg font-medium transition-all duration-300",
+                        "placeholder:text-white/25 focus:outline-none",
+                        isFocused
+                            ? isFolder
+                                ? "ring-1 ring-purple-500/40 bg-purple-500/[0.06] shadow-[0_0_12px_rgba(168,85,247,0.1)]"
+                                : "ring-1 ring-blue-500/40 bg-blue-500/[0.06] shadow-[0_0_12px_rgba(59,130,246,0.1)]"
+                            : "ring-1 ring-white/[0.06]"
+                    )}
+                    placeholder={isFolder ? "Folder name..." : "File name..."}
+                />
+
+                {/* Typing indicator dot */}
+                {isFocused && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className={cn(
+                            "absolute right-2 w-1.5 h-1.5 rounded-full",
+                            isFolder ? "bg-purple-400" : "bg-cyan-400"
+                        )}
+                        style={{ animation: 'creation-typing-dot 1.2s ease-in-out infinite' }}
+                    />
+                )}
+            </div>
+
+            {/* Hint badge */}
+            <motion.span
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3, duration: 0.2 }}
+                className="text-[9px] text-white/30 font-mono shrink-0 select-none"
+            >
+                ↵
+            </motion.span>
+        </motion.div>
     )
 }
 
@@ -151,6 +203,7 @@ const FileIcon = ({ name, isOpen, isFolder }: { name: string; isOpen?: boolean; 
     // Languages
     if (name.endsWith('.py')) return <SiPython size={14} className="text-green-400 drop-shadow-sm" />;
     if (name.endsWith('.java')) return <FaJava size={14} className="text-orange-500 drop-shadow-sm" />;
+    if (name.endsWith('.cs')) return <Hash size={14} className="text-[#178600] drop-shadow-sm" />;
     if (name.endsWith('.c') || name.endsWith('.h')) return <SiC size={14} className="text-blue-500 drop-shadow-sm" />;
     if (name.endsWith('.cpp') || name.endsWith('.cc') || name.endsWith('.hpp')) return <SiCplusplus size={14} className="text-blue-600 drop-shadow-sm" />;
     if (name.endsWith('.go')) return <SiGo size={14} className="text-cyan-400 drop-shadow-sm" />;
@@ -198,6 +251,10 @@ interface FileTreeNodeProps {
     onDrop: (e: React.DragEvent, node: FileNode) => void;
     onDragEnd: () => void;
     dragOverNodeId: string | null;
+    onDownload?: (nodeId: string) => void;
+    onBookmark?: (nodeId: string) => void;
+    isBookmarked?: boolean;
+    newlyCreatedNodes?: Set<string>;
 }
 
 // Highlight matching text in search
@@ -230,7 +287,11 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
     onDragOver,
     onDrop,
     onDragEnd,
-    dragOverNodeId
+    dragOverNodeId,
+    onDownload,
+    onBookmark,
+    isBookmarked = false,
+    newlyCreatedNodes
 }) => {
     const { activeFile, setActiveFile, toggleFolder, creationState, commitCreation, cancelCreation, selectedFolder, setSelectedFolder } = useProject();
     const isFolder = node.type === 'folder';
@@ -239,6 +300,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
     const isFolderSelected = isFolder && selectedFolder === node.id;
     const isRenaming = renamingNodeId === node.id;
     const isDragOver = dragOverNodeId === node.id && isFolder;
+    const isNewlyCreated = newlyCreatedNodes?.has(node.id) ?? false;
 
     const isCreatingHere = creationState.isActive && (
         creationState.parentId === node.id ||
@@ -261,6 +323,13 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
     const handleDeleteClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         onDelete(node.id);
+    };
+
+    const handleDownloadClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onDownload) {
+            onDownload(node.id);
+        }
     };
 
     const handleDragStart = (e: React.DragEvent) => {
@@ -295,7 +364,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
     }
 
     return (
-        <div>
+        <div className={isNewlyCreated ? 'animate-creation-success rounded-lg' : ''}>
             <div
                 className={cn(
                     "flex items-center gap-2 py-[7px] px-2 cursor-pointer transition-all duration-150 text-[13px] select-none group relative rounded-lg mx-2 border",
@@ -349,6 +418,43 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
                     </span>
                 )}
 
+                {/* Bookmark Button (Visible on Hover for Files) */}
+                {!isFolder && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onBookmark) {
+                                onBookmark(node.id);
+                            }
+                        }}
+                        className={`opacity-0 group-hover:opacity-100 p-1 rounded-md transition-all duration-150 ${
+                            isBookmarked 
+                                ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/25' 
+                                : 'text-white/40 hover:text-yellow-400 hover:bg-yellow-500/15'
+                        }`}
+                        title={isBookmarked ? 'Remove from Favorites' : 'Add to Favorites'}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                        </svg>
+                    </button>
+                )}
+
+                {/* Download Button (Visible on Hover) */}
+                {onDownload && (
+                    <button
+                        onClick={handleDownloadClick}
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:text-green-400 hover:bg-green-500/15 rounded-md transition-all duration-150"
+                        title={isFolder ? "Download Folder" : "Download File"}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                    </button>
+                )}
+
                 {/* Delete Button (Visible on Hover) */}
                 <button
                     onClick={handleDeleteClick}
@@ -395,6 +501,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
                                     onDrop={onDrop}
                                     onDragEnd={onDragEnd}
                                     dragOverNodeId={dragOverNodeId}
+                                    onDownload={onDownload}
+                                    newlyCreatedNodes={newlyCreatedNodes}
                                 />
                             ))
                         ) : !isCreatingHere && (
@@ -406,14 +514,16 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
                                 Empty folder
                             </div>
                         )}
-                        {isCreatingHere && (
-                            <InputNode
-                                type={creationState.type!}
-                                depth={depth + 1}
-                                onCommit={commitCreation}
-                                onCancel={cancelCreation}
-                            />
-                        )}
+                        <AnimatePresence>
+                            {isCreatingHere && (
+                                <InputNode
+                                    type={creationState.type!}
+                                    depth={depth + 1}
+                                    onCommit={commitCreation}
+                                    onCancel={cancelCreation}
+                                />
+                            )}
+                        </AnimatePresence>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -436,17 +546,85 @@ const flattenTree = (nodes: FileNode[]): FileNode[] => {
     return result;
 };
 
-// Filter tree based on search query
-const filterTree = (nodes: FileNode[], query: string): FileNode[] => {
-    if (!query) return nodes;
+// Enhanced search with multiple filters
+interface SearchFilters {
+    query: string;
+    fileType: string;
+    dateRange: 'today' | 'week' | 'month' | 'all';
+    sizeRange: 'small' | 'medium' | 'large' | 'all';
+    showHidden: boolean;
+}
+
+// Advanced search with multiple criteria
+const filterTreeAdvanced = (nodes: FileNode[], filters: SearchFilters): FileNode[] => {
+    const { query, fileType, dateRange, sizeRange, showHidden } = filters;
+    
+    if (!query && fileType === 'all' && dateRange === 'all' && sizeRange === 'all' && !showHidden) {
+        return nodes;
+    }
+
     const lowerQuery = query.toLowerCase();
+    const now = Date.now();
+    
+    const getDateFilter = (node: FileNode) => {
+        if (dateRange === 'all') return true;
+        // Mock timestamp - in real app, track creation/modification time
+        const nodeTime = node.id.split('_')[0] ? now : now - Math.random() * 30 * 24 * 60 * 60 * 1000;
+        const daysDiff = (now - nodeTime) / (24 * 60 * 60 * 1000);
+        
+        switch (dateRange) {
+            case 'today': return daysDiff < 1;
+            case 'week': return daysDiff < 7;
+            case 'month': return daysDiff < 30;
+            default: return true;
+        }
+    };
+    
+    const getSizeFilter = (node: FileNode) => {
+        if (sizeRange === 'all' || node.type === 'folder') return true;
+        const content = node.content || '';
+        const sizeKB = content.length / 1024;
+        
+        switch (sizeRange) {
+            case 'small': return sizeKB < 10;
+            case 'medium': return sizeKB >= 10 && sizeKB < 100;
+            case 'large': return sizeKB >= 100;
+            default: return true;
+        }
+    };
+    
+    const getFileTypeFilter = (node: FileNode) => {
+        if (fileType === 'all') return true;
+        if (node.type === 'folder') return fileType === 'folder';
+        
+        const ext = node.name.split('.').pop()?.toLowerCase() || '';
+        const typeMap: Record<string, string[]> = {
+            'code': ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'go', 'rs', 'rb', 'php', 'swift', 'kt'],
+            'web': ['html', 'htm', 'css', 'scss', 'sass', 'vue', 'svelte'],
+            'data': ['json', 'xml', 'csv', 'yaml', 'yml', 'toml', 'sql'],
+            'docs': ['md', 'mdx', 'txt', 'pdf'],
+            'config': ['env', 'gitignore', 'dockerfile', 'package.json', 'tsconfig.json'],
+            'media': ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'mp3', 'mp4']
+        };
+        
+        return typeMap[fileType]?.includes(ext) || false;
+    };
 
     const filterRecursive = (nodeList: FileNode[]): FileNode[] => {
         return nodeList.reduce<FileNode[]>((acc, node) => {
-            const nameMatches = node.name.toLowerCase().includes(lowerQuery);
+            // Check if node should be hidden
+            if (!showHidden && node.name.startsWith('.')) return acc;
+            
+            // Apply all filters
+            const nameMatches = !query || node.name.toLowerCase().includes(lowerQuery);
+            const dateMatches = getDateFilter(node);
+            const sizeMatches = getSizeFilter(node);
+            const typeMatches = getFileTypeFilter(node);
+            
             const filteredChildren = node.children ? filterRecursive(node.children) : [];
-
-            if (nameMatches || filteredChildren.length > 0) {
+            
+            // Include node if it matches or has matching children
+            if ((nameMatches && dateMatches && sizeMatches && typeMatches) || filteredChildren.length > 0) {
                 acc.push({
                     ...node,
                     isOpen: query ? true : node.isOpen, // Auto-expand when searching
@@ -460,7 +638,12 @@ const filterTree = (nodes: FileNode[], query: string): FileNode[] => {
     return filterRecursive(nodes);
 };
 
-export const FileExplorer: React.FC = () => {
+interface FileExplorerProps {
+    isSearchOpen: boolean;
+    onSearchClose: () => void;
+}
+
+export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSearchClose }) => {
     const { fileTree, renameNode, deleteNode, creationState, commitCreation, cancelCreation, startCreating, moveNode, toggleFolder, setActiveFile, setSelectedFolder } = useProject();
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
     const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
@@ -468,18 +651,159 @@ export const FileExplorer: React.FC = () => {
     const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
     const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null);
     const [draggedNode, setDraggedNode] = useState<FileNode | null>(null);
+    const [newlyCreatedNodes, setNewlyCreatedNodes] = useState<Set<string>>(new Set());
+    const prevFileTreeRef = useRef<FileNode[]>([]);
     const containerRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
+    // Track newly created nodes for entrance animation
+    useEffect(() => {
+        if (prevFileTreeRef.current.length > 0) {
+            const prevIds = new Set<string>();
+            const collectIds = (nodes: FileNode[]) => {
+                for (const n of nodes) {
+                    prevIds.add(n.id);
+                    if (n.children) collectIds(n.children);
+                }
+            };
+            collectIds(prevFileTreeRef.current);
+
+            const newIds = new Set<string>();
+            const findNew = (nodes: FileNode[]) => {
+                for (const n of nodes) {
+                    if (!prevIds.has(n.id)) newIds.add(n.id);
+                    if (n.children) findNew(n.children);
+                }
+            };
+            findNew(fileTree);
+
+            if (newIds.size > 0) {
+                setNewlyCreatedNodes(prev => {
+                    const merged = new Set(prev);
+                    newIds.forEach(id => merged.add(id));
+                    return merged;
+                });
+                // Clear after animation completes
+                setTimeout(() => {
+                    setNewlyCreatedNodes(prev => {
+                        const next = new Set(prev);
+                        newIds.forEach(id => next.delete(id));
+                        return next;
+                    });
+                }, 900);
+            }
+        }
+        prevFileTreeRef.current = fileTree;
+    }, [fileTree]);
+    
+    // Advanced search filters state
+    const [searchFilters, setSearchFilters] = useState<SearchFilters>({
+        query: '',
+        fileType: 'all',
+        dateRange: 'all',
+        sizeRange: 'all',
+        showHidden: false
+    });
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
     // Filter tree based on search
-    const filteredTree = useMemo(() => filterTree(fileTree, searchQuery), [fileTree, searchQuery]);
+    const filteredTree = useMemo(() => filterTreeAdvanced(fileTree, searchFilters), [fileTree, searchFilters]);
 
     // Flatten for keyboard navigation
     const flatNodes = useMemo(() => flattenTree(filteredTree), [filteredTree]);
 
-    // Keyboard navigation
+    // Update search filters when query changes
+    useEffect(() => {
+        setSearchFilters(prev => ({ ...prev, query: searchQuery }));
+    }, [searchQuery]);
+
+    // Handle filter changes
+    const handleFilterChange = (filterType: keyof SearchFilters, value: any) => {
+        setSearchFilters(prev => ({ ...prev, [filterType]: value }));
+    };
+
+    // Clear all filters
+    const clearFilters = () => {
+        setSearchQuery('');
+        setSearchFilters({
+            query: '',
+            fileType: 'all',
+            dateRange: 'all',
+            sizeRange: 'all',
+            showHidden: false
+        });
+        setShowAdvancedFilters(false);
+    };
+
+    // File bookmarks/favorites state
+    const [bookmarkedFiles, setBookmarkedFiles] = useState<Set<string>>(() => {
+        try {
+            const saved = localStorage.getItem('deepcontext-bookmarked-files');
+            return saved ? new Set(JSON.parse(saved)) : new Set();
+        } catch {
+            return new Set();
+        }
+    });
+
+    // Save bookmarks to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('deepcontext-bookmarked-files', JSON.stringify(Array.from(bookmarkedFiles)));
+        } catch (e) {
+            console.warn('Failed to save bookmarks:', e);
+        }
+    }, [bookmarkedFiles]);
+
+    // Toggle bookmark
+    const toggleBookmark = (fileId: string) => {
+        setBookmarkedFiles(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(fileId)) {
+                newSet.delete(fileId);
+            } else {
+                newSet.add(fileId);
+            }
+            return newSet;
+        });
+    };
+
+    // Get bookmarked files
+    const getBookmarkedFiles = useCallback(() => {
+        const bookmarked: FileNode[] = [];
+        const traverse = (nodes: FileNode[]) => {
+            for (const node of nodes) {
+                if (bookmarkedFiles.has(node.id)) {
+                    bookmarked.push(node);
+                }
+                if (node.children) {
+                    traverse(node.children);
+                }
+            }
+        };
+        traverse(fileTree);
+        return bookmarked;
+    }, [fileTree, bookmarkedFiles]);
+    const getActiveFilterCount = () => {
+        let count = 0;
+        if (searchFilters.fileType !== 'all') count++;
+        if (searchFilters.dateRange !== 'all') count++;
+        if (searchFilters.sizeRange !== 'all') count++;
+        if (searchFilters.showHidden) count++;
+        return count;
+    };
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
         if (!containerRef.current?.contains(document.activeElement) && document.activeElement !== searchInputRef.current) {
+            return;
+        }
+
+        // Don't intercept keys when user is typing in an input (creation / rename / search)
+        const tag = (document.activeElement as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') {
+            return;
+        }
+
+        // Also skip when creation or renaming is active (safety net)
+        if (creationState.isActive || renamingNodeId) {
             return;
         }
 
@@ -555,18 +879,26 @@ export const FileExplorer: React.FC = () => {
                 }
                 break;
         }
-    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder]);
+    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder, creationState.isActive, renamingNodeId]);
 
     useEffect(() => {
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [handleKeyDown]);
 
-    // Drag and drop handlers
+    // Enhanced drag and drop with visual feedback
     const handleDragStart = (e: React.DragEvent, node: FileNode) => {
         setDraggedNode(node);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', node.id);
+        
+        // Add visual feedback
+        const dragImage = document.createElement('div');
+        dragImage.className = 'bg-blue-500/20 border border-blue-500/40 rounded-lg px-2 py-1 text-sm text-blue-300';
+        dragImage.textContent = node.name;
+        document.body.appendChild(dragImage);
+        e.dataTransfer.setDragImage(dragImage, 0, 0);
+        setTimeout(() => document.body.removeChild(dragImage), 0);
     };
 
     const handleDragOver = (_e: React.DragEvent, node: FileNode) => {
@@ -577,7 +909,16 @@ export const FileExplorer: React.FC = () => {
 
     const handleDrop = (_e: React.DragEvent, targetNode: FileNode) => {
         if (draggedNode && targetNode.type === 'folder' && draggedNode.id !== targetNode.id) {
-            moveNode(draggedNode.id, targetNode.id);
+            // Prevent dropping a folder into its own children
+            const isDescendant = (ancestor: FileNode, descendant: FileNode): boolean => {
+                if (ancestor.id === descendant.id) return true;
+                if (!ancestor.children) return false;
+                return ancestor.children.some(child => isDescendant(child, descendant));
+            };
+            
+            if (!isDescendant(draggedNode, targetNode)) {
+                moveNode(draggedNode.id, targetNode.id);
+            }
         }
         setDraggedNode(null);
         setDragOverNodeId(null);
@@ -631,18 +972,242 @@ export const FileExplorer: React.FC = () => {
         setRenamingNodeId(null);
     };
 
+    // Find a node by ID recursively
+    const findNodeById = useCallback((nodes: FileNode[], id: string): FileNode | null => {
+        for (const node of nodes) {
+            if (node.id === id) return node;
+            if (node.children) {
+                const found = findNodeById(node.children, id);
+                if (found) return found;
+            }
+        }
+        return null;
+    }, []);
+
+    // Download file functionality
+    const downloadFile = async (nodeId: string) => {
+        const node = findNodeById(fileTree, nodeId);
+        if (!node || node.type === 'folder') return;
+
+        try {
+            // Get file content from the node itself
+            const fileContent = node.content || '';
+            
+            // Create blob with appropriate MIME type
+            const mimeType = getMimeType(node.name);
+            const blob = new Blob([fileContent], { type: mimeType });
+            
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = node.name;
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            
+            // Cleanup
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to download file:', error);
+        }
+    };
+
+    // Download folder as ZIP
+    const downloadFolder = async (nodeId: string) => {
+        const node = findNodeById(fileTree, nodeId);
+        if (!node || node.type !== 'folder') return;
+
+        try {
+            // Collect all files in the folder
+            const files = collectFilesInFolder(node);
+            
+            if (files.length === 0) {
+                console.log('No files to download in this folder');
+                return;
+            }
+            
+            if (files.length === 1) {
+                // If only one file, download it directly
+                await downloadFile(files[0].id);
+                return;
+            }
+            
+            // Create ZIP file with all files
+            await createAndDownloadZip(files, node.name);
+        } catch (error) {
+            console.error('Failed to download folder:', error);
+        }
+    };
+
+    // Create ZIP file and download it
+    const createAndDownloadZip = async (files: FileNode[], folderName: string) => {
+        try {
+            // Import JSZip dynamically
+            const JSZip = (await import('jszip')).default;
+            const zip = new JSZip();
+            
+            // Add all files to the ZIP with proper folder structure
+            for (const file of files) {
+                // Get relative path from the folder being downloaded
+                const relativePath = file.id.includes('/') 
+                    ? file.id.substring(file.id.indexOf('/') + 1)
+                    : file.name;
+                    
+                zip.file(relativePath, file.content || '');
+            }
+            
+            // Generate the ZIP file
+            const zipBlob = await zip.generateAsync({ 
+                type: 'blob',
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 }
+            });
+            
+            // Create download link
+            const url = URL.createObjectURL(zipBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${folderName}.zip`;
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            
+            // Cleanup
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to create ZIP file:', error);
+            
+            // Fallback to text file if JSZip fails
+            let content = `Files in folder "${folderName}":\n\n`;
+            
+            for (const file of files) {
+                const relativePath = file.id.includes('/') 
+                    ? file.id.substring(file.id.indexOf('/') + 1)
+                    : file.name;
+                    
+                content += `\n=== ${relativePath} ===\n`;
+                content += file.content || '';
+                content += '\n';
+            }
+            
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${folderName}_files.txt`;
+            
+            document.body.appendChild(link);
+            link.click();
+            
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+    };
+
+    // Helper function to get MIME type based on file extension
+    const getMimeType = (fileName: string): string => {
+        const ext = fileName.split('.').pop()?.toLowerCase();
+        const mimeTypes: Record<string, string> = {
+            'txt': 'text/plain',
+            'json': 'application/json',
+            'js': 'text/javascript',
+            'ts': 'text/typescript',
+            'jsx': 'text/jsx',
+            'tsx': 'text/tsx',
+            'html': 'text/html',
+            'htm': 'text/html',
+            'css': 'text/css',
+            'scss': 'text/scss',
+            'sass': 'text/sass',
+            'xml': 'text/xml',
+            'csv': 'text/csv',
+            'md': 'text/markdown',
+            'py': 'text/x-python',
+            'java': 'text/x-java-source',
+            'c': 'text/x-c',
+            'cpp': 'text/x-c++',
+            'cc': 'text/x-c++',
+            'cxx': 'text/x-c++',
+            'hpp': 'text/x-c++',
+            'h': 'text/x-c',
+            'go': 'text/x-go',
+            'rs': 'text/x-rust',
+            'rb': 'text/x-ruby',
+            'php': 'text/x-php',
+            'swift': 'text/x-swift',
+            'kt': 'text/x-kotlin',
+            'sh': 'text/x-shellscript',
+            'bash': 'text/x-shellscript',
+            'zsh': 'text/x-shellscript',
+            'sql': 'text/x-sql',
+            'yaml': 'text/x-yaml',
+            'yml': 'text/x-yaml',
+            'toml': 'text/x-toml',
+            'ini': 'text/x-ini',
+            'conf': 'text/x-ini',
+            'log': 'text/x-log',
+            'dockerfile': 'text/x-dockerfile',
+            'gitignore': 'text/plain',
+            'env': 'text/plain',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'svg': 'image/svg+xml',
+            'webp': 'image/webp',
+            'ico': 'image/x-icon',
+            'pdf': 'application/pdf',
+            'zip': 'application/zip',
+            'tar': 'application/x-tar',
+            'gz': 'application/gzip',
+            'mp3': 'audio/mpeg',
+            'mp4': 'video/mp4',
+            'avi': 'video/x-msvideo',
+            'mov': 'video/quicktime',
+            'wmv': 'video/x-ms-wmv',
+            'flv': 'video/x-flv',
+            'webm': 'video/webm'
+        };
+        return mimeTypes[ext || ''] || 'text/plain';
+    };
+
+    // Helper function to collect all files in a folder
+    const collectFilesInFolder = (folder: FileNode): FileNode[] => {
+        const files: FileNode[] = [];
+        
+        const traverse = (node: FileNode) => {
+            if (node.type === 'file') {
+                files.push(node);
+            } else if (node.children) {
+                node.children.forEach(traverse);
+            }
+        };
+        
+        if (folder.children) {
+            folder.children.forEach(traverse);
+        }
+        
+        return files;
+    };
+
     const isCreatingAtRoot = creationState.isActive &&
         (creationState.parentId === 'root' || !creationState.parentId) &&
         !fileTree.some(node => node.id === creationState.parentId);
 
     const getMenuItems = () => {
         const isRoot = contextMenu?.nodeId === 'root';
+        const node = contextMenu?.nodeId ? findNodeById(fileTree, contextMenu.nodeId) : null;
+        const isFolder = node?.type === 'folder';
+        const isBookmarked = node ? bookmarkedFiles.has(node.id) : false;
+        
         const baseItems = [
             { label: 'New File...', onClick: () => startCreating('file', contextMenu?.nodeId !== 'root' ? contextMenu?.nodeId : undefined) },
             { label: 'New Folder...', onClick: () => startCreating('folder', contextMenu?.nodeId !== 'root' ? contextMenu?.nodeId : undefined) },
-            { type: 'separator' as const },
-            { label: 'Reveal in Finder', onClick: () => console.log('Reveal:', contextMenu?.nodeId), shortcut: '⌥⌘R' },
-            { label: 'Open in Terminal', onClick: () => console.log('Terminal:', contextMenu?.nodeId) },
             { type: 'separator' as const },
         ];
 
@@ -654,8 +1219,25 @@ export const FileExplorer: React.FC = () => {
             ];
         }
 
+        const bookmarkItem = !isFolder ? {
+            label: isBookmarked ? 'Remove from Favorites' : 'Add to Favorites',
+            onClick: () => toggleBookmark(contextMenu?.nodeId || ''),
+            shortcut: '⌘B',
+            icon: isBookmarked ? '⭐' : '☆'
+        } : null;
+
+        const downloadItems = isFolder 
+            ? [{ label: 'Download Folder...', onClick: () => downloadFolder(contextMenu?.nodeId || '') }]
+            : [{ label: 'Download File', onClick: () => downloadFile(contextMenu?.nodeId || '') }];
+
         return [
             ...baseItems,
+            ...(bookmarkItem ? [bookmarkItem] : []),
+            ...downloadItems,
+            { type: 'separator' as const },
+            { label: 'Reveal in Finder', onClick: () => console.log('Reveal:', contextMenu?.nodeId), shortcut: '⌥⌘R' },
+            { label: 'Open in Terminal', onClick: () => console.log('Terminal:', contextMenu?.nodeId) },
+            { type: 'separator' as const },
             { label: 'Copy Path', onClick: () => navigator.clipboard.writeText(contextMenu?.nodeId || ''), shortcut: '⌥⌘C' },
             { label: 'Copy Relative Path', onClick: () => { const rel = contextMenu?.nodeId.replace(/^\/?root\/?/, '') || ''; navigator.clipboard.writeText(rel); }, shortcut: '⇧⌥⌘C' },
             { type: 'separator' as const },
@@ -667,28 +1249,187 @@ export const FileExplorer: React.FC = () => {
     return (
         <div className="h-full flex flex-col" ref={containerRef} tabIndex={0}>
 
-            {/* Premium Search Bar */}
-            <div className="px-2.5 py-2.5">
-                <div className="relative group">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-blue-400/70 transition-colors" />
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search files... (⌘F)"
-                        className="w-full pl-9 pr-8 py-2 text-sm bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder:text-white/25 focus:outline-none focus:border-blue-500/40 focus:bg-white/[0.06] focus:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition-all duration-200"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white hover:bg-white/10 rounded-md transition-all"
-                        >
-                            <X size={12} />
-                        </button>
-                    )}
+            {/* Premium Search Bar with Advanced Filters */}
+            <div className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSearchOpen ? 'grid-rows-[1fr] opacity-100 mb-1' : 'grid-rows-[0fr] opacity-0 mb-0'}`}>
+                <div className="overflow-hidden">
+                    <div className="px-2.5 pt-2.5 pb-1">
+                        <div className="relative group">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-blue-400/70 transition-colors" />
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search files... (⌘F)"
+                                className="w-full pl-9 pr-20 py-2 text-sm bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder:text-white/25 focus:outline-none focus:border-blue-500/40 focus:bg-white/[0.06] focus:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition-all duration-200"
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {getActiveFilterCount() > 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold">
+                                        {getActiveFilterCount()}
+                                    </span>
+                                )}
+                                <button
+                                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                                    className={`p-1 rounded-md transition-all ${
+                                        showAdvancedFilters 
+                                            ? 'bg-blue-500/20 text-blue-400' 
+                                            : 'text-white/40 hover:text-white hover:bg-white/10'
+                                    }`}
+                                    title="Advanced Filters"
+                                >
+                                    <Settings size={12} />
+                                </button>
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => {
+                                            setSearchQuery('');
+                                            onSearchClose();
+                                        }}
+                                        className="p-1 text-white/40 hover:text-white hover:bg-white/10 rounded-md transition-all"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* Advanced Filters Panel */}
+                        <AnimatePresence>
+                            {showAdvancedFilters && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2, ease: 'easeInOut' }}
+                                    className="overflow-hidden"
+                                >
+                                    <div className="pt-2 pb-1 space-y-2">
+                                        {/* File Type Filter */}
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-[10px] text-white/40 w-12">Type:</label>
+                                            <select
+                                                value={searchFilters.fileType}
+                                                onChange={(e) => handleFilterChange('fileType', e.target.value)}
+                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-blue-500/40"
+                                            >
+                                                <option value="all">All Files</option>
+                                                <option value="folder">Folders</option>
+                                                <option value="code">Code Files</option>
+                                                <option value="web">Web Files</option>
+                                                <option value="data">Data Files</option>
+                                                <option value="docs">Documents</option>
+                                                <option value="config">Config Files</option>
+                                                <option value="media">Media Files</option>
+                                            </select>
+                                        </div>
+                                        
+                                        {/* Date Range Filter */}
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-[10px] text-white/40 w-12">Date:</label>
+                                            <select
+                                                value={searchFilters.dateRange}
+                                                onChange={(e) => handleFilterChange('dateRange', e.target.value)}
+                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-blue-500/40"
+                                            >
+                                                <option value="all">Any Time</option>
+                                                <option value="today">Today</option>
+                                                <option value="week">This Week</option>
+                                                <option value="month">This Month</option>
+                                            </select>
+                                        </div>
+                                        
+                                        {/* Size Range Filter */}
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-[10px] text-white/40 w-12">Size:</label>
+                                            <select
+                                                value={searchFilters.sizeRange}
+                                                onChange={(e) => handleFilterChange('sizeRange', e.target.value)}
+                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-blue-500/40"
+                                            >
+                                                <option value="all">Any Size</option>
+                                                <option value="small">Small (&lt;10KB)</option>
+                                                <option value="medium">Medium (10-100KB)</option>
+                                                <option value="large">Large (&gt;100KB)</option>
+                                            </select>
+                                        </div>
+                                        
+                                        {/* Show Hidden Files */}
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-[10px] text-white/40 w-12">Show:</label>
+                                            <label className="flex items-center gap-1 text-[11px] text-white/60 cursor-pointer hover:text-white/80">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={searchFilters.showHidden}
+                                                    onChange={(e) => handleFilterChange('showHidden', e.target.checked)}
+                                                    className="w-3 h-3 rounded border-white/[0.2] bg-white/[0.1] text-blue-500 focus:ring-blue-500/40"
+                                                />
+                                                Hidden files
+                                            </label>
+                                        </div>
+                                        
+                                        {/* Clear Filters Button */}
+                                        <div className="flex items-center justify-between pt-1">
+                                            <span className="text-[10px] text-white/30">
+                                                {filteredTree.length} results
+                                            </span>
+                                            <button
+                                                onClick={clearFilters}
+                                                className="text-[10px] px-2 py-1 rounded bg-white/[0.06] text-white/40 hover:text-white hover:bg-white/[0.10] transition-all"
+                                            >
+                                                Clear Filters
+                                            </button>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 </div>
             </div>
+
+            {/* Favorites Section */}
+            {bookmarkedFiles.size > 0 && (
+                <div className="border-b border-white/[0.04] bg-gradient-to-b from-amber-500/5 to-transparent">
+                    <div className="px-3 py-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-amber-400">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                            </svg>
+                            <span className="text-[11px] font-semibold text-amber-300">Favorites ({bookmarkedFiles.size})</span>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setBookmarkedFiles(new Set());
+                            }}
+                            className="text-[9px] text-white/40 hover:text-white/60 px-1.5 py-0.5 rounded hover:bg-white/10 transition-all"
+                        >
+                            Clear All
+                        </button>
+                    </div>
+                    <div className="px-2 pb-2 space-y-0.5">
+                        {getBookmarkedFiles().map((file) => (
+                            <div
+                                key={file.id}
+                                onClick={() => setActiveFile(file)}
+                                className="flex items-center gap-2 py-1.5 px-2 rounded-lg text-[11px] text-white/70 hover:text-white hover:bg-white/[0.06] cursor-pointer transition-all group"
+                            >
+                                <FileIcon name={file.name} isFolder={false} />
+                                <span className="truncate flex-1">{file.name}</span>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleBookmark(file.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 rounded transition-all"
+                                >
+                                    <X size={10} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* File Tree */}
             <div
@@ -711,7 +1452,21 @@ export const FileExplorer: React.FC = () => {
                             <Folder size={24} className="text-white/20" />
                         </div>
                         <p className="text-white/50 text-sm font-medium mb-1">No files yet</p>
-                        <p className="text-white/25 text-xs">Create a new file or folder to get started</p>
+                        <p className="text-white/25 text-xs mb-3">Create a new file or folder to get started</p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => startCreating('file', 'root')}
+                                className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-300 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
+                            >
+                                New File
+                            </button>
+                            <button
+                                onClick={() => startCreating('folder', 'root')}
+                                className="text-xs bg-white/10 border border-white/20 text-white/60 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors"
+                            >
+                                New Folder
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     filteredTree.map((node) => (
@@ -732,20 +1487,31 @@ export const FileExplorer: React.FC = () => {
                             onDrop={handleDrop}
                             onDragEnd={handleDragEnd}
                             dragOverNodeId={dragOverNodeId}
+                            onDownload={(nodeId) => {
+                                const targetNode = findNodeById(fileTree, nodeId);
+                                if (targetNode?.type === 'folder') {
+                                    downloadFolder(nodeId);
+                                } else {
+                                    downloadFile(nodeId);
+                                }
+                            }}
+                            onBookmark={toggleBookmark}
+                            isBookmarked={bookmarkedFiles.has(node.id)}
+                            newlyCreatedNodes={newlyCreatedNodes}
                         />
                     ))
                 )}
 
-                {isCreatingAtRoot && (
-                    <div className="animate-in fade-in duration-200">
+                <AnimatePresence>
+                    {isCreatingAtRoot && (
                         <InputNode
                             type={creationState.type!}
                             depth={0}
                             onCommit={commitCreation}
                             onCancel={cancelCreation}
                         />
-                    </div>
-                )}
+                    )}
+                </AnimatePresence>
 
                 {contextMenu && (
                     <ContextMenu
