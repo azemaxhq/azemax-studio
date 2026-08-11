@@ -541,7 +541,8 @@ const calculateScore = (metrics: PerformanceMetrics): number => {
   // Error/Warning factor (0-10 points)
   const errorScore = Math.max(0, 10 - metrics.errors.count * 5 - metrics.warnings.count * 2);
   
-  return Math.round(timeScore + memoryScore + cpuScore + errorScore);
+  score = Math.round(timeScore + memoryScore + cpuScore + errorScore);
+  return score;
 };
 
 /**
@@ -677,14 +678,16 @@ const calculateComplexity = (code: string, language: string): number => {
   // Language-specific complexity
   switch (language) {
     case 'javascript':
-    case 'typescript':
+    case 'typescript': {
       const callbacks = code.match(/=>|function|callback/g) || [];
       complexity += callbacks.length * 2;
       break;
-    case 'python':
+    }
+    case 'python': {
       const decorators = code.match(/@/g) || [];
       complexity += decorators.length;
       break;
+    }
   }
   
   return Math.round(complexity);

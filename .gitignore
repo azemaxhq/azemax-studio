@@ -26,3 +26,6 @@ dist-ssr
 # Security
 .env
 .env.local
+
+# Server data
+data/

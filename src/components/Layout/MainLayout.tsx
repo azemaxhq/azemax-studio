@@ -1,8 +1,9 @@
 import React from 'react';
-import { Layers, BookOpen } from 'lucide-react';
+import { Layers, BookOpen, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../Sidebar/Sidebar';
 import { ExplanationSidebar } from '../Sidebar/ExplanationSidebar';
+import { SettingsSidebar } from '../Sidebar/SettingsSidebar';
 import { CodeEditor } from '../Editor/CodeEditor';
 import { AIAssistant } from '../Panels/AIAssistant';
 import { BottomPanel } from '../Panels/BottomPanel';
@@ -30,10 +31,10 @@ export const MainLayout: React.FC = () => {
     const [bottomPanelHeight, setBottomPanelHeight] = React.useState(() => loadState('layout-bottom-panel-height', 256));
     const [isAiSidebarOpen, setIsAiSidebarOpen] = React.useState(() => loadState('layout-ai-sidebar-open', 1) === 1);
     const [isLeftSidebarOpen, setIsLeftSidebarOpen] = React.useState(() => loadState('layout-left-sidebar-open', 1) === 1);
-    const [leftSidebarView, setLeftSidebarView] = React.useState<'explorer' | 'explanation'>(() => {
+    const [leftSidebarView, setLeftSidebarView] = React.useState<'explorer' | 'explanation' | 'settings'>(() => {
         try {
             const v = localStorage.getItem('layout-left-sidebar-view');
-            return (v === 'explanation' ? 'explanation' : 'explorer') as 'explorer' | 'explanation';
+            return (v === 'explanation' ? 'explanation' : v === 'settings' ? 'settings' : 'explorer') as 'explorer' | 'explanation' | 'settings';
         } catch { return 'explorer'; }
     });
     const [resizingSide, setResizingSide] = React.useState<'left' | 'right' | 'bottom' | null>(null);
@@ -99,6 +100,17 @@ export const MainLayout: React.FC = () => {
             setIsLeftSidebarOpen(false);
         } else {
             setLeftSidebarView('explorer');
+        }
+    }, [isLeftSidebarOpen, leftSidebarView]);
+
+    const openSettings = React.useCallback(() => {
+        if (!isLeftSidebarOpen) {
+            setIsLeftSidebarOpen(true);
+            setLeftSidebarView('settings');
+        } else if (leftSidebarView === 'settings') {
+            setIsLeftSidebarOpen(false);
+        } else {
+            setLeftSidebarView('settings');
         }
     }, [isLeftSidebarOpen, leftSidebarView]);
 
@@ -225,6 +237,22 @@ export const MainLayout: React.FC = () => {
                         <div className="absolute top-1 right-0.5 w-[7px] h-[7px] rounded-full bg-gradient-to-br from-emerald-400 to-green-500 border-[1.5px] border-[#0d1117] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
                     )}
                 </button>
+                
+                {/* Push settings button to bottom */}
+                <div className="flex-1" />
+                
+                <button
+                    onClick={openSettings}
+                    className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"
+                    title="Settings"
+                >
+                    <div className={`w-[32px] h-[32px] rounded-[10px] bg-gradient-to-br from-gray-500/20 via-gray-500/10 to-gray-600/15 border flex items-center justify-center transition-all duration-200 group-hover/toggle:from-gray-500/30 group-hover/toggle:to-gray-600/25 group-hover/toggle:shadow-[0_2px_12px_rgba(156,163,175,0.25)] group-active/toggle:scale-90 ${isLeftSidebarOpen && leftSidebarView === 'settings' ? 'border-gray-400/30 shadow-[0_2px_8px_rgba(156,163,175,0.2)]' : 'border-gray-400/15 shadow-[0_2px_8px_rgba(156,163,175,0.12)]'}`}>
+                        <Settings size={16} className="text-gray-400 drop-shadow-[0_0_3px_rgba(156,163,175,0.4)] transition-transform duration-200 group-hover/toggle:scale-110" />
+                    </div>
+                    {isLeftSidebarOpen && leftSidebarView === 'settings' && (
+                        <div className="absolute top-1 right-0.5 w-[7px] h-[7px] rounded-full bg-gradient-to-br from-emerald-400 to-green-500 border-[1.5px] border-[#0d1117] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+                    )}
+                </button>
             </div>
 
             {/* Left Sidebar (Explorer or Explanation) - smooth open/close */}
@@ -247,8 +275,28 @@ export const MainLayout: React.FC = () => {
                         >
                             <Sidebar />
                         </motion.div>
+                    ) : leftSidebarView === 'settings' ? (
+                        <motion.div
+                            key="settings"
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -8 }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            className="h-full flex flex-col min-w-0 min-h-0"
+                        >
+                            <SettingsSidebar />
+                        </motion.div>
                     ) : (
-                        <ExplanationSidebar />
+                        <motion.div
+                            key="explanation"
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -8 }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            className="h-full flex flex-col min-w-0 min-h-0"
+                        >
+                            <ExplanationSidebar />
+                        </motion.div>
                     )}
                 </AnimatePresence>
             </div>

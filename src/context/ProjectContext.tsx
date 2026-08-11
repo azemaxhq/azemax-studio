@@ -667,7 +667,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         // Always expand the parent folder to show the input
         setFileTree(prev => openFolderRecursive(prev, actualParentId));
         setCreationState({ type, parentId: actualParentId, isActive: true });
-    }, [fileTree]);
+    }, [fileTree, openFolderRecursive]);
 
     const cancelCreation = useCallback(() => {
         setCreationState({ type: null, parentId: null, isActive: false });
@@ -699,7 +699,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
 
         cancelCreation();
-    }, [creationState, fileTree, createFile, createFolder, cancelCreation]);
+    }, [creationState, fileTree, createFile, createFolder, getUniqueName, cancelCreation]);
 
     // Update file content in the tree (for persistence)
     const updateFileContent = useCallback((fileId: string, content: string) => {

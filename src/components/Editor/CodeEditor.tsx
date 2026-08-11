@@ -3,9 +3,11 @@ import Editor from '@monaco-editor/react';
 import type { OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useProject } from '../../context/ProjectContext';
+import { useSettings } from '../../context/SettingsContext';
+import { useTheme } from '../../hooks/useTheme';
 import { getCodeSuggestion, cancelPendingRequest, getInlineCompletion } from '../../utils/codeSuggestionService';
 import { checkCodeErrors } from '../../utils/diagnosticsService';
-import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, GitBranch, Play, Zap, AlignLeft } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
 import { ModernAILogo } from '../Icons/ModernAILogo';
 import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
@@ -36,6 +38,8 @@ interface CodeEditorProps {
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) => {
     const { activeFile, updateFileContent } = useProject();
+    const { settings, updateSettings } = useSettings();
+    const { isDark } = useTheme();
     const { runCode, isRunning } = useTerminal();
     const monacoRef = useRef<typeof Monaco | null>(null);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -45,6 +49,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     /** Cache last non-empty selection so Explain Selection still works after focus leaves editor */
     const lastSelectionRef = useRef<{ fileId: string; text: string; language: string; fileName?: string } | null>(null);
 
+    // Editor State - Use settings context instead of local state
+    const [cursorPosition, setCursorPosition] = useState({ lineNumber: 1, column: 1 });
+
+    const isSuggestionsEnabledRef = useRef(settings.editor.isSuggestionsEnabled);
+
+    // Update ref when settings change
+    useEffect(() => {
+        isSuggestionsEnabledRef.current = settings.editor.isSuggestionsEnabled;
+    }, [settings.editor.isSuggestionsEnabled]);
+
     useEffect(() => {
         activeFileRef.current = activeFile;
         if (activeFile?.id !== lastSelectionRef.current?.fileId) {
@@ -52,38 +66,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
     }, [activeFile]);
 
-    // Editor State
-    // Editor State - Persisted
-    const [cursorPosition, setCursorPosition] = useState({ lineNumber: 1, column: 1 });
-
-    const [fontSize, setFontSize] = useState(() => {
-        const saved = localStorage.getItem('editor_fontSize');
-        return saved ? parseInt(saved, 10) : 14;
-    });
-
-    const [wordWrap, setWordWrap] = useState<'on' | 'off'>(() => {
-        return (localStorage.getItem('editor_wordWrap') as 'on' | 'off') || 'off';
-    });
-
-    const [showMinimap, setShowMinimap] = useState(() => {
-        return localStorage.getItem('editor_showMinimap') === 'true';
-    });
-
-    const [isSuggestionsEnabled, setIsSuggestionsEnabled] = useState(() => {
-        const saved = localStorage.getItem('editor_isSuggestionsEnabled');
-        return saved !== null ? saved === 'true' : true;
-    });
-
-    const isSuggestionsEnabledRef = useRef(isSuggestionsEnabled);
-
-    // Persist changes
-    useEffect(() => { localStorage.setItem('editor_fontSize', fontSize.toString()); }, [fontSize]);
-    useEffect(() => { localStorage.setItem('editor_wordWrap', wordWrap); }, [wordWrap]);
-    useEffect(() => { localStorage.setItem('editor_showMinimap', String(showMinimap)); }, [showMinimap]);
-    useEffect(() => {
-        localStorage.setItem('editor_isSuggestionsEnabled', String(isSuggestionsEnabled));
-        isSuggestionsEnabledRef.current = isSuggestionsEnabled;
-    }, [isSuggestionsEnabled]);
+    // Persist changes for non-settings state - removed for minimap and suggestions as they're now in settings
 
     // Diagnostics State
     const [isChecking, setIsChecking] = useState(false);
@@ -181,10 +164,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
     };
 
-    // Debounced save to project state
+    // Debounced save to project state with auto-save setting
     const debouncedSave = useDebounceCallback((id: string, content: string) => {
-        updateFileContent(id, content);
-    }, 500);
+        if (settings.autoFeatures.autoSave) {
+            updateFileContent(id, content);
+        }
+    }, settings.autoFeatures.autoSave ? 500 : 0);
 
     const handleEditorChange = (value: string | undefined) => {
         // Clear check status when user starts typing
@@ -727,12 +712,28 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         );
     }, []);
 
-    // Format Document
+    // Format Document - use auto-format setting
     const handleFormat = () => {
         setIsFormatting(true);
-        editorRef.current?.getAction('editor.action.formatDocument')?.run();
-        setTimeout(() => setIsFormatting(false), 600);
+        if (editorRef.current) {
+            if (settings.autoFeatures.autoFormat) {
+                editorRef.current.getAction('editor.action.formatDocument')?.run();
+                setTimeout(() => setIsFormatting(false), 600);
+            } else {
+                // Just show that format is disabled
+                setTimeout(() => setIsFormatting(false), 500);
+            }
+        }
     };
+
+    // Manual save function
+    const handleSave = useCallback(() => {
+        if (activeFile && editorRef.current) {
+            const content = editorRef.current.getValue();
+            updateFileContent(activeFile.id, content);
+            // Show save indicator (could add a toast notification here)
+        }
+    }, [activeFile, updateFileContent]);
 
     const handleEditorMount: OnMount = (editor, monaco) => {
         monacoRef.current = monaco;
@@ -876,20 +877,34 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                     {/* Code Suggestions Toggle */}
                     <button
-                        onClick={() => setIsSuggestionsEnabled(prev => !prev)}
+                        onClick={() => updateSettings('editor', { isSuggestionsEnabled: !settings.editor.isSuggestionsEnabled })}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${isSuggestionsEnabled
+                            ${settings.editor.isSuggestionsEnabled
                                 ? 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/20'
                                 : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
                         `}
-                        title={isSuggestionsEnabled ? "Disable AI Suggestions" : "Enable AI Suggestions"}
+                        title={settings.editor.isSuggestionsEnabled ? "Disable AI Suggestions" : "Enable AI Suggestions"}
                     >
-                        <Zap size={12} className={isSuggestionsEnabled ? "fill-yellow-400" : ""} />
+                        <Zap size={12} className={settings.editor.isSuggestionsEnabled ? "fill-yellow-400" : ""} />
                         {toolbarSize === 'full' && <span>AI</span>}
                     </button>
 
                     <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
+
+                    {/* Save Button - only show when auto-save is disabled */}
+                    {!settings.autoFeatures.autoSave && (
+                        <button
+                            onClick={handleSave}
+                            className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                                ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
+                                text-blue-400 bg-blue-400/10 border border-blue-400/20 hover:text-blue-300 hover:bg-blue-400/25`}
+                            title="Save File (Ctrl+S)"
+                        >
+                            <Save size={12} />
+                            {toolbarSize === 'full' && <span>Save</span>}
+                        </button>
+                    )}
 
                     {/* Format */}
                     <button
@@ -908,10 +923,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                     {/* Word Wrap */}
                     <button
-                        onClick={() => setWordWrap(w => w === 'on' ? 'off' : 'on')}
+                        onClick={() => updateSettings('editor', { wordWrap: !settings.editor.wordWrap })}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${wordWrap === 'on' ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                            ${settings.editor.wordWrap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
                         title="Toggle Word Wrap"
                     >
                         <WrapText size={12} />
@@ -920,10 +935,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                     {/* Minimap */}
                     <button
-                        onClick={() => setShowMinimap(m => !m)}
+                        onClick={() => updateSettings('editor', { showMinimap: !settings.editor.showMinimap })}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${showMinimap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                            ${settings.editor.showMinimap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
                         title="Toggle Minimap"
                     >
                         <Map size={12} />
@@ -937,14 +952,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             {/* Font Size */}
                             <div className="shrink-0 flex items-center gap-0.5 bg-white/5 rounded-lg border border-white/10 px-1">
                                 <button
-                                    onClick={() => setFontSize(s => Math.max(10, s - 1))}
+                                    onClick={() => updateSettings('editor', { fontSize: Math.max(10, settings.editor.fontSize - 1) })}
                                     className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
                                 >
                                     <Minus size={12} />
                                 </button>
-                                <span className="text-xs text-white/70 w-5 text-center font-mono">{fontSize}</span>
+                                <span className="text-xs text-white/70 w-5 text-center font-mono">{settings.editor.fontSize}</span>
                                 <button
-                                    onClick={() => setFontSize(s => Math.min(24, s + 1))}
+                                    onClick={() => updateSettings('editor', { fontSize: Math.min(24, settings.editor.fontSize + 1) })}
                                     className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
                                 >
                                     <Plus size={12} />
@@ -1074,13 +1089,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     height="100%"
                     language={language}
                     value={activeFile?.content || ''}
-                    theme="github-dark"
+                    theme={isDark ? 'vs-dark' : 'vs-light'}
                     onChange={handleEditorChange}
                     onMount={handleEditorMount}
                     options={{
-                        minimap: { enabled: showMinimap },
-                        wordWrap: wordWrap,
-                        fontSize: fontSize,
+                        minimap: { enabled: settings.editor.showMinimap },
+                        wordWrap: settings.editor.wordWrap ? 'on' : 'off',
+                        fontSize: settings.editor.fontSize,
+                        fontFamily: settings.appearance.fontFamily,
                         padding: { top: 20, bottom: 20 },
                         inlineSuggest: { enabled: true, mode: 'subwordSmart' },
                         quickSuggestions: true,
@@ -1091,10 +1107,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         cursorBlinking: 'smooth',
                         cursorSmoothCaretAnimation: 'on',
                         renderLineHighlight: 'all',
-                        tabSize: 4,
+                        tabSize: settings.editor.tabSize,
                         insertSpaces: true,
                         detectIndentation: false,
                         autoIndent: 'advanced',
+                        lineNumbers: settings.editor.lineNumbers ? 'on' : 'off',
                     }}
                 />
             </div>

@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { Terminal } from 'xterm';
+import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { WebglAddon } from '@xterm/addon-webgl';
 import { useTerminal } from '../../context/TerminalContext';
 import { useProject } from '../../context/ProjectContext';
 import { type FileNode } from '../../utils/mockFileSystem';
-import 'xterm/css/xterm.css';
+import { getWebSocketUrl } from '../../utils/apiClient';
+import '@xterm/xterm/css/xterm.css';
 
 interface ShellTerminalProps {
     terminalId: string;
@@ -126,15 +126,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
 
         term.open(containerRef.current);
 
-        try {
-            const webglAddon = new WebglAddon();
-            term.loadAddon(webglAddon);
-            webglAddon.onContextLoss(() => {
-                webglAddon.dispose();
-            });
-        } catch (e) {
-            console.warn("WebGL addon could not be loaded, using default renderer.", e);
-        }
+        // Using xterm.js standard high-performance DOM/Canvas renderer for maximum cross-browser stability.
 
         // Slightly delay fit to ensure DOM is ready
         setTimeout(() => fitAddon.fit(), 10);
@@ -795,7 +787,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 executionStdoutRef.current = '';
                 executionStderrRef.current = '';
                 
-                const ws = new WebSocket(`ws://${window.location.hostname}:3001`);
+                const ws = new WebSocket(getWebSocketUrl());
                 wsRef.current = ws;
 
                 // Track un-echoed stdin lines to inject after prompts

@@ -1,0 +1,62 @@
+import { useEffect } from 'react';
+import { useSettings } from '../context/SettingsContext';
+
+export const useTheme = () => {
+  const { settings } = useSettings();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+
+    // Apply theme class
+    root.classList.remove('theme-dark', 'theme-light', 'theme-auto');
+    
+    if (settings.appearance.theme === 'auto') {
+      // Check system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.classList.add(prefersDark ? 'theme-dark' : 'theme-light');
+      body.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+    } else {
+      root.classList.add(`theme-${settings.appearance.theme}`);
+      body.setAttribute('data-theme', settings.appearance.theme);
+    }
+
+    // Apply font family
+    root.style.setProperty('--editor-font-family', settings.appearance.fontFamily);
+    
+    // Update Monaco editor theme
+    const monacoTheme = settings.appearance.theme === 'light' ? 'vs-light' : 'vs-dark';
+    
+    // Store theme for Monaco editor to use
+    root.setAttribute('data-monaco-theme', monacoTheme);
+
+  }, [settings.appearance.theme, settings.appearance.fontFamily]);
+
+  // Listen for system theme changes when in auto mode
+  useEffect(() => {
+    if (settings.appearance.theme !== 'auto') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      const root = document.documentElement;
+      const body = document.body;
+      
+      root.classList.remove('theme-dark', 'theme-light');
+      root.classList.add(e.matches ? 'theme-dark' : 'theme-light');
+      body.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      
+      const monacoTheme = e.matches ? 'vs-dark' : 'vs-light';
+      root.setAttribute('data-monaco-theme', monacoTheme);
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [settings.appearance.theme]);
+
+  return {
+    currentTheme: settings.appearance.theme,
+    fontFamily: settings.appearance.fontFamily,
+    isDark: settings.appearance.theme === 'dark' || 
+            (settings.appearance.theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  };
+};

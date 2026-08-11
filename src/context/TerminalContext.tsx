@@ -74,7 +74,9 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     useEffect(() => {
         try {
             localStorage.setItem(TERMINALS_STORAGE_KEY, JSON.stringify(terminals));
-        } catch { } // unused 'e'
+        } catch {
+            // Ignore localStorage errors
+        }
     }, [terminals]);
 
     useEffect(() => {
@@ -86,7 +88,8 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Ensure there's always an active terminal focused if possible
     useEffect(() => {
         if (terminals.length > 0 && (!activeTerminalId || !terminals.find(t => t.id === activeTerminalId))) {
-            setActiveTerminalId(terminals[terminals.length - 1].id);
+            const newActiveId = terminals[terminals.length - 1].id;
+            setActiveTerminalId(newActiveId);
         }
     }, [terminals, activeTerminalId]);
 

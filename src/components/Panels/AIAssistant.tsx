@@ -19,6 +19,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { streamChatWithAI, generateCode, getAvailableModels, type ProjectContext } from '../../utils/groqService';
 import { useProject } from '../../context/ProjectContext';
+import { useSettings } from '../../context/SettingsContext';
 import { type FileNode } from '../../utils/mockFileSystem';
 import {
     saveSessions,
@@ -128,7 +129,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
                 Prism.languages[language] || Prism.languages.typescript,
                 language
             );
-        } catch (e) {
+        } catch {
             return content;
         }
     })();
@@ -257,7 +258,7 @@ const MessageItem = React.memo(({
 }) => {
     // Enhanced markdown renderer using react-markdown
     const components = {
-        code({ node, inline, className, children, ...props }: any) {
+        code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode; [key: string]: any }) {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : 'text';
             const code = String(children).replace(/\n$/, '');
@@ -639,6 +640,16 @@ const useTypewriter = (phrases: string[], typingSpeed = 100, deletingSpeed = 30,
     return { text: displayedText, isTyping };
 };
 
+const TypewriterPlaceholder: React.FC = () => {
+    const { text: placeholderText, isTyping: isPlaceholderTyping } = useTypewriter(PLACEHOLDER_PHRASES);
+    return (
+        <span className="text-[15px] text-white/40 font-normal tracking-wide leading-relaxed">
+            {placeholderText}
+            <span className={`ml-[1px] inline-block w-[1.5px] h-[15px] align-middle bg-violet-400 ${!isPlaceholderTyping ? 'animate-cursor-blink' : ''}`} />
+        </span>
+    );
+};
+
 export // Custom hook for robust auto-scrolling
     const useAutoScroll = (dependencies: any[]) => {
         const containerRef = useRef<HTMLDivElement>(null);
@@ -696,6 +707,7 @@ export // Custom hook for robust auto-scrolling
     };
 
 export const AIAssistant: React.FC = () => {
+    const { settings } = useSettings();
     // Session State
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -715,7 +727,6 @@ export const AIAssistant: React.FC = () => {
     const deferredStreamingText = useDeferredValue(streamingText);
 
     const [selectedModel, setSelectedModel] = useState<string>('llama-3.3-70b-versatile');
-    const { text: placeholderText, isTyping: isPlaceholderTyping } = useTypewriter(PLACEHOLDER_PHRASES);
 
     // Time-based greeting
     const getGreeting = () => {
@@ -1063,7 +1074,7 @@ export const AIAssistant: React.FC = () => {
             if (createMatch) {
                 const fileName = createMatch[1];
                 const contentPrompt = `Generate code for a file named "${fileName}" based on this context: "${userMessageText}". Output ONLY the code, no markdown fences if possible, or minimally wrapped.`;
-                const codeContent = await generateCode(contentPrompt, 'typescript', '', abortController.signal);
+                const codeContent = await generateCode(contentPrompt, 'typescript', '', abortController.signal, settings);
                 let cleanContent = codeContent;
                 const match = codeContent.match(/```(?:\w+)?\n([\s\S]*?)```/);
                 if (match) {
@@ -1104,7 +1115,8 @@ INSTRUCTIONS:
                         history,
                         abortController.signal,
                         projectContext,
-                        selectedModel
+                        selectedModel,
+                        settings
                     )) {
                         fullResponse += chunk;
                         const now = Date.now();
@@ -1161,7 +1173,8 @@ INSTRUCTIONS:
                         history,
                         abortController.signal,
                         projectContext,
-                        selectedModel
+                        selectedModel,
+                        settings
                     )) {
                         fullResponse += chunk;
                         const now = Date.now();
@@ -1749,10 +1762,7 @@ INSTRUCTIONS:
                             {/* Custom Placeholder Overlay with Blinking Cursor */}
                             {!input && (
                                 <div className="absolute inset-0 flex items-center pointer-events-none pl-5 py-[14px] z-0">
-                                    <span className="text-[15px] text-white/40 font-normal tracking-wide leading-relaxed">
-                                        {placeholderText}
-                                        <span className={`ml-[1px] inline-block w-[1.5px] h-[15px] align-middle bg-violet-400 ${!isPlaceholderTyping ? 'animate-cursor-blink' : ''}`} />
-                                    </span>
+                                    <TypewriterPlaceholder />
                                 </div>
                             )}
 

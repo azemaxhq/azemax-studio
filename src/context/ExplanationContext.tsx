@@ -62,7 +62,9 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = ({ c
                     explanationError: s.explanationError,
                     explainedFor: s.explainedFor,
                 }));
-            } catch (_) {}
+            } catch {
+                // Ignore localStorage errors
+            }
             return s;
         });
     }, []);
@@ -86,8 +88,8 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 false
             );
             persist({ explanation: result, explanationError: null, explainedFor: activeFile.id });
-        } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : 'Failed to generate explanation.';
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to generate explanation.';
             persist({ explanationError: message, explanation: null });
         } finally {
             setIsExplaining(false);

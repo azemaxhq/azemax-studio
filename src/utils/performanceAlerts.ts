@@ -2,7 +2,7 @@
  * Performance alerts and notifications system
  */
 
-import { type PerformanceReport, type PerformanceMetrics } from './performanceService';
+import { type PerformanceReport } from './performanceService';
 
 export interface PerformanceAlert {
   id: string;

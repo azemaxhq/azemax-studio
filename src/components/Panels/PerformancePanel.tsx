@@ -31,8 +31,7 @@ import performanceService from '../../utils/performanceService';
 import {
   generatePerformanceAlerts,
   PerformanceAlertManager,
-  type PerformanceAlert,
-  DEFAULT_THRESHOLDS
+  type PerformanceAlert
 } from '../../utils/performanceAlerts';
 
 // Grade colors

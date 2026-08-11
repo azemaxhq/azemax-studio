@@ -30,27 +30,24 @@ Detailed documentation for the project's modules can be found in the `docs` dire
     npm install
     ```
 
-2.  Install dependencies for backend:
+2.  Configure environment:
     ```bash
-    cd server
-    npm install
-    cd ..
+    cp .env.example .env
     ```
-
-3.  Configure Environment:
-    -   Create `.env` in the root (see `.env.example` if available).
-    -   Add `VITE_GROQ_API_KEY` and `OPENROUTER_API_KEY`.
+    Set server-side keys: `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `HF_TOKEN` (see [Server docs](docs/SERVER.md)).
 
 ### Running the App
 
-1.  Start the Backend Server (Terminals/Execution):
-    ```bash
-    node server/index.cjs
-    ```
+```bash
+npm run dev
+```
 
-2.  Start the Frontend:
-    ```bash
-    npm run dev
-    ```
+This starts the API on **http://localhost:3001** and the UI on **http://localhost:5173** (Vite proxies `/api` to the backend).
 
-3.  Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+API-only:
+
+```bash
+npm run server
+```
