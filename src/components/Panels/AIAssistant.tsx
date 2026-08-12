@@ -5,18 +5,8 @@ import {
     ThumbsUp, ThumbsDown, FileCode, Lightbulb, ChevronDown
 } from 'lucide-react';
 
-import Prism from 'prismjs';
-import 'prismjs/themes/prism-tomorrow.css';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-tsx';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-json';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
+import { loadPrism, tryHighlight } from '../../utils/prismLoader';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { streamChatWithAI, generateCode, getAvailableModels, type ProjectContext } from '../../utils/groqService';
 import { useProject } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -121,18 +111,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
         }
     };
 
-    const highlightedCode = (() => {
-        if (type !== 'code' || !language) return content;
-        try {
-            return Prism.highlight(
-                content,
-                Prism.languages[language] || Prism.languages.typescript,
-                language
-            );
-        } catch {
-            return content;
-        }
-    })();
+    const highlightedCode = type === 'code' && language ? tryHighlight(content, language) : null;
 
     return (
         <div className="my-4 rounded-xl overflow-hidden border border-[#30363d] bg-gradient-to-b from-[#1c2128] to-[#161b22] shadow-lg">
@@ -169,7 +148,9 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
                 <div className="p-4 bg-[#0d1117]">
                     {type === 'code' && language ? (
                         <pre className="text-[13px] font-mono overflow-x-auto custom-scrollbar text-[#e6edf3] leading-relaxed">
-                            <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+                            {highlightedCode
+                                ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+                                : <code>{content}</code>}
                         </pre>
                     ) : (
                         <div className="text-[14px] text-[#c9d1d9] leading-relaxed whitespace-pre-wrap">
@@ -239,7 +220,8 @@ const MessageItem = React.memo(({
     onApplyCode,
     copiedId,
     reaction,
-    onReaction
+    onReaction,
+    prismReady
 }: {
     msg: Message | { text: string; role: 'ai' | 'user'; id: string; timestamp?: number };
     index: number | string;
@@ -255,6 +237,7 @@ const MessageItem = React.memo(({
     copiedId: string | null;
     reaction?: 'up' | 'down' | null;
     onReaction?: (msgId: string, type: 'up' | 'down') => void;
+    prismReady: boolean;
 }) => {
     // Enhanced markdown renderer using react-markdown
     const components = {
@@ -265,18 +248,8 @@ const MessageItem = React.memo(({
             const codeId = `${msg.id}-${index}-${language}-${code.slice(0, 10)}`;
 
             if (!inline && match) {
-                // Syntax Highlighting
-                const highlightedCode = (() => {
-                    try {
-                        return Prism.highlight(
-                            code,
-                            Prism.languages[language] || Prism.languages.typescript,
-                            language
-                        );
-                    } catch (e) {
-                        return code;
-                    }
-                })();
+                // Syntax Highlighting (lazy-loaded Prism)
+                const highlightedCode = prismReady ? tryHighlight(code, language) : null;
 
                 return (
                     <div className="my-4 rounded-lg overflow-hidden border border-[#30363d] bg-[#161b22] group/code">
@@ -305,7 +278,9 @@ const MessageItem = React.memo(({
                         </div>
                         <div className="relative">
                             <pre className="p-4 text-[13px] font-mono overflow-x-auto custom-scrollbar text-[#e6edf3] leading-relaxed bg-[#0d1117]">
-                                <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+                                {highlightedCode
+                                    ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+                                    : <code>{code}</code>}
                             </pre>
                         </div>
                     </div>
@@ -428,25 +403,19 @@ const MessageItem = React.memo(({
                                                     copiedId={copiedId}
                                                 />
                                             ) : (
-                                                <ReactMarkdown
+                                                <MarkdownRenderer
                                                     key={`text-${msg.id}-${segIdx}`}
-                                                    remarkPlugins={[remarkGfm]}
-                                                    rehypePlugins={[rehypeRaw]}
                                                     components={components}
                                                 >
                                                     {segment.content}
-                                                </ReactMarkdown>
+                                                </MarkdownRenderer>
                                             )
                                         )}
                                     </>
                                 ) : (
-                                    <ReactMarkdown
-                                        remarkPlugins={[remarkGfm]}
-                                        rehypePlugins={[rehypeRaw]}
-                                        components={components}
-                                    >
+                                    <MarkdownRenderer components={components}>
                                         {msg.text}
-                                    </ReactMarkdown>
+                                    </MarkdownRenderer>
                                 )}
                             </div>
 
@@ -565,7 +534,7 @@ const PLACEHOLDER_PHRASES = [
     "⚛️ Create a new React component..."
 ];
 
-const useTypewriter = (phrases: string[], typingSpeed = 100, deletingSpeed = 30, pauseDuration = 1500) => {
+const useTypewriter = (phrases: string[], typingSpeed = 100, deletingSpeed = 30, pauseDuration = 1500, isActive: boolean = true) => {
     const [displayedText, setDisplayedText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
 
@@ -574,11 +543,23 @@ const useTypewriter = (phrases: string[], typingSpeed = 100, deletingSpeed = 30,
         isDeleting: false,
         loopNum: 0,
         text: '',
-        timer: null as any
+        timer: null as any,
+        isActive: true
     });
 
     useEffect(() => {
+        state.current.isActive = isActive;
+        if (!isActive) {
+            if (state.current.timer) {
+                clearTimeout(state.current.timer);
+                state.current.timer = null;
+            }
+            return;
+        }
+
         const handleTyping = () => {
+            if (!state.current.isActive) return;
+            
             const { isDeleting, loopNum, text } = state.current;
             const i = loopNum % phrases.length;
             const fullText = phrases[i];
@@ -635,13 +616,13 @@ const useTypewriter = (phrases: string[], typingSpeed = 100, deletingSpeed = 30,
         return () => {
             if (state.current.timer) clearTimeout(state.current.timer);
         };
-    }, []); // Empty dependency array ensures this runs once and uses refs
+    }, [isActive, phrases, typingSpeed, deletingSpeed, pauseDuration]);
 
     return { text: displayedText, isTyping };
 };
 
-const TypewriterPlaceholder: React.FC = () => {
-    const { text: placeholderText, isTyping: isPlaceholderTyping } = useTypewriter(PLACEHOLDER_PHRASES);
+const TypewriterPlaceholder: React.FC<{ isActive: boolean }> = ({ isActive }) => {
+    const { text: placeholderText, isTyping: isPlaceholderTyping } = useTypewriter(PLACEHOLDER_PHRASES, 100, 30, 1500, isActive);
     return (
         <span className="text-[15px] text-white/40 font-normal tracking-wide leading-relaxed">
             {placeholderText}
@@ -651,7 +632,7 @@ const TypewriterPlaceholder: React.FC = () => {
 };
 
 export // Custom hook for robust auto-scrolling
-    const useAutoScroll = (dependencies: any[]) => {
+    const useAutoScroll = (active: boolean = true) => {
         const containerRef = useRef<HTMLDivElement>(null);
         const isStickyRef = useRef(true);
         const lastScrollTopRef = useRef(0);
@@ -683,30 +664,37 @@ export // Custom hook for robust auto-scrolling
             lastScrollTopRef.current = scrollTop;
         }, []);
 
-        // 2. Observer for content changes (Streaming/New Messages)
+        // 2. Observer for content changes (Streaming/New Messages) - created once
         useEffect(() => {
             const container = containerRef.current;
-            if (!container) return;
+            if (!container || !active) return;
 
+            // Create ResizeObserver once and observe the container itself
             const observer = new ResizeObserver(() => {
                 if (isStickyRef.current) {
-                    // Use instant scroll to prevent jitter during streaming
                     container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
                 }
             });
+            observer.observe(container);
 
-            // Observe the LAST child (content), or the container itself if children change size
-            // Better to observe the container's scrollHeight changes
-            // Since ResizeObserver monitors dimensions, we can observe the chat content wrapper
-            Array.from(container.children).forEach(child => observer.observe(child));
+            // Also use MutationObserver to detect content changes more efficiently
+            const mutationObserver = new MutationObserver(() => {
+                if (isStickyRef.current) {
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+                }
+            });
+            mutationObserver.observe(container, { childList: true, subtree: true, characterData: true });
 
-            return () => observer.disconnect();
-        }, dependencies); // Re-run if dependencies (like messages list) change strictly
+            return () => {
+                observer.disconnect();
+                mutationObserver.disconnect();
+            };
+        }, [active]); // Only observe while active
 
         return { containerRef, scrollToBottom, handleScroll, isStickyRef };
     };
 
-export const AIAssistant: React.FC = () => {
+export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = true }) => {
     const { settings } = useSettings();
     // Session State
     const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -722,6 +710,14 @@ export const AIAssistant: React.FC = () => {
     const [editText, setEditText] = useState('');
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({}); // msgId -> reaction
+
+    // Lazy-load Prism so its ~250KB stays out of the initial bundle
+    const [prismReady, setPrismReady] = useState(false);
+    useEffect(() => {
+        let mounted = true;
+        loadPrism().then(() => { if (mounted) setPrismReady(true); });
+        return () => { mounted = false; };
+    }, []);
 
     // Deferred value for streaming performance
     const deferredStreamingText = useDeferredValue(streamingText);
@@ -739,10 +735,11 @@ export const AIAssistant: React.FC = () => {
     const [greeting, setGreeting] = useState(getGreeting());
 
     useEffect(() => {
+        if (!isVisible) return;
         setGreeting(getGreeting());
         const interval = setInterval(() => setGreeting(getGreeting()), 60000);
         return () => clearInterval(interval);
-    }, []);
+    }, [isVisible]);
 
     // Load available models on mount
     useEffect(() => {
@@ -816,6 +813,9 @@ export const AIAssistant: React.FC = () => {
     const isSendingRef = useRef(false); // Track internal sending state to prevent duplicates
     const currentRequestIdRef = useRef<string | null>(null); // Track current request to prevent duplicate responses
     const processedRequestsRef = useRef<Set<string>>(new Set()); // Track processed requests
+    const handleSendRef = useRef<((arg?: string) => void) | null>(null);
+    const pendingStreamFrameRef = useRef<number | null>(null);
+    const latestStreamTextRef = useRef('');
 
     // Derived state: Current Session
     const currentSession = sessions.find(s => s.id === currentSessionId);
@@ -823,7 +823,7 @@ export const AIAssistant: React.FC = () => {
 
     // Use robust auto-scroll hook
     // We pass [messages, streamingText] as dependencies so the observer re-attaches/checks when content structure changes
-    const { containerRef: messagesContainerRef, scrollToBottom, handleScroll: hookHandleScroll, isStickyRef } = useAutoScroll([messages, streamingText]);
+    const { containerRef: messagesContainerRef, scrollToBottom, handleScroll: hookHandleScroll, isStickyRef } = useAutoScroll(isVisible);
 
     const handleStop = useCallback(() => {
         if (abortControllerRef.current) {
@@ -888,12 +888,10 @@ export const AIAssistant: React.FC = () => {
         }
 
         // 2. Streaming: If sticky, keep scrolling to bottom INSTANTLY (terminal style)
-        if (streamingText && isStickyRef.current) {
-            // Use 'auto' behavior (instant) for terminal-like sticky scroll
-            container.scrollTop = container.scrollHeight;
-        }
+        // This is now handled by MutationObserver in useAutoScroll hook
+        // No need to run this effect on every streamingText change
 
-    }, [messages, streamingText, scrollToBottom]);
+    }, [messages, scrollToBottom]);
 
     const handleNewChat = useCallback(() => {
         const newSession = createSession();
@@ -924,40 +922,40 @@ export const AIAssistant: React.FC = () => {
         if (window.innerWidth < 768) setShowSidebar(false);
     };
 
-    const handleCopyCode = (code: string, id: string) => {
+    const handleCopyCode = useCallback((code: string, id: string) => {
         navigator.clipboard.writeText(code);
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 2000);
-    };
+    }, []);
 
-    const handleCopyMessage = (text: string, id: string) => {
+    const handleCopyMessage = useCallback((text: string, id: string) => {
         navigator.clipboard.writeText(text);
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 2000);
-    };
+    }, []);
 
-    const handleApplyCode = (code: string) => {
+    const handleApplyCode = useCallback((code: string) => {
         if (activeFile) {
             updateFileContent(activeFile.id, code);
         }
-    };
+    }, [activeFile, updateFileContent]);
 
     const handleQuickAction = (prompt: string) => {
         if (isSendingRef.current || isLoading) return; // Prevent double submission
         handleSend(prompt);
     };
 
-    const handleEditMessage = (msg: Message) => {
+    const handleEditMessage = useCallback((msg: Message) => {
         setEditingMessageId(msg.id);
         setEditText(msg.text);
-    };
+    }, []);
 
-    const handleCancelEdit = () => {
+    const handleCancelEdit = useCallback(() => {
         setEditingMessageId(null);
         setEditText('');
-    };
+    }, []);
 
-    const handleSaveEdit = async (msgId: string) => {
+    const handleSaveEdit = useCallback(async (msgId: string) => {
         if (!editText.trim()) return;
 
         // Find the message index and resend from there
@@ -979,10 +977,10 @@ export const AIAssistant: React.FC = () => {
         setEditText('');
 
         // Trigger send
-        setTimeout(() => handleSend(), 100);
-    };
+        setTimeout(() => handleSendRef.current?.(), 100);
+    }, [messages, currentSessionId, editText]);
 
-    const handleRegenerate = async (msgIndex: number) => {
+    const handleRegenerate = useCallback(async (msgIndex: number) => {
         // Find the user message before this AI message
         const userMsgIndex = msgIndex - 1;
         if (userMsgIndex < 0 || messages[userMsgIndex].role !== 'user') return;
@@ -1001,8 +999,8 @@ export const AIAssistant: React.FC = () => {
 
         // Resend the user message
         setInput(userMessage);
-        setTimeout(() => handleSend(), 100);
-    };
+        setTimeout(() => handleSendRef.current?.(userMessage), 100);
+    }, [messages, currentSessionId]);
 
     const handleSend = useCallback(async (arg?: string | React.MouseEvent | unknown) => {
         const textToSend = typeof arg === 'string' ? arg : input;
@@ -1121,13 +1119,7 @@ INSTRUCTIONS:
                         fullResponse += chunk;
                         const now = Date.now();
                         if (now - lastUpdateTime > THROTTLE_MS) {
-                            const capturedRequestId = requestId;
-                            const capturedResponse = fullResponse;
-                            requestAnimationFrame(() => {
-                                if (currentRequestIdRef.current === capturedRequestId) {
-                                    setStreamingText(capturedResponse);
-                                }
-                            });
+                            scheduleStreamUpdate(requestId, fullResponse);
                             lastUpdateTime = now;
                         }
                     }
@@ -1179,13 +1171,7 @@ INSTRUCTIONS:
                         fullResponse += chunk;
                         const now = Date.now();
                         if (now - lastUpdateTime > THROTTLE_MS) {
-                            const capturedRequestId = requestId;
-                            const capturedResponse = fullResponse;
-                            requestAnimationFrame(() => {
-                                if (currentRequestIdRef.current === capturedRequestId) {
-                                    setStreamingText(capturedResponse);
-                                }
-                            });
+                            scheduleStreamUpdate(requestId, fullResponse);
                             lastUpdateTime = now;
                         }
                     }
@@ -1285,6 +1271,20 @@ INSTRUCTIONS:
         }
     }, [input, sessions, currentSessionId, isLoading, activeFile, fileTree, handleNewChat, selectedModel]);
 
+    handleSendRef.current = handleSend;
+
+    // Coalesce streaming updates: at most one rAF pending, always renders the latest text
+    const scheduleStreamUpdate = useCallback((requestId: string, text: string) => {
+        latestStreamTextRef.current = text;
+        if (pendingStreamFrameRef.current !== null) return;
+        pendingStreamFrameRef.current = requestAnimationFrame(() => {
+            pendingStreamFrameRef.current = null;
+            if (currentRequestIdRef.current === requestId) {
+                setStreamingText(latestStreamTextRef.current);
+            }
+        });
+    }, []);
+
     // Persist sessions whenever they change
     useEffect(() => {
         if (sessions.length > 0) {
@@ -1369,7 +1369,7 @@ INSTRUCTIONS:
                     transformOrigin: 'left center'
                 }}
             >
-                <div className="flex flex-col h-full bg-[#0d1117]/95 backdrop-blur-xl border-r border-[#30363d]/50">
+                <div className="flex flex-col h-full bg-[#0d1117]/95 border-r border-[#30363d]/50">
                     {/* Sidebar Header */}
                     <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b border-[#30363d]/40 bg-[#161b22]/50">
                         <button
@@ -1544,7 +1544,7 @@ INSTRUCTIONS:
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full relative z-10">
                 {/* Premium Header - Liquid Glass Style */}
-                <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-white/10 bg-white/[0.02] backdrop-blur-2xl backdrop-saturate-150 z-20 transition-all relative overflow-hidden group/header">
+                <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-white/10 bg-white/[0.02] backdrop-blur-lg backdrop-saturate-150 z-20 transition-all relative overflow-hidden group/header">
                     {/* Liquid Glint Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.02] to-transparent pointer-events-none" />
                     <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none opacity-50" />
@@ -1683,7 +1683,7 @@ INSTRUCTIONS:
                                     isEditing={editingMessageId === msg.id}
                                     editText={editText}
                                     setEditText={setEditText}
-                                    onSaveEdit={(id) => handleSaveEdit(id)}
+                                    onSaveEdit={handleSaveEdit}
                                     onCancelEdit={handleCancelEdit}
                                     onEditStart={handleEditMessage}
                                     onCopy={handleCopyMessage}
@@ -1692,6 +1692,7 @@ INSTRUCTIONS:
                                     copiedId={copiedId}
                                     reaction={reactions[msg.id] || null}
                                     onReaction={handleReaction}
+                                    prismReady={prismReady}
                                 />
                             ))}
 
@@ -1710,6 +1711,7 @@ INSTRUCTIONS:
                                     onRegenerate={undefined}
                                     onApplyCode={handleApplyCode}
                                     copiedId={copiedId}
+                                    prismReady={prismReady}
                                 />
                             )}
                         </>
@@ -1754,7 +1756,7 @@ INSTRUCTIONS:
                         <div className="absolute -inset-[1px] bg-white/5 rounded-[26px] blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
 
                         {/* Main Input Container */}
-                        <div className="relative flex items-end gap-2 bg-[#18181b] backdrop-blur-3xl border border-white/10 rounded-[26px] shadow-lg shadow-black/20 overflow-hidden ring-1 ring-white/5 group-focus-within:ring-white/20 transition-all duration-300 input-focus-glow">
+                        <div className="relative flex items-end gap-2 bg-[#18181b] backdrop-blur-lg border border-white/10 rounded-[26px] shadow-lg shadow-black/20 overflow-hidden ring-1 ring-white/5 group-focus-within:ring-white/20 transition-all duration-300 input-focus-glow">
 
                             {/* Input Shimmer Overlay */}
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.04] to-transparent -translate-x-full group-focus-within:animate-shimmer-fast pointer-events-none" />
@@ -1762,7 +1764,7 @@ INSTRUCTIONS:
                             {/* Custom Placeholder Overlay with Blinking Cursor */}
                             {!input && (
                                 <div className="absolute inset-0 flex items-center pointer-events-none pl-5 py-[14px] z-0">
-                                    <TypewriterPlaceholder />
+                                    <TypewriterPlaceholder isActive={isVisible && !input} />
                                 </div>
                             )}
 

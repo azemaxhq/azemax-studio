@@ -1381,7 +1381,7 @@ function computeCodeAgeing(lines: string[], language: string): CodeAgeingResult 
 }
 
 
-export const analyzeCode = (code: string, language: string = 'javascript'): AnalysisResult => {
+const computeAnalysis = (code: string, language: string = 'javascript'): AnalysisResult => {
     if (!code || code.trim().length === 0) {
         return {
             complexity: 'Low',
@@ -1514,4 +1514,24 @@ export const analyzeCode = (code: string, language: string = 'javascript'): Anal
             }
         };
     }
+};
+
+const analysisCache = new Map<string, AnalysisResult>();
+const MAX_ANALYSIS_CACHE = 30;
+
+export const analyzeCode = (code: string, language: string = 'javascript'): AnalysisResult => {
+    const cacheKey = `${language}\u0000${code}`;
+    const cached = analysisCache.get(cacheKey);
+    if (cached) {
+        analysisCache.delete(cacheKey);
+        analysisCache.set(cacheKey, cached);
+        return cached;
+    }
+    const result = computeAnalysis(code, language);
+    analysisCache.set(cacheKey, result);
+    if (analysisCache.size > MAX_ANALYSIS_CACHE) {
+        const oldestKey = analysisCache.keys().next().value;
+        if (oldestKey !== undefined) analysisCache.delete(oldestKey);
+    }
+    return result;
 };

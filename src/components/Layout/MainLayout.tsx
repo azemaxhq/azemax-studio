@@ -2,11 +2,25 @@ import React from 'react';
 import { Layers, BookOpen, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../Sidebar/Sidebar';
-import { ExplanationSidebar } from '../Sidebar/ExplanationSidebar';
 import { SettingsSidebar } from '../Sidebar/SettingsSidebar';
 import { CodeEditor } from '../Editor/CodeEditor';
 import { AIAssistant } from '../Panels/AIAssistant';
 import { BottomPanel } from '../Panels/BottomPanel';
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+// Code-split the Explanation sidebar: only rendered when the 'explanation'
+// tab is active, and it pulls in react-markdown/remark/rehype at runtime.
+const ExplanationSidebar = React.lazy(() =>
+    import('../Sidebar/ExplanationSidebar').then(m => ({ default: m.ExplanationSidebar }))
+);
+
+const SidebarFallback = () => (
+    <div className="h-full flex items-center justify-center text-xs text-white/30">
+        <BookOpen size={16} className="mr-2" />
+        Loading explanation...
+    </div>
+);
 
 export const MainLayout: React.FC = () => {
     // Helper to load from storage or default
@@ -38,6 +52,20 @@ export const MainLayout: React.FC = () => {
         } catch { return 'explorer'; }
     });
     const [resizingSide, setResizingSide] = React.useState<'left' | 'right' | 'bottom' | null>(null);
+
+    // Refs for the resizable panels so the drag loop can mutate the DOM directly
+    // (zero React re-renders while dragging) and commit once on release.
+    const leftSidebarRef = React.useRef<HTMLDivElement>(null);
+    const rightSidebarRef = React.useRef<HTMLDivElement>(null);
+    const rightInnerRef = React.useRef<HTMLDivElement>(null);
+    const bottomPanelRef = React.useRef<HTMLDivElement>(null);
+    const dragStateRef = React.useRef<{
+        side: 'left' | 'right' | 'bottom';
+        startX: number;
+        startY: number;
+        startWidth: number;
+        startHeight: number;
+    } | null>(null);
 
     // Persistence effects
     React.useEffect(() => {
@@ -117,53 +145,87 @@ export const MainLayout: React.FC = () => {
 
     const startResizingRight = React.useCallback((e: React.MouseEvent) => {
         e.preventDefault();
+        dragStateRef.current = {
+            side: 'right',
+            startX: e.clientX,
+            startY: 0,
+            startWidth: rightSidebarRef.current?.offsetWidth ?? 0,
+            startHeight: 0,
+        };
         setResizingSide('right');
     }, []);
 
     const startResizingLeft = React.useCallback((e: React.MouseEvent) => {
         e.preventDefault();
+        dragStateRef.current = {
+            side: 'left',
+            startX: e.clientX,
+            startY: 0,
+            startWidth: leftSidebarRef.current?.offsetWidth ?? 0,
+            startHeight: 0,
+        };
         setResizingSide('left');
     }, []);
 
     const startResizingBottom = React.useCallback((e: React.MouseEvent) => {
         e.preventDefault();
+        dragStateRef.current = {
+            side: 'bottom',
+            startX: 0,
+            startY: e.clientY,
+            startWidth: 0,
+            startHeight: bottomPanelRef.current?.offsetHeight ?? 0,
+        };
         setResizingSide('bottom');
     }, []);
 
-    const stopResizing = React.useCallback(() => {
-        setResizingSide(null);
-    }, []);
-
-    const resize = React.useCallback(
-        (e: MouseEvent) => {
-            if (resizingSide === 'right') {
-                const newWidth = window.innerWidth - e.clientX;
-                if (newWidth > 200 && newWidth < 800) {
-                    setAiPanelWidth(newWidth);
-                }
-            } else if (resizingSide === 'left') {
-                const newWidth = e.clientX;
-                if (newWidth > 150 && newWidth < 600) {
-                    setLeftSidebarWidth(newWidth);
-                }
-            } else if (resizingSide === 'bottom') {
-                const newHeight = window.innerHeight - e.clientY;
-                if (newHeight > 100 && newHeight < 600) {
-                    setBottomPanelHeight(newHeight);
-                }
-            }
-        },
-        [resizingSide]
-    );
-
+    // Smooth resizing: during the drag we write directly to the panel's style
+    // (no React state update per mousemove) so Monaco's automaticLayout and the
+    // surrounding flex layout track the pointer with zero re-render cost. The
+    // final size is committed to state once on release (which persists it).
     React.useEffect(() => {
-        window.addEventListener('mousemove', resize);
-        window.addEventListener('mouseup', stopResizing);
-        return () => {
-            window.removeEventListener('mousemove', resize);
-            window.removeEventListener('mouseup', stopResizing);
+        const handleMouseMove = (e: MouseEvent) => {
+            const drag = dragStateRef.current;
+            if (!drag) return;
+
+            if (drag.side === 'left') {
+                const width = clamp(drag.startWidth + (e.clientX - drag.startX), 150, 600);
+                if (leftSidebarRef.current) leftSidebarRef.current.style.width = `${width}px`;
+            } else if (drag.side === 'right') {
+                const width = clamp(drag.startWidth + (drag.startX - e.clientX), 200, 800);
+                if (rightSidebarRef.current) rightSidebarRef.current.style.width = `${width}px`;
+                if (rightInnerRef.current) rightInnerRef.current.style.width = `${width}px`;
+            } else if (drag.side === 'bottom') {
+                const height = clamp(drag.startHeight + (drag.startY - e.clientY), 100, 600);
+                if (bottomPanelRef.current) bottomPanelRef.current.style.height = `${height}px`;
+            }
         };
-    }, [resize, stopResizing]);
+
+        const handleMouseUp = () => {
+            const drag = dragStateRef.current;
+            if (!drag) return;
+            dragStateRef.current = null;
+            setResizingSide(null);
+
+            if (drag.side === 'left') {
+                const width = leftSidebarRef.current ? parseFloat(leftSidebarRef.current.style.width) : 0;
+                if (width > 0) setLeftSidebarWidth(width);
+            } else if (drag.side === 'right') {
+                const width = rightSidebarRef.current ? parseFloat(rightSidebarRef.current.style.width) : 0;
+                if (width > 0) setAiPanelWidth(width);
+            } else if (drag.side === 'bottom') {
+                const height = bottomPanelRef.current ? parseFloat(bottomPanelRef.current.style.height) : 0;
+                if (height > 0) setBottomPanelHeight(height);
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
 
     // Prevent global Select All (Ctrl+A / Cmd+A) unless in an input
     React.useEffect(() => {
@@ -207,8 +269,8 @@ export const MainLayout: React.FC = () => {
 
             {/* Background Glow Effects */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-glass-pulse" />
-                <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl animate-glass-pulse" style={{ animationDelay: '1s' }} />
+                <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" style={{ opacity: 0.65 }} />
+                <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl" style={{ opacity: 0.65 }} />
             </div>
 
             {/* Activity Bar (Explorer + Explanation) */}
@@ -257,6 +319,7 @@ export const MainLayout: React.FC = () => {
 
             {/* Left Sidebar (Explorer or Explanation) - smooth open/close */}
             <div
+                ref={leftSidebarRef}
                 style={{
                     width: isLeftSidebarOpen ? Math.max(150, leftSidebarWidth) : 0,
                     opacity: isLeftSidebarOpen ? 1 : 0
@@ -295,7 +358,9 @@ export const MainLayout: React.FC = () => {
                             transition={{ duration: 0.2, ease: 'easeOut' }}
                             className="h-full flex flex-col min-w-0 min-h-0"
                         >
-                            <ExplanationSidebar />
+                            <React.Suspense fallback={<SidebarFallback />}>
+                                <ExplanationSidebar />
+                            </React.Suspense>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -336,6 +401,7 @@ export const MainLayout: React.FC = () => {
 
                     {/* Bottom Panel */}
                     <div
+                        ref={bottomPanelRef}
                         style={{ height: bottomPanelHeight }}
                         className="glass-panel shrink-0 border-t border-white/10"
                     >
@@ -345,6 +411,7 @@ export const MainLayout: React.FC = () => {
 
                 {/* Right Resize Handle */}
                 <div
+                    style={{ display: isAiSidebarOpen ? 'flex' : 'none' }}
                     className="w-1.5 glass-resize-handle cursor-col-resize z-20 flex items-center justify-center shrink-0 hover:w-2 transition-all"
                     onMouseDown={startResizingRight}
                 >
@@ -353,15 +420,16 @@ export const MainLayout: React.FC = () => {
 
                 {/* Right Sidebar (AI Assistant) */}
                 <div
+                    ref={rightSidebarRef}
                     style={{
                         width: isAiSidebarOpen ? aiPanelWidth : 0,
                         opacity: isAiSidebarOpen ? 1 : 0,
                     }}
                     className={`glass-panel flex flex-col shrink-0 border-l border-white/10 ${resizingSide === 'right' ? 'transition-none' : 'transition-all duration-300 ease-in-out'} ${!isAiSidebarOpen ? 'border-none overflow-hidden' : ''}`}
                 >
-                    <div className="flex-1 min-h-0 flex flex-col" style={{ width: aiPanelWidth }}>
-                        <AIAssistant />
-                    </div>
+                <div className="flex-1 min-h-0 flex flex-col" ref={rightInnerRef} style={{ width: aiPanelWidth }}>
+                    <AIAssistant isVisible={isAiSidebarOpen} />
+                </div>
                 </div>
             </div>
         </div>

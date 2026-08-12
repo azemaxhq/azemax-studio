@@ -1,8 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, memo } from 'react';
 import { useProject } from './ProjectContext';
 import { useTerminal } from './TerminalContext';
 import { explainFileOrSnippet } from '../utils/groqService';
+import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
 
 const STORAGE_KEY = 'explanation-panel-persisted';
 
@@ -46,7 +47,7 @@ interface ExplanationContextType {
 
 const ExplanationContext = createContext<ExplanationContextType | undefined>(undefined);
 
-export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo(({ children }) => {
     const { activeFile } = useProject();
     const { writeToTerminal, activeTerminalId } = useTerminal();
     const [state, setState] = useState(() => loadPersisted());
@@ -57,7 +58,7 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setState((prev) => {
             const s = { ...prev, ...next };
             try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                debouncedLocalStorageSet(STORAGE_KEY, JSON.stringify({
                     explanation: s.explanation,
                     explanationError: s.explanationError,
                     explainedFor: s.explainedFor,
@@ -156,22 +157,24 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     const canSendToTerminal = Boolean(explanation && activeTerminalId);
 
+    const value = useMemo(() => ({
+        explanation,
+        explanationError,
+        isExplaining,
+        handleExplain,
+        handleExplainSelection,
+        handleClearExplanation,
+        handleRetryExplanation,
+        handleSendExplanationToTerminal,
+        canSendToTerminal,
+    }), [explanation, explanationError, isExplaining, handleExplain, handleExplainSelection, handleClearExplanation, handleRetryExplanation, handleSendExplanationToTerminal, canSendToTerminal]);
+
     return (
-        <ExplanationContext.Provider value={{
-            explanation,
-            explanationError,
-            isExplaining,
-            handleExplain,
-            handleExplainSelection,
-            handleClearExplanation,
-            handleRetryExplanation,
-            handleSendExplanationToTerminal,
-            canSendToTerminal,
-        }}>
+        <ExplanationContext.Provider value={value}>
             {children}
         </ExplanationContext.Provider>
     );
-};
+});
 
 export const useExplanation = () => {
     const ctx = useContext(ExplanationContext);

@@ -1,5 +1,7 @@
 
 
+import { debouncedLocalStorageSet } from './localStorageDebounce';
+
 export interface Message {
     id: string;
     role: 'user' | 'ai';
@@ -37,7 +39,7 @@ export const loadSessions = (): ChatSession[] => {
 
 export const saveSessions = (sessions: ChatSession[]) => {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+        debouncedLocalStorageSet(STORAGE_KEY, JSON.stringify(sessions), 300);
     } catch (e) {
         console.warn('Failed to save chat sessions:', e);
     }

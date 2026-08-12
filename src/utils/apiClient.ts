@@ -45,5 +45,8 @@ export function getWebSocketUrl(): string {
     }
     const port = import.meta.env.VITE_WS_PORT || '3001';
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    return `${protocol}://${window.location.hostname}:${port}`;
+    // In development, always use localhost since backend runs on same machine.
+    // window.location.hostname can be a network IP (e.g., 172.20.10.8) which the backend may not bind to.
+    const hostname = import.meta.env.DEV ? 'localhost' : window.location.hostname;
+    return `${protocol}://${hostname}:${port}`;
 }

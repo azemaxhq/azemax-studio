@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
+import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
 
 export interface ExecutionData {
     executionTime: number;
@@ -50,7 +51,7 @@ interface TerminalContextType {
 const TerminalContext = createContext<TerminalContextType | undefined>(undefined);
 const TERMINALS_STORAGE_KEY = 'deepcontext-terminals-v3'; // Bumped version to clear old state
 
-export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({ children }) => {
     const [terminals, setTerminals] = useState<TerminalSession[]>(() => {
         try {
             const saved = localStorage.getItem(TERMINALS_STORAGE_KEY);
@@ -71,9 +72,48 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Event bus to send commands directly to ShellTerminal instances
     const [terminalEventEmitter] = useState(() => new EventTarget());
 
+    // Terminal instances whose ShellTerminal listener is currently registered (mounted)
+    const mountedTerminalsRef = useRef<Set<string>>(new Set());
+
+    // Buffer the latest run until its target terminal is mounted & listening.
+    // This eliminates the race where runData is dispatched before the target
+    // ShellTerminal has registered its listener (run silently lost, no output).
+    const pendingRunRef = useRef<{
+        termId: string;
+        payload: { id: string; language: string; code: string; fileName?: string; stdinInput?: string; cwd?: string };
+    } | null>(null);
+
+    const deliverPendingRun = useCallback(() => {
+        const pending = pendingRunRef.current;
+        if (!pending) return;
+        pendingRunRef.current = null;
+        terminalEventEmitter.dispatchEvent(new CustomEvent('runData', { detail: pending.payload }));
+    }, [terminalEventEmitter]);
+
+    useEffect(() => {
+        const onTerminalReady = (e: Event) => {
+            const id = (e as CustomEvent).detail?.id;
+            if (!id) return;
+            mountedTerminalsRef.current.add(id);
+            if (pendingRunRef.current?.termId === id) {
+                deliverPendingRun();
+            }
+        };
+        const onTerminalUnmounted = (e: Event) => {
+            const id = (e as CustomEvent).detail?.id;
+            if (id) mountedTerminalsRef.current.delete(id);
+        };
+        terminalEventEmitter.addEventListener('terminalReady', onTerminalReady);
+        terminalEventEmitter.addEventListener('terminalUnmounted', onTerminalUnmounted);
+        return () => {
+            terminalEventEmitter.removeEventListener('terminalReady', onTerminalReady);
+            terminalEventEmitter.removeEventListener('terminalUnmounted', onTerminalUnmounted);
+        };
+    }, [deliverPendingRun, terminalEventEmitter]);
+
     useEffect(() => {
         try {
-            localStorage.setItem(TERMINALS_STORAGE_KEY, JSON.stringify(terminals));
+            debouncedLocalStorageSet(TERMINALS_STORAGE_KEY, JSON.stringify(terminals));
         } catch {
             // Ignore localStorage errors
         }
@@ -129,8 +169,10 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [terminalEventEmitter]);
 
     const stopProcess = useCallback((id: string) => {
+        // Dispatch stop intent; the owning ShellTerminal maps it to its session
+        // controller (signal/kill -> backend process termination -> exit frame).
+        // isRunning is cleared authoritatively by the session EXITED/FAILED state.
         terminalEventEmitter.dispatchEvent(new CustomEvent('stop', { detail: { id } }));
-        setIsRunning(false);
     }, [terminalEventEmitter]);
 
     const writeToTerminal = useCallback((id: string, text: string) => {
@@ -165,19 +207,22 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (runLang === 'cs' || runLang === 'c#') runLang = 'csharp';
         if (runLang === 'rb') runLang = 'ruby';
 
-        return new Promise<void>((resolve) => {
-            terminalEventEmitter.dispatchEvent(new CustomEvent('runData', {
-                detail: {
-                    id: termId,
-                    code,
-                    language: runLang,
-                    filename,
-                    stdinInput
-                }
-            }));
-            resolve();
-        });
-    }, [activeTerminalId, terminals, terminalEventEmitter]);
+        const payload = { id: termId, code, language: runLang, filename, stdinInput, cwd };
+        pendingRunRef.current = { termId, payload };
+
+        // Deliver immediately if the target terminal is already mounted & listening;
+        // otherwise flush when that terminal mounts (via terminalReady).
+        // NOTE: an existing terminal's ShellTerminal registers its runData listener on
+        // mount, even if this provider missed the terminalReady frame (child effects run
+        // before the provider's listener is attached on reload). So if the tab already
+        // exists we can dispatch now; only auto-created tabs need the terminalReady flush.
+        const tabExists = Boolean(termId && terminals.find(t => t.id === termId));
+        if (tabExists || mountedTerminalsRef.current.has(termId)) {
+            deliverPendingRun();
+        }
+
+        return Promise.resolve();
+    }, [activeTerminalId, terminals, terminalEventEmitter, deliverPendingRun]);
 
     const updateTerminalCwd = useCallback((terminalId: string, newCwd: string) => {
         setTerminals(prev => prev.map(terminal => {
@@ -209,29 +254,31 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
     }, [terminals]);
 
+    const value = useMemo(() => ({
+        terminals,
+        activeTerminalId,
+        createTerminal,
+        removeTerminal,
+        setActiveTerminalId,
+        runCode,
+        clearTerminal,
+        stopProcess,
+        writeToTerminal,
+        isRunning,
+        setIsRunning,
+        lastExecutionData,
+        setLastExecutionData,
+        updateTerminalCwd,
+        syncTerminalToFileExplorer,
+        terminalEventEmitter,
+    }), [terminals, activeTerminalId, createTerminal, removeTerminal, setActiveTerminalId, runCode, clearTerminal, stopProcess, writeToTerminal, isRunning, setIsRunning, lastExecutionData, setLastExecutionData, updateTerminalCwd, syncTerminalToFileExplorer, terminalEventEmitter]);
+
     return (
-        <TerminalContext.Provider value={{
-            terminals,
-            activeTerminalId,
-            createTerminal,
-            removeTerminal,
-            setActiveTerminalId,
-            runCode,
-            clearTerminal,
-            stopProcess,
-            isRunning,
-            setIsRunning,
-            lastExecutionData,
-            setLastExecutionData,
-            updateTerminalCwd,
-            syncTerminalToFileExplorer,
-            terminalEventEmitter,
-            writeToTerminal
-        }}>
+        <TerminalContext.Provider value={value}>
             {children}
         </TerminalContext.Provider>
     );
-};
+});
 
 export const useTerminal = () => {
     const context = useContext(TerminalContext);

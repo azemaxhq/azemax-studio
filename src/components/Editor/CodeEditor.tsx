@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import type { OnMount } from '@monaco-editor/react';
+import type { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useProject } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -11,6 +11,37 @@ import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, Gi
 import { ModernAILogo } from '../Icons/ModernAILogo';
 import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
+import type { FileNode } from '../../utils/mockFileSystem';
+
+const RunButton: React.FC<{ activeFile: FileNode | null; language: string }> = ({ activeFile, language }) => {
+    const { runCode, isRunning } = useTerminal();
+    return (
+        <button
+            onClick={() => {
+                if (activeFile) {
+                    window.dispatchEvent(new CustomEvent('run-button-clicked'));
+                    setTimeout(() => {
+                        runCode(activeFile.content || '', language, activeFile.name);
+                    }, 100);
+                }
+            }}
+            disabled={isRunning || !activeFile}
+            className="glass-run-button py-1 px-3 text-[11px] h-7"
+        >
+            {isRunning ? (
+                <>
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>Running...</span>
+                </>
+            ) : (
+                <>
+                    <Play size={12} />
+                    <span>Run</span>
+                </>
+            )}
+        </button>
+    );
+};
 
 // Language detection helper
 const getLanguage = (fileName: string): string => {
@@ -36,15 +67,18 @@ interface CodeEditorProps {
     onToggleSidebar?: () => void;
 }
 
+let githubDarkThemeDefined = false;
+
 export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) => {
     const { activeFile, updateFileContent } = useProject();
     const { settings, updateSettings } = useSettings();
     const { isDark } = useTheme();
-    const { runCode, isRunning } = useTerminal();
     const monacoRef = useRef<typeof Monaco | null>(null);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const completionProviderRef = useRef<Monaco.IDisposable | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    type InlineCompletionsResult = Monaco.languages.InlineCompletions<Monaco.languages.InlineCompletion>;
+    const pendingInlineResolveRef = useRef<((value: InlineCompletionsResult | PromiseLike<InlineCompletionsResult | null | undefined> | null | undefined) => void) | null>(null);
     const activeFileRef = useRef(activeFile);
     /** Cache last non-empty selection so Explain Selection still works after focus leaves editor */
     const lastSelectionRef = useRef<{ fileId: string; text: string; language: string; fileName?: string } | null>(null);
@@ -201,6 +235,24 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [runDiagnostics]);
+
+    // Clean up inline-completion debounce timer and pending promise on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+            }
+            if (pendingInlineResolveRef.current) {
+                pendingInlineResolveRef.current({ items: [] });
+                pendingInlineResolveRef.current = null;
+            }
+            if (completionProviderRef.current) {
+                completionProviderRef.current.dispose();
+                completionProviderRef.current = null;
+            }
+        };
+    }, []);
 
     // Force update editor content when activeFile changes content (e.g. from AI)
     // We only update if it differs from what the editor already holds
@@ -527,15 +579,36 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
     }, [activeAiLine]);
 
-    // Update comment decorations on content change
+    // Update comment decorations on content change (debounced to avoid full-file scan per keystroke)
+    const commentDecorationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
-        if (editorRef.current) {
-            const disposable = editorRef.current.onDidChangeModelContent(() => {
+        if (!editorRef.current) return;
+        const disposable = editorRef.current.onDidChangeModelContent((e) => {
+            // Immediate rebuild when the change touches /// (keeps AI-command highlight snappy)
+            const touchesAiComment = e.changes.some(c => c.text.includes('///'));
+            if (touchesAiComment) {
+                if (commentDecorationTimerRef.current) {
+                    clearTimeout(commentDecorationTimerRef.current);
+                    commentDecorationTimerRef.current = null;
+                }
                 updateCommentDecorations();
-            });
-            return () => disposable.dispose();
-        }
-    }, [updateCommentDecorations]);
+                return;
+            }
+            // Otherwise batch full-file scans, since decorations auto-clip on deletes anyway
+            if (commentDecorationTimerRef.current) return;
+            commentDecorationTimerRef.current = setTimeout(() => {
+                commentDecorationTimerRef.current = null;
+                updateCommentDecorations();
+            }, 250);
+        });
+        return () => {
+            disposable.dispose();
+            if (commentDecorationTimerRef.current) {
+                clearTimeout(commentDecorationTimerRef.current);
+                commentDecorationTimerRef.current = null;
+            }
+        };
+    }, [updateCommentDecorations, editorReady]);
 
     // Update loading decoration when activeAiLine changes
     useEffect(() => {
@@ -655,7 +728,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     // These are handled by handleAiCommentAutoReplace, so skip them here
                     const isCompletedAiCommand = /^\s*\/\/\/\s*.+;\s*$/.test(lineContent);
                     if (isCompletedAiCommand) {
-                        console.log('[CodeEditor] Skipping inline completion - completed AI command handled by auto-replace');
                         return { items: [] };
                     }
 
@@ -665,23 +737,30 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                     // Only provide suggestions for regular code, not /// commands in progress
                     if (isAiCommand) {
-                        console.log('[CodeEditor] Skipping inline completion - AI command in progress, waiting for semicolon');
                         return { items: [] };
                     }
-
-                    console.log('[CodeEditor] InlineCompletion Triggered. Line:', position.lineNumber, 'Content:', lineContent);
 
                     if (!isSuggestionsEnabledRef.current) {
                         return { items: [] };
                     }
 
                     if (context.triggerKind === monaco.languages.InlineCompletionTriggerKind.Automatic) {
+                        // Resolve any previous pending promise (Monaco keeps calling per keystroke;
+                        // leaving the old one hanging leaks pending promises)
+                        if (pendingInlineResolveRef.current) {
+                            pendingInlineResolveRef.current({ items: [] });
+                            pendingInlineResolveRef.current = null;
+                        }
                         if (debounceTimerRef.current) {
                             clearTimeout(debounceTimerRef.current);
+                            debounceTimerRef.current = null;
                         }
 
                         return new Promise((resolve) => {
+                            pendingInlineResolveRef.current = resolve;
                             debounceTimerRef.current = setTimeout(async () => {
+                                debounceTimerRef.current = null;
+                                pendingInlineResolveRef.current = null;
                                 if (token.isCancellationRequested || !isSuggestionsEnabledRef.current) {
                                     resolve({ items: [] });
                                     return;
@@ -735,25 +814,33 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
     }, [activeFile, updateFileContent]);
 
+    const handleEditorBeforeMount: BeforeMount = (monaco) => {
+        // Register the custom dark theme BEFORE @monaco-editor/react calls
+        // monaco.editor.setTheme(theme) during editor creation. If it were
+        // registered only in onMount (which runs after setTheme), Monaco would
+        // not find it, fall back to the default light theme, and never re-apply.
+        if (!githubDarkThemeDefined) {
+            githubDarkThemeDefined = true;
+            monaco.editor.defineTheme('github-dark', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [],
+                colors: {
+                    'editor.background': '#0d1117',
+                    'editor.foreground': '#c9d1d9',
+                    'editorLineNumber.foreground': '#8b949e',
+                    'editor.lineHighlightBackground': '#161b22',
+                    'editorCursor.foreground': '#58a6ff',
+                    'editor.selectionBackground': '#30363d',
+                    'editor.inactiveSelectionBackground': '#30363d'
+                }
+            });
+        }
+    };
+
     const handleEditorMount: OnMount = (editor, monaco) => {
         monacoRef.current = monaco;
         editorRef.current = editor;
-
-        monaco.editor.defineTheme('github-dark', {
-            base: 'vs-dark',
-            inherit: true,
-            rules: [],
-            colors: {
-                'editor.background': '#0d1117',
-                'editor.foreground': '#c9d1d9',
-                'editorLineNumber.foreground': '#8b949e',
-                'editor.lineHighlightBackground': '#161b22',
-                'editorCursor.foreground': '#58a6ff',
-                'editor.selectionBackground': '#30363d',
-                'editor.inactiveSelectionBackground': '#30363d'
-            }
-        });
-        monaco.editor.setTheme('github-dark');
 
         editor.onDidChangeCursorPosition((e) => {
             setCursorPosition({
@@ -818,7 +905,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         return (
             <div className="w-full h-full bg-transparent flex flex-col items-center justify-center text-muted glass-panel-light relative group">
                 <div className="relative mb-6">
-                    <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full animate-glass-pulse" />
+                    <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full" style={{ opacity: 0.65 }} />
                     <div className="relative p-8 rounded-full bg-gradient-to-br from-white/5 to-transparent border border-white/10">
                         <Code size={64} className="text-white/20" />
                     </div>
@@ -974,33 +1061,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         {language}
                     </span>
 
-                    <button
-                        onClick={() => {
-                            if (activeFile) {
-                                // Dispatch event to switch to terminal tab first
-                                window.dispatchEvent(new CustomEvent('run-button-clicked'));
-                                
-                                // Small delay to allow tab switching before running code
-                                setTimeout(() => {
-                                    runCode(activeFile.content || '', language, activeFile.name);
-                                }, 100);
-                            }
-                        }}
-                        disabled={isRunning || !activeFile}
-                        className="glass-run-button py-1 px-3 text-[11px] h-7"
-                    >
-                        {isRunning ? (
-                            <>
-                                <Loader2 size={12} className="animate-spin" />
-                                <span>Running...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Play size={12} />
-                                <span>Run</span>
-                            </>
-                        )}
-                    </button>
+                    <RunButton activeFile={activeFile} language={language} />
 
                     {/* AI Sidebar Toggle - Interactive Animated */}
                     {onToggleAi && (
@@ -1089,8 +1150,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     height="100%"
                     language={language}
                     value={activeFile?.content || ''}
-                    theme={isDark ? 'vs-dark' : 'vs-light'}
+                    theme={isDark ? 'github-dark' : 'vs-light'}
                     onChange={handleEditorChange}
+                    beforeMount={handleEditorBeforeMount}
                     onMount={handleEditorMount}
                     options={{
                         minimap: { enabled: settings.editor.showMinimap },

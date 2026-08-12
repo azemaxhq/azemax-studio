@@ -2,10 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { useTerminal } from '../../context/TerminalContext';
 import { useProject } from '../../context/ProjectContext';
+import { TerminalSessionController } from '../../context/TerminalSessionController';
 import { type FileNode } from '../../utils/mockFileSystem';
-import { getWebSocketUrl } from '../../utils/apiClient';
 import '@xterm/xterm/css/xterm.css';
 
 interface ShellTerminalProps {
@@ -14,21 +15,38 @@ interface ShellTerminalProps {
     cwd: string;
 }
 
+/**
+ * ShellTerminal wires one xterm instance to one TerminalSessionController.
+ *
+ * Architecture:
+ *   xterm (owns keyboard input / rendering)
+ *     |  onData -> session.sendInput   (no React state in the keystroke path)
+ *     |  session -> onOutput -> xterm.write (direct)
+ *     v
+ *   TerminalSessionController (owns session identity + WebSocket transport)
+ *     |  terminal.* protocol frames
+ *     v
+ *   Backend TerminalManager (owns PTY + process lifecycle)
+ *
+ * Two modes share this view:
+ *   - Shell mode (idle): a lightweight in-browser shell acting on the file tree.
+ *   - Program mode (session active): keystrokes stream to the PTY, PTY echoes.
+ * The modes are separated by session state, so shell input is never confused
+ * with program stdin.
+ */
 export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visible, cwd }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
+    const webglAddonRef = useRef<WebglAddon | null>(null);
     const commandBuffer = useRef<string>('');
     const cursorPos = useRef<number>(0);
     const history = useRef<string[]>([]);
     const historyIndex = useRef<number>(-1);
-    const wsRef = useRef<WebSocket | null>(null);
-    const isRunningRef = useRef<boolean>(false);
-    const collectingStdinRef = useRef<boolean>(false);
-    const stdinBufferRef = useRef<string>('');
-    const executionStartTimeRef = useRef<number>(0);
-    const executionStdoutRef = useRef<string>('');
-    const executionStderrRef = useRef<string>('');
+
+    // Per-terminal session controller. Stable for the terminal's lifetime;
+    // a disposed controller is replaced the next time a run starts.
+    const sessionRef = useRef<TerminalSessionController | null>(null);
 
     const { terminalEventEmitter, setIsRunning, setLastExecutionData, updateTerminalCwd, syncTerminalToFileExplorer } = useTerminal();
     const { fileTree, createFile, createFolder, deleteNode, selectedFolder, setSelectedFolder } = useProject();
@@ -114,7 +132,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             cursorBlink: true,
             allowTransparency: true,
             convertEol: true, // Auto convert \n to \r\n
-            overviewRulerWidth: 0,
+            overviewRuler: { width: 0 },
             scrollback: 1000,
         });
 
@@ -126,20 +144,59 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
 
         term.open(containerRef.current);
 
-        // Using xterm.js standard high-performance DOM/Canvas renderer for maximum cross-browser stability.
+        // WebGL renderer for high-throughput output; falls back to the DOM renderer automatically
+        try {
+            const webglAddon = new WebglAddon();
+            webglAddon.onContextLoss(() => {
+                webglAddon.dispose();
+                webglAddonRef.current = null;
+            });
+            term.loadAddon(webglAddon);
+            webglAddonRef.current = webglAddon;
+        } catch {
+            webglAddonRef.current = null;
+        }
 
         // Slightly delay fit to ensure DOM is ready
-        setTimeout(() => fitAddon.fit(), 10);
+        const fitTimeout = setTimeout(() => fitAddon.fit(), 10);
 
         xtermRef.current = term;
         fitAddonRef.current = fitAddon;
 
         return () => {
+            clearTimeout(fitTimeout);
+            webglAddonRef.current?.dispose();
+            webglAddonRef.current = null;
             term.dispose();
             xtermRef.current = null;
             fitAddonRef.current = null;
         };
     }, []);
+
+    // Recreate WebGL renderer when the terminal tab becomes visible; dispose it when hidden
+    useEffect(() => {
+        const term = xtermRef.current;
+        if (!term) return;
+        if (visible) {
+            if (!webglAddonRef.current) {
+                try {
+                    const webglAddon = new WebglAddon();
+                    webglAddon.onContextLoss(() => {
+                        webglAddon.dispose();
+                        webglAddonRef.current = null;
+                    });
+                    term.loadAddon(webglAddon);
+                    webglAddonRef.current = webglAddon;
+                    fitAddonRef.current?.fit();
+                } catch {
+                    webglAddonRef.current = null;
+                }
+            }
+        } else {
+            webglAddonRef.current?.dispose();
+            webglAddonRef.current = null;
+        }
+    }, [visible]);
 
     // 2. Mock Shell Logic & Input Handling (initialize once after xterm is created)
     useEffect(() => {
@@ -514,66 +571,19 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         };
 
         const onDataDisposable = term.onData((data: string) => {
-            // Stdin collection mode: buffer input locally for Wandbox
-            if (collectingStdinRef.current) {
+            // PROGRAM MODE: the active session owns keyboard input. Keystrokes go
+            // straight to the session controller -> WebSocket -> PTY/process.
+            // The PTY performs echo, so we do NOT print input here (no duplicates,
+            // no disappearing input). Ctrl+C is mapped to SIGINT on the process.
+            const session = sessionRef.current;
+            if (session && session.isActive) {
                 const code = data.charCodeAt(0);
-                const term = xtermRef.current;
-                if (!term) return;
-
-                if (code === 4) { // Ctrl+D — submit stdin
-                    collectingStdinRef.current = false;
-                    term.write('\r\n\x1b[3;36m⏳ Running with provided input...\x1b[0m\r\n');
-                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                        wsRef.current.send(JSON.stringify({ action: 'stdin-ready', data: stdinBufferRef.current }));
-                    }
+                if (code === 3) { // Ctrl+C -> SIGINT (real signal to process group)
+                    session.signal('SIGINT');
+                    term.write('^C');
                     return;
                 }
-                if (code === 3) { // Ctrl+C — cancel
-                    collectingStdinRef.current = false;
-                    stdinBufferRef.current = '';
-                    term.write('^C\r\n\x1b[1;31mInput cancelled.\x1b[0m\r\n');
-                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                        wsRef.current.send(JSON.stringify({ action: 'kill' }));
-                        wsRef.current.close();
-                    }
-                    isRunningRef.current = false;
-                    setIsRunning(false);
-                    wsRef.current = null;
-                    const currentCwd = localCwdRef.current;
-                    const promptName = currentCwd === 'root' ? '~' : currentCwd.split('/').pop();
-                    term.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
-                    return;
-                }
-                if (code === 13) { // Enter
-                    stdinBufferRef.current += '\n';
-                    term.write('\r\n');
-                    
-                    // Submit immediately on enter for intuitive UX
-                    collectingStdinRef.current = false;
-                    term.write('\x1b[3;36m⏳ Running with provided input...\x1b[0m\r\n');
-                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                        wsRef.current.send(JSON.stringify({ action: 'stdin-ready', data: stdinBufferRef.current }));
-                    }
-                    return;
-                }
-                if (code === 127 || data === '\b') { // Backspace
-                    if (stdinBufferRef.current.length > 0 && stdinBufferRef.current[stdinBufferRef.current.length - 1] !== '\n') {
-                        stdinBufferRef.current = stdinBufferRef.current.slice(0, -1);
-                        term.write('\b \b');
-                    }
-                    return;
-                }
-                if (code >= 32 && code <= 126) { // Printable
-                    stdinBufferRef.current += data;
-                    term.write(data);
-                    return;
-                }
-                return;
-            }
-
-            // When a program is running, stream all input directly to the backend process
-            if (isRunningRef.current && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({ action: 'input', data }));
+                session.sendInput(data);
                 return;
             }
 
@@ -708,22 +718,37 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         };
     }, []);
 
-    // 3. Dynamic Resize Listener + focus when visible
+    // 3. Dynamic Resize Listener + focus when visible. Size changes are
+    //    propagated to the active session's PTY (debounced to one frame).
     useEffect(() => {
         if (!visible) return;
 
         const handleResize = () => {
-            if (fitAddonRef.current) {
-                fitAddonRef.current.fit();
+            const fit = fitAddonRef.current;
+            const term = xtermRef.current;
+            if (fit) fit.fit();
+            const session = sessionRef.current;
+            if (term && session && session.isActive) {
+                session.resize(term.cols, term.rows);
             }
         };
 
-        const resizeObserver = new ResizeObserver(() => handleResize());
+        // Debounce: only send meaningful size changes, one per frame.
+        let raf: number | null = null;
+        const queuedResize = () => {
+            if (raf) return;
+            raf = window.requestAnimationFrame(() => {
+                raf = null;
+                handleResize();
+            });
+        };
+
+        const resizeObserver = new ResizeObserver(() => queuedResize());
         if (containerRef.current) {
             resizeObserver.observe(containerRef.current);
         }
 
-        window.addEventListener('resize', handleResize);
+        window.addEventListener('resize', queuedResize);
 
         // Do an immediate fit and focus when becoming visible
         setTimeout(() => {
@@ -733,9 +758,12 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             }
         }, 10);
 
+        const isMounted = true;
         return () => {
-            window.removeEventListener('resize', handleResize);
+            if (raf) cancelAnimationFrame(raf);
+            window.removeEventListener('resize', queuedResize);
             resizeObserver.disconnect();
+            void isMounted;
         };
     }, [visible]);
 
@@ -754,19 +782,21 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         const handleStop = (e: Event) => {
             const ce = e as CustomEvent;
             if (ce.detail.id === terminalId) {
-                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(JSON.stringify({ action: 'kill' }));
+                const session = sessionRef.current;
+                if (session && session.isActive) {
+                    session.stop(); // session.kill -> backend process termination -> exit frame -> isRunning cleared
                 }
             }
         };
 
-        const handleRunData = async (e: Event) => {
+const handleRunData = (e: Event) => {
             const ce = e as CustomEvent;
             if (ce.detail.id !== terminalId) return;
 
             const runLanguage: string = ce.detail.language || 'code';
             const rawFilename: string | undefined = ce.detail.filename;
             const preStdin: string = ce.detail.stdinInput || '';
+            const runCwd: string = ce.detail.cwd || localCwdRef.current;
             const displayName = rawFilename && typeof rawFilename === 'string'
                 ? rawFilename
                 : `snippet.${runLanguage === 'javascript' ? 'js' : runLanguage === 'python' ? 'py' : runLanguage}`;
@@ -777,113 +807,85 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             }
             term.focus();
 
-            try {
-                // Only set running state if not already running
-                if (!isRunningRef.current) {
-                    setIsRunning(true);
-                    isRunningRef.current = true;
-                }
-                executionStartTimeRef.current = Date.now();
-                executionStdoutRef.current = '';
-                executionStderrRef.current = '';
-                
-                const ws = new WebSocket(getWebSocketUrl());
-                wsRef.current = ws;
-
-                // Track un-echoed stdin lines to inject after prompts
-                const unEchoedStdin = preStdin ? preStdin.split('\n') : [];
-
-                ws.onopen = () => {
-                    ws.send(JSON.stringify({
-                        action: 'execute',
-                        language: ce.detail.language,
-                        files: [{ content: ce.detail.code }],
-                        stdinInput: preStdin
-                    }));
-                };
-
-                ws.onmessage = (msg) => {
-                    try {
-                        const res = JSON.parse(msg.data);
-                        if (res.type === 'stdout') {
-                            let text = res.data;
-                            executionStdoutRef.current += text; // Capture stdout
-
-                            // Heuristic to simulate input echo:
-                            // If stdout doesn't end with a newline, it's a prompt for input.
-                            // We visually inject the next line from our pre-provided stdin.
-                            if (unEchoedStdin.length > 0 && !text.endsWith('\n') && !text.endsWith('\r')) {
-                                const injectedInput = unEchoedStdin.shift() || '';
-                                text += `\x1b[32m${injectedInput}\x1b[0m\n`; // Echo input in green, then newline
-                            }
-
-                            term.write(`\x1b[37m${text.replace(/\n/g, '\r\n')}\x1b[0m`);
-                        }
-                        if (res.type === 'stderr') {
-                            executionStderrRef.current += res.data; // Capture stderr
-                            term.write(`\x1b[31m${res.data.replace(/\n/g, '\r\n')}\x1b[0m`);
-                        }
-                        if (res.type === 'error') {
-                            executionStderrRef.current += res.data; // Capture error as stderr
-                            term.write(`\x1b[1;31m${res.data.replace(/\n/g, '\r\n')}\x1b[0m`);
-                        }
-                        if (res.type === 'stdin-prompt') {
-                            // Enter stdin collection mode
-                            stdinBufferRef.current = '';
-                            collectingStdinRef.current = true;
-                            term.write('\r\n\x1b[1;33m📥 This program requires input.\x1b[0m');
-                            term.write('\r\n\x1b[3;33m   Type your input below (press Enter to submit, Ctrl+C to cancel):\x1b[0m\r\n');
-                        }
-                        if (res.type === 'exit') {
-                            const exitColor = res.code === 0 ? '32' : '31';
-                            term.writeln(`\r\n\x1b[1;${exitColor}mProcess finished with exit code ${res.code || 0}\x1b[0m`);
-                            
-                            // Capture execution data for performance analysis
-                            const executionTime = Date.now() - executionStartTimeRef.current;
-                            const executionData = {
-                                executionTime,
-                                stdout: executionStdoutRef.current,
-                                stderr: executionStderrRef.current,
-                                exitCode: res.code || 0,
-                                timestamp: Date.now()
-                            };
-                            setLastExecutionData(executionData);
-                            
-                            ws.close();
-                        }
-                    } catch (e) { }
-                };
-
-                ws.onclose = (event) => {
-                    if (!event.wasClean) {
-                        term.writeln(`\r\n\x1b[1;31mWebSocket disconnected unexpectedly. Code: ${event.code}, reason: ${event.reason || 'None'}\x1b[0m`);
+            // Single source of truth for the session listeners (create + reuse).
+            const buildListeners = () => ({
+                onOutput: (data: string) => { const t = xtermRef.current; if (t) t.write(data); },
+                onState: (state: string) => {
+                    if (state === 'EXITED' || state === 'FAILED' || state === 'DISPOSED') {
+                        setIsRunning(false);
                     }
-                    setIsRunning(false);
-                    isRunningRef.current = false;
-                    wsRef.current = null;
+                },
+                onExit: (code: number | null, signal: string | null) => {
+                    const t = xtermRef.current;
+                    if (!t) return;
+                    if (signal) {
+                        t.writeln(`\r\n\x1b[1;31mProcess terminated by ${signal}\x1b[0m`);
+                    } else {
+                        const exitColor = code === 0 ? '32' : '31';
+                        t.writeln(`\r\n\x1b[1;${exitColor}mProcess finished with exit code ${code ?? 0}\x1b[0m`);
+                    }
+                    const perf = session!.getPerformanceData();
+                    setLastExecutionData({
+                        executionTime: perf.executionTime,
+                        stdout: perf.stdout,
+                        stderr: perf.stderr,
+                        exitCode: code ?? 0,
+                        timestamp: Date.now(),
+                    });
                     const currentCwd = localCwdRef.current;
                     const promptName = currentCwd === 'root' ? '~' : currentCwd.split('/').pop();
-                    term.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
-                };
+                    t.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
+                },
+                onStdinRequired: (interactive: boolean) => {
+                    const t = xtermRef.current;
+                    if (!t) return;
+                    if (interactive) {
+                        t.writeln('\r\n\x1b[3;33mProgram is waiting for input — type below (PTY echoes).\x1b[0m');
+                    } else {
+                        t.writeln('\r\n\x1b[3;33mProgram requires input — type a line and press Enter.\x1b[0m');
+                    }
+                },
+                onError: (message: string) => {
+                    const t = xtermRef.current;
+                    if (!t) return;
+                    t.writeln(`\r\n\x1b[1;31m${message}\x1b[0m`);
+                },
+            });
 
-                ws.onerror = (error: any) => {
-                    term.writeln(`\r\n\x1b[1;31mWebSocket Error occurred.\x1b[0m`);
-                    console.error("ShellTerminal WebSocket Error:", error);
-                    // Don't close here, wait for onclose
-                };
-
-            } catch (err) {
-                term.writeln(`\r\n\x1b[1;31mExecution Failed: ${err}\x1b[0m`);
-                setIsRunning(false);
-                isRunningRef.current = false;
+            // Build (or reuse) the session controller for this terminal.
+            let session = sessionRef.current;
+            if (session && session.state === 'DISPOSED') {
+                session = null;
+                sessionRef.current = null;
             }
+            if (!session) {
+                session = new TerminalSessionController(terminalId, buildListeners());
+                sessionRef.current = session;
+            } else {
+                session.setListeners(buildListeners());
+            }
+
+            // Notify the context a run is in progress. Authoritative completion
+            // comes via the session state (terminal.exit / FAILED / timeout).
+            setIsRunning(true);
+
+            const termX = xtermRef.current;
+            session.startCode(
+                ce.detail.code,
+                runLanguage,
+                preStdin,
+                termX ? termX.cols : 120,
+                termX ? termX.rows : 30,
+                runCwd,
+            );
         };
 
         const handleKill = (e: Event) => {
             const ce = e as CustomEvent;
             if (ce.detail.id === terminalId) {
-                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(JSON.stringify({ action: 'kill' }));
+                const session = sessionRef.current;
+                if (session && session.isActive) {
+                    session.stop();
                 }
             }
         };
@@ -949,6 +951,10 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         terminalEventEmitter.addEventListener('paste', handlePaste);
         terminalEventEmitter.addEventListener('writeText', handleWriteText);
 
+        // Notify the provider that this terminal is mounted & listening so any
+        // buffered run (dispatched while the terminal tab was still opening) is flushed.
+        terminalEventEmitter.dispatchEvent(new CustomEvent('terminalReady', { detail: { id: terminalId } }));
+
         return () => {
             terminalEventEmitter.removeEventListener('clear', handleClear);
             terminalEventEmitter.removeEventListener('stop', handleStop);
@@ -958,8 +964,18 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             terminalEventEmitter.removeEventListener('copyAll', handleCopyAll);
             terminalEventEmitter.removeEventListener('paste', handlePaste);
             terminalEventEmitter.removeEventListener('writeText', handleWriteText);
+
+            terminalEventEmitter.dispatchEvent(new CustomEvent('terminalUnmounted', { detail: { id: terminalId } }));
+
+            // Terminate the session's process + transport on unmount (no orphans).
+            const session = sessionRef.current;
+            if (session && session.isActive) {
+                session.dispose();
+            }
+            sessionRef.current = null;
+            setIsRunning(false);
         };
-    }, [terminalId, terminalEventEmitter]);
+    }, [terminalId, terminalEventEmitter, setIsRunning]);
 
     const handleContainerClick = () => {
         if (xtermRef.current) {

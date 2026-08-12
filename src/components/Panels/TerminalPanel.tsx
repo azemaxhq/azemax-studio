@@ -116,7 +116,7 @@ export const TerminalPanel: React.FC = () => {
     }, [activeTerminalId]);
 
     return (
-        <div className="h-full flex flex-col bg-[#0a0d14]/90 backdrop-blur-2xl relative overflow-hidden group border-t border-white/[0.02]">
+        <div className="h-full flex flex-col bg-[#0a0d14]/90 relative overflow-hidden group border-t border-white/[0.02]">
             {/* Ambient Glow */}
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent opacity-50" />
             <div className="absolute top-0 left-1/4 right-1/4 h-32 bg-blue-500/5 blur-[80px] pointer-events-none" />

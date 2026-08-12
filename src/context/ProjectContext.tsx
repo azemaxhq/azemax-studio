@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, memo, type ReactNode } from 'react';
 import { initialFileTree, type FileNode } from '../utils/mockFileSystem';
+import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
 
 const STORAGE_KEY = 'deepcontext-file-tree';
 const ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
@@ -18,10 +19,10 @@ const loadFileTree = (): FileNode[] => {
     return initialFileTree;
 };
 
-// Save file tree to localStorage
+// Save file tree to localStorage (coalesced writes to avoid main-thread blocking)
 const saveFileTree = (tree: FileNode[]) => {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(tree));
+        debouncedLocalStorageSet(STORAGE_KEY, JSON.stringify(tree), 300);
     } catch (e) {
         console.warn('Failed to save file tree to localStorage:', e);
     }
@@ -293,7 +294,7 @@ interface ProjectContextType {
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
-export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
     const [fileTree, setFileTree] = useState<FileNode[]>(loadFileTree);
     const [activeFile, setActiveFileState] = useState<FileNode | null>(() => {
         const savedActiveId = localStorage.getItem(ACTIVE_FILE_KEY);
@@ -1016,7 +1017,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             {children}
         </ProjectContext.Provider>
     );
-};
+});
 
 export const useProject = () => {
     const context = useContext(ProjectContext);
