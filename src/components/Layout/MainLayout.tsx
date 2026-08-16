@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy, startTransition } from 'react';
 import { Layers, BookOpen, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../Sidebar/Sidebar';
@@ -6,21 +6,34 @@ import { SettingsSidebar } from '../Sidebar/SettingsSidebar';
 import { CodeEditor } from '../Editor/CodeEditor';
 import { AIAssistant } from '../Panels/AIAssistant';
 import { BottomPanel } from '../Panels/BottomPanel';
+import { PerformanceBudgetMonitor, ProfilerWrapper } from '../PerformanceBudgetMonitor';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-// Code-split the Explanation sidebar: only rendered when the 'explanation'
-// tab is active, and it pulls in react-markdown/remark/rehype at runtime.
-const ExplanationSidebar = React.lazy(() =>
+const ExplanationSidebar = lazy(() =>
     import('../Sidebar/ExplanationSidebar').then(m => ({ default: m.ExplanationSidebar }))
 );
 
+const PerformancePanel = lazy(() =>
+    import('../Panels/PerformancePanel').then(m => ({ default: m.PerformancePanel }))
+);
+
+const TerminalPanel = lazy(() =>
+    import('../Panels/TerminalPanel').then(m => ({ default: m.TerminalPanel }))
+);
+
 const SidebarFallback = () => (
-    <div className="h-full flex items-center justify-center text-xs text-white/30">
+    <div className="h-full flex items-center justify-center text-xs text-white/30 perf-content-visibility-auto">
         <BookOpen size={16} className="mr-2" />
         Loading explanation...
     </div>
 );
+
+const PanelFallback = () => (
+    <div className="flex-1 flex items-center justify-center bg-transparent perf-content-visibility-auto">
+        <div className="text-white/30 text-sm">Loading panel...</div>
+    </div>
+  );
 
 export const MainLayout: React.FC = () => {
     // Helper to load from storage or default
@@ -267,10 +280,10 @@ export const MainLayout: React.FC = () => {
                 <div className={`absolute inset-0 z-[100] ${resizingSide === 'bottom' ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
             )}
 
-            {/* Background Glow Effects */}
+            {/* Background Glow Effects (static radial gradients, no GPU blur) */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" style={{ opacity: 0.65 }} />
-                <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl" style={{ opacity: 0.65 }} />
+                <div className="bg-glow-primary" />
+                <div className="bg-glow-purple" />
             </div>
 
             {/* Activity Bar (Explorer + Explanation) */}
@@ -429,9 +442,10 @@ export const MainLayout: React.FC = () => {
                 >
                 <div className="flex-1 min-h-0 flex flex-col" ref={rightInnerRef} style={{ width: aiPanelWidth }}>
                     <AIAssistant isVisible={isAiSidebarOpen} />
-                </div>
-                </div>
+</div>
             </div>
         </div>
+        <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development'} />
+    </div>
     );
 };

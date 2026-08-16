@@ -299,12 +299,13 @@ class TerminalManager {
             session.pendingWandboxStdin = null;
         }
         if (session.checkPty && session.proc && session.proc.stdio && session.proc.stdio[3] && session.proc.stdio[3].writable) {
+            // Ask the relay to SIGKILL the full descendant tree (background
+            // jobs live in their own process groups, so a plain group kill
+            // would orphan them).
             try {
                 session.proc.stdio[3].write(`${JSON.stringify({ op: 'kill' })}\n`);
             } catch { /* ignore */ }
         } else if (session.proc && session.proc.pid) {
-            try { process.kill(-session.proc.pid, 'SIGKILL'); } catch { try { session.proc.kill('SIGKILL'); } catch { /* ignore */ } }
-        } else if (session.proc) {
             try { session.proc.kill('SIGKILL'); } catch { /* ignore */ }
         }
         return true;

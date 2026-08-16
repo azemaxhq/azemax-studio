@@ -87,6 +87,42 @@ body {
   border: 1px solid var(--glass-border);
 }
 
+/* Ambient background glows rendered as static radial gradients.
+   Visually equivalent to a large blur-3xl circle at ~5% tint but costs
+   zero GPU blur/composite work — the previous blur-3xl surfaces were a
+   primary sustained heating source. */
+.bg-glow-primary {
+  position: absolute;
+  top: 0;
+  left: 25%;
+  width: 24rem;
+  height: 24rem;
+  border-radius: 9999px;
+  opacity: 0.65;
+  pointer-events: none;
+  background: radial-gradient(circle,
+    rgba(88, 166, 255, 0.10) 0%,
+    rgba(88, 166, 255, 0.04) 35%,
+    transparent 70%);
+  transform: translateZ(0);
+}
+
+.bg-glow-purple {
+  position: absolute;
+  bottom: 0;
+  right: 25%;
+  width: 20rem;
+  height: 20rem;
+  border-radius: 9999px;
+  opacity: 0.65;
+  pointer-events: none;
+  background: radial-gradient(circle,
+    rgba(163, 113, 247, 0.09) 0%,
+    rgba(163, 113, 247, 0.03) 35%,
+    transparent 70%);
+  transform: translateZ(0);
+}
+
 /* Glass Glow Effect */
 .glass-glow {
   box-shadow:
@@ -1847,11 +1883,12 @@ body {
   animation-delay: 300ms;
 }
 
-/* GPU hints for animate elements */
+/* GPU hints for animate elements.
+   NOTE: no permanent will-change/translateZ here — promoting layers forever
+   pins GPU memory and can hurt. Will-change should only be applied by the
+   framework while an actual transition is running. */
 .ai-gpu-accelerated {
-  will-change: transform, opacity;
   backface-visibility: hidden;
-  transform: translateZ(0);
 }
 
 /* Scroll to bottom button */
@@ -1960,6 +1997,95 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 4px;
   color: rgba(255, 255, 255, 0.5);
+}
+
+/* ============================================
+   PERFORMANCE OPTIMIZATIONS
+   ============================================ */
+
+.perf-content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
+
+.perf-content-visibility-hidden {
+  content-visibility: hidden;
+  contain-intrinsic-size: 0 500px;
+}
+
+.perf-contain-layout {
+  contain: layout;
+}
+
+.perf-contain-paint {
+  contain: paint;
+}
+
+.perf-contain-size {
+  contain: size;
+}
+
+.perf-contain-content {
+  contain: content;
+}
+
+.perf-contain-strict {
+  contain: strict;
+}
+
+.perf-gpu-accelerated {
+  backface-visibility: hidden;
+}
+
+.perf-isolate {
+  isolation: isolate;
+}
+
+.perf-skip-offscreen {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1000px;
+}
+
+.perf-virtualized-container {
+  contain: layout paint size;
+  overflow: hidden;
+}
+
+.perf-virtualized-item {
+  contain: layout paint;
+}
+
+.perf-reduce-motion {
+  animation: none !important;
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .perf-respect-reduced-motion {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Global zero-idle-motion policy: users who prefer reduced motion get all
+   decorative infinite animations stopped, which also eliminates their
+   compositor/GPU cost. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.perf-defer-hydration {
+  content-visibility: hidden;
+}
+
+.perf-defer-hydration.hydrated {
+  content-visibility: visible;
 }
 
 /* ============================================
@@ -2167,10 +2293,10 @@ body {
   }
 }
 
-/* Node hover micro-animation */
+/* Node hover micro-animation (no permanent will-change — layer promotion for
+   every explorer node pins GPU memory; the hover offset is sub-pixel cheap) */
 .file-explorer-node {
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform, background-color;
 }
 
 .file-explorer-node:hover {

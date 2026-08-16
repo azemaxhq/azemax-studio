@@ -29,6 +29,48 @@ import struct
 import fcntl
 import termios
 import signal
+import subprocess
+
+
+def kill_tree(root):
+    """SIGKILL every descendant of `root` (recursively), then the process group.
+
+    The shell (root) may have background jobs running in their OWN process
+    groups (zsh job control: `sleep 300 &`). A plain killpg(root) misses those,
+    orphaning them once the shell dies. Walk /bin/ps to find the full descendant
+    set so no process under this session survives.
+    """
+    try:
+        out = subprocess.check_output(['/bin/ps', '-ax', '-o', 'pid=,ppid='], text=True, timeout=3)
+    except Exception:
+        out = ''
+    children = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            try:
+                children.setdefault(int(parts[1]), []).append(int(parts[0]))
+            except ValueError:
+                pass
+    victims = []
+    stack = [root]
+    while stack:
+        p = stack.pop()
+        for c in children.get(p, ()):
+            victims.append(c)
+            stack.append(c)
+    for p in reversed(victims):
+        try:
+            os.kill(p, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        os.killpg(os.getpgid(root), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        try:
+            os.kill(root, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
 def main():
     argv = sys.argv[1:]
@@ -156,15 +198,18 @@ def main():
                                 except ProcessLookupError:
                                     os.kill(pid, s)
                         elif op == 'kill':
-                            try:
-                                os.killpg(os.getpgid(pid), signal.SIGKILL)
-                            except ProcessLookupError:
-                                os.kill(pid, signal.SIGKILL)
+                            kill_tree(pid)
                     except Exception:
                         pass
 
         if master_closed:
-            # Child closed its pty; drain stdio briefly then collect status
+            # Child closed its pty; drain stdio briefly then collect status.
+            # Kill any remaining descendants (e.g. background jobs in their own
+            # process groups) so nothing outlives the session.
+            try:
+                kill_tree(pid)
+            except Exception:
+                pass
             break
 
     # Collect final status

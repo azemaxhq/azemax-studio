@@ -36,6 +36,16 @@ function attachExecutionWebSocket(wss) {
     if (global.__terminalManagerRefs) global.__terminalManagerRefs.push(manager);
     else global.__terminalManagerRefs = [manager];
 
+    // ws re-emits the underlying http server's 'error' events on the
+    // WebSocketServer (see websocket-server.js addListeners). A listener must
+    // exist or that re-emit throws, which would skip later error listeners on
+    // the http server (e.g. listenWithRetry's EADDRINUSE handling) and surface
+    // as an uncaughtException.
+    wss.on('error', (err) => {
+        if (err && err.code === 'EADDRINUSE') return;
+        console.error('[ws] WebSocket server error:', err && err.message ? err.message : err);
+    });
+
     wss.on('connection', (ws, req) => {
         // Session ID bound to this socket for legacy execute actions.
         let legacySessionId = null;
@@ -204,8 +214,16 @@ function attachExecutionWebSocket(wss) {
 
         ws.on('error', (err) => {
             console.error('WebSocket connection error:', err);
+            // Socket may not emit 'close' after an error; terminate its sessions
+            // so child processes are never orphaned.
+            terminateAllForSocket();
         });
     });
+
+    // Return the manager so the entrypoint can terminate live terminal
+    // sessions/PTYs during graceful shutdown. The manager remains per-WebSocket-
+    // server; this is an additive return, not a behavioral change.
+    return manager;
 }
 
 module.exports = { attachExecutionWebSocket };

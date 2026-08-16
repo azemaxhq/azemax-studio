@@ -8,7 +8,7 @@ import {
 import { loadPrism, tryHighlight } from '../../utils/prismLoader';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { streamChatWithAI, generateCode, getAvailableModels, type ProjectContext } from '../../utils/groqService';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
 import { type FileNode } from '../../utils/mockFileSystem';
 import {
@@ -523,110 +523,13 @@ const MessageItem = React.memo(({
     return true;
 });
 
-const PLACEHOLDER_PHRASES = [
-    "💬 Ask DeepContext anything...",
-    "🔍 Explain this code...",
-    "🐛 Fix this bug...",
-    "🧪 Generate a unit test...",
-    "✨ Refactor this component...",
-    "📝 Add comments to this file...",
-    "🚀 Optimize for performance...",
-    "⚛️ Create a new React component..."
-];
+const PLACEHOLDER_TEXT = "💬 Ask DeepContext anything...";
 
-const useTypewriter = (phrases: string[], typingSpeed = 100, deletingSpeed = 30, pauseDuration = 1500, isActive: boolean = true) => {
-    const [displayedText, setDisplayedText] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
-
-    // Refs for state to avoid dependency cycles and re-renders
-    const state = useRef({
-        isDeleting: false,
-        loopNum: 0,
-        text: '',
-        timer: null as any,
-        isActive: true
-    });
-
-    useEffect(() => {
-        state.current.isActive = isActive;
-        if (!isActive) {
-            if (state.current.timer) {
-                clearTimeout(state.current.timer);
-                state.current.timer = null;
-            }
-            return;
-        }
-
-        const handleTyping = () => {
-            if (!state.current.isActive) return;
-            
-            const { isDeleting, loopNum, text } = state.current;
-            const i = loopNum % phrases.length;
-            const fullText = phrases[i];
-
-            // Determine next text state
-            let nextText = '';
-            if (isDeleting) {
-                nextText = fullText.substring(0, text.length - 1);
-            } else {
-                nextText = fullText.substring(0, text.length + 1);
-            }
-
-            // Update refs and state
-            state.current.text = nextText;
-            setDisplayedText(nextText);
-
-            // Calculate next speed
-            let typeSpeed = typingSpeed;
-            if (isDeleting) {
-                typeSpeed = deletingSpeed;
-                setIsTyping(true);
-            } else {
-                // Add human variance only when typing
-                typeSpeed += Math.random() * 30 - 15;
-
-                // Add natural pause after spaces (between words)
-                if (nextText.endsWith(' ')) {
-                    typeSpeed += 40;
-                }
-
-                setIsTyping(true);
-            }
-
-            // Determine logic for next frame
-            if (!isDeleting && nextText === fullText) {
-                // Finished typing phrase
-                typeSpeed = pauseDuration;
-                state.current.isDeleting = true;
-                setIsTyping(false); // Pause -> Cursor blinks
-            } else if (isDeleting && nextText === '') {
-                // Finished deleting
-                state.current.isDeleting = false;
-                state.current.loopNum++;
-                typeSpeed = 300; // Pause before next phrase
-                setIsTyping(false); // Pause -> Cursor blinks
-            }
-
-            state.current.timer = setTimeout(handleTyping, typeSpeed);
-        };
-
-        // Start the loop
-        state.current.timer = setTimeout(handleTyping, 100);
-
-        return () => {
-            if (state.current.timer) clearTimeout(state.current.timer);
-        };
-    }, [isActive, phrases, typingSpeed, deletingSpeed, pauseDuration]);
-
-    return { text: displayedText, isTyping };
-};
-
-const TypewriterPlaceholder: React.FC<{ isActive: boolean }> = ({ isActive }) => {
-    const { text: placeholderText, isTyping: isPlaceholderTyping } = useTypewriter(PLACEHOLDER_PHRASES, 100, 30, 1500, isActive);
+const StaticPlaceholder: React.FC = () => {
     return (
         <span className="text-[15px] text-white/40 font-normal tracking-wide leading-relaxed">
-            {placeholderText}
-            <span className={`ml-[1px] inline-block w-[1.5px] h-[15px] align-middle bg-violet-400 ${!isPlaceholderTyping ? 'animate-cursor-blink' : ''}`} />
+            {PLACEHOLDER_TEXT}
+            <span className="ml-[1px] inline-block w-[1.5px] h-[15px] align-middle bg-violet-400 animate-cursor-blink" />
         </span>
     );
 };
@@ -734,11 +637,11 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
 
     const [greeting, setGreeting] = useState(getGreeting());
 
+    // Greeting only changes with the time of day; refresh when the panel
+    // becomes visible instead of keeping a perpetual 60s timer alive.
     useEffect(() => {
         if (!isVisible) return;
         setGreeting(getGreeting());
-        const interval = setInterval(() => setGreeting(getGreeting()), 60000);
-        return () => clearInterval(interval);
     }, [isVisible]);
 
     // Load available models on mount
@@ -770,7 +673,8 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     }, []);
 
     // Project Context
-    const { createFile, activeFile, updateFileContent, fileTree, createFolder, deleteNode } = useProject();
+    const { createFile, updateFileContent, createFolder, deleteNode, getActiveFile, getFileTree } = useProjectActions();
+    const { activeFileMeta } = useProjectUI();
 
     // Action Execution
     const executeAction = async (actionString: string) => {
@@ -935,10 +839,11 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     }, []);
 
     const handleApplyCode = useCallback((code: string) => {
+        const activeFile = getActiveFile();
         if (activeFile) {
             updateFileContent(activeFile.id, code);
         }
-    }, [activeFile, updateFileContent]);
+    }, [getActiveFile, updateFileContent]);
 
     const handleQuickAction = (prompt: string) => {
         if (isSendingRef.current || isLoading) return; // Prevent double submission
@@ -984,6 +889,14 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         // Find the user message before this AI message
         const userMsgIndex = msgIndex - 1;
         if (userMsgIndex < 0 || messages[userMsgIndex].role !== 'user') return;
+
+        // Abort any in-flight generation before restarting to avoid stale/duplicate responses
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        currentRequestIdRef.current = null;
+        isSendingRef.current = false;
 
         const userMessage = messages[userMsgIndex].text;
 
@@ -1056,6 +969,8 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         currentRequestIdRef.current = requestId;
 
         // Build Project Context
+        const activeFile = getActiveFile();
+        const fileTree = getFileTree();
         const projectContext: ProjectContext = {
             // Limit file tree depth to 3 levels to save context window
             fileStructure: flattenFileTree(fileTree, 0, 3),
@@ -1269,7 +1184,7 @@ INSTRUCTIONS:
                 isSendingRef.current = false;
             }, 300);
         }
-    }, [input, sessions, currentSessionId, isLoading, activeFile, fileTree, handleNewChat, selectedModel]);
+    }, [input, sessions, currentSessionId, isLoading, handleNewChat, selectedModel, getActiveFile, getFileTree]);
 
     handleSendRef.current = handleSend;
 
@@ -1585,9 +1500,9 @@ INSTRUCTIONS:
 
                     {/* Right Section - Context & New Chat */}
                     <div className="flex items-center gap-3 relative z-10">
-                        {activeFile && (
+                        {activeFileMeta && (
                             <span className="text-[11px] text-zinc-500 truncate font-medium tracking-wide leading-none px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 max-w-[140px]">
-                                {activeFile.name}
+                                {activeFileMeta.name}
                             </span>
                         )}
                         <button
@@ -1612,22 +1527,22 @@ INSTRUCTIONS:
 
                             {/* Hero Section Container */}
                             <div className="relative mb-8 group cursor-default">
-                                {/* Ambient Glow Background */}
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[180px] h-[180px] sm:w-[220px] sm:h-[220px] bg-violet-500/20 rounded-full blur-[50px] sm:blur-[70px] opacity-40 animate-pulse-slow mix-blend-screen pointer-events-none" />
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140px] h-[140px] sm:w-[160px] sm:h-[160px] bg-blue-500/15 rounded-full blur-[30px] sm:blur-[50px] opacity-10 animate-pulse-slow delay-300 mix-blend-screen pointer-events-none" />
+                                {/* Ambient Glow Background (static: no perpetual pulse on blurred surfaces) */}
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[180px] h-[180px] sm:w-[220px] sm:h-[220px] bg-violet-500/20 rounded-full blur-[50px] sm:blur-[70px] opacity-40 mix-blend-screen pointer-events-none" />
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140px] h-[140px] sm:w-[160px] sm:h-[160px] bg-blue-500/15 rounded-full blur-[30px] sm:blur-[50px] opacity-10 delay-300 mix-blend-screen pointer-events-none" />
 
                                 {/* Main Logo - Floating with Aura */}
                                 <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center animate-float-slow group/orb cursor-pointer" onClick={() => handleQuickAction("Hello AI")}>
-                                    {/* Ambient Aura - Soft rotating gradients */}
-                                    <div className="absolute inset-0 bg-[conic-gradient(from_0deg,transparent_0deg,rgba(139,92,246,0.15)_120deg,rgba(59,130,246,0.15)_240deg,transparent_360deg)] animate-spin-slower opacity-60 blur-2xl scale-150" />
-                                    <div className="absolute inset-0 bg-[conic-gradient(from_180deg,transparent_0deg,rgba(139,92,246,0.1)_120deg,rgba(59,130,246,0.1)_240deg,transparent_360deg)] animate-spin-reverse opacity-40 blur-xl mix-blend-screen scale-125" />
+                                    {/* Ambient Aura - static rotating-gradient look (no per-frame rotation of blurred layers) */}
+                                    <div className="absolute inset-0 bg-[conic-gradient(from_0deg,transparent_0deg,rgba(139,92,246,0.15)_120deg,rgba(59,130,246,0.15)_240deg,transparent_360deg)] opacity-60 blur-2xl scale-150" />
+                                    <div className="absolute inset-0 bg-[conic-gradient(from_180deg,transparent_0deg,rgba(139,92,246,0.1)_120deg,rgba(59,130,246,0.1)_240deg,transparent_360deg)] opacity-40 blur-xl mix-blend-screen scale-125" />
 
-                                    {/* Central Pulse Glow */}
-                                    <div className="absolute inset-0 bg-violet-500/10 rounded-full blur-xl animate-pulse-slow" />
+                                    {/* Central Pulse Glow - static */}
+                                    <div className="absolute inset-0 bg-violet-500/10 rounded-full blur-xl" />
 
                                     {/* Logo Itself */}
                                     <div className="relative z-10 transition-transform duration-500 group-hover/orb:scale-110 group-hover/orb:rotate-12">
-                                        <div className="absolute inset-0 bg-white/20 blur-lg rounded-full animate-pulse-glow" />
+                                        <div className="absolute inset-0 bg-white/20 blur-lg rounded-full" />
                                         <GeminiLogo
                                             size={64}
                                             className="sm:w-[72px] sm:h-[72px] text-white drop-shadow-[0_0_15px_rgba(139,92,246,0.6)] filter brightness-110"
@@ -1749,8 +1664,8 @@ INSTRUCTIONS:
                 {/* Apple Intelligence Style Input */}
                 <div className="absolute bottom-6 left-0 right-0 px-4 z-30">
                     <div className="max-w-3xl mx-auto relative group">
-                        {/* Apple Glow Effect - Subtler & Toned Down */}
-                        <div className="absolute -inset-[2px] bg-gradient-to-r from-blue-500/30 via-purple-500/30 via-pink-500/30 to-blue-500/30 rounded-[26px] opacity-0 group-focus-within:opacity-100 blur-md transition-all duration-700 animate-gradient-xy" style={{ backgroundSize: '400% 400%' }} />
+                        {/* Apple Glow Effect - Subtler & Toned Down (static gradient: no continuous animation of a blurred layer) */}
+                        <div className="absolute -inset-[2px] bg-gradient-to-r from-blue-500/30 via-purple-500/30 via-pink-500/30 to-blue-500/30 rounded-[26px] opacity-0 group-focus-within:opacity-100 blur-md transition-all duration-700" style={{ backgroundSize: '400% 400%' }} />
 
                         {/* Subtle ambient glow always visible */}
                         <div className="absolute -inset-[1px] bg-white/5 rounded-[26px] blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
@@ -1764,7 +1679,7 @@ INSTRUCTIONS:
                             {/* Custom Placeholder Overlay with Blinking Cursor */}
                             {!input && (
                                 <div className="absolute inset-0 flex items-center pointer-events-none pl-5 py-[14px] z-0">
-                                    <TypewriterPlaceholder isActive={isVisible && !input} />
+                                    <StaticPlaceholder />
                                 </div>
                             )}
 

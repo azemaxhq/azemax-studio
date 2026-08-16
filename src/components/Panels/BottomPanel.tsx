@@ -1,12 +1,24 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lock, TrendingDown, ChevronRight, Zap, RefreshCw, Wand2, Loader2, CheckCircle, TrendingUp, Calendar, BarChart3 } from 'lucide-react';
-import { TerminalPanel } from './TerminalPanel';
-import { PerformancePanel } from './PerformancePanel';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectFile, useProjectActions } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
 import { analyzeCode, type AnalysisResult, type AgeingSignal, type AgeingHotspot } from '../../utils/codeAnalysisEngine';
 import { analysisHistory } from '../../utils/analysisHistory';
+
+const PerformancePanel = lazy(() =>
+    import('./PerformancePanel').then(m => ({ default: m.PerformancePanel }))
+);
+
+const TerminalPanel = lazy(() =>
+    import('./TerminalPanel').then(m => ({ default: m.TerminalPanel }))
+);
+
+const PanelFallback = () => (
+    <div className="flex-1 flex items-center justify-center bg-transparent perf-content-visibility-auto">
+        <div className="text-white/30 text-sm">Loading panel...</div>
+    </div>
+);
 
 // Helper to detect language from file name
 const getLanguage = (fileName: string): string => {
@@ -380,7 +392,8 @@ export const BottomPanel: React.FC = () => {
         localStorage.setItem('bottomPanel_activeTab', activeTab);
     }, [activeTab]);
     
-    const { activeFile, updateFileContent } = useProject();
+    const { activeFile } = useProjectFile();
+    const { updateFileContent } = useProjectActions();
     const { lastExecutionData } = useTerminal();
     
     // Auto-switch to terminal tab when run button is clicked (before execution starts)
@@ -614,7 +627,9 @@ Apply the fix while preserving all other code exactly as-is.`;
             <div className="flex-1 overflow-auto p-0 custom-scrollbar">
                 <div className="h-full">
                     {activeTab === 'performance' && (
-                        <PerformancePanel executionData={lastExecutionData || undefined} />
+                        <Suspense fallback={<PanelFallback />}>
+                            <PerformancePanel executionData={lastExecutionData || undefined} />
+                        </Suspense>
                     )}
                     {activeTab === 'ageing' && (
                         <div className="p-4 h-full overflow-y-auto custom-scrollbar">
@@ -832,7 +847,9 @@ Apply the fix while preserving all other code exactly as-is.`;
                         </div>
                     )}
                     {activeTab === 'terminal' && (
-                        <TerminalPanel />
+                        <Suspense fallback={<PanelFallback />}>
+                            <TerminalPanel />
+                        </Suspense>
                     )}
                 </div>
             </div>

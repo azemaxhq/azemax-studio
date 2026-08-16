@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect, useCallback, memo, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, memo, type ReactNode } from 'react';
 import { initialFileTree, type FileNode } from '../utils/mockFileSystem';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
 
@@ -38,6 +38,82 @@ const findNodeById = (nodes: FileNode[], id: string): FileNode | null => {
         }
     }
     return null;
+};
+
+// Toggle folder open/close state recursively
+const toggleFolderRecursive = (nodes: FileNode[], folderId: string): FileNode[] => {
+    // Structural sharing: only clone the ancestor chain of the toggled folder.
+    for (const node of nodes) {
+        if (node.id === folderId) {
+            return nodes.map(n => (n.id === folderId ? { ...n, isOpen: !n.isOpen } : n));
+        }
+        if (node.children && containsNode(node.children, folderId)) {
+            return nodes.map(n =>
+                n.id === node.id ? { ...n, children: toggleFolderRecursive(n.children!, folderId) } : n
+            );
+        }
+    }
+    return nodes;
+};
+
+// Open a folder (and only that folder) recursively
+const openFolderRecursive = (nodes: FileNode[], folderId: string): FileNode[] => {
+    for (const node of nodes) {
+        if (node.id === folderId) {
+            return nodes.map(n => (n.id === folderId ? { ...n, isOpen: true } : n));
+        }
+        if (node.children && containsNode(node.children, folderId)) {
+            return nodes.map(n =>
+                n.id === node.id ? { ...n, children: openFolderRecursive(n.children!, folderId) } : n
+            );
+        }
+    }
+    return nodes;
+};
+
+// True if `id` exists anywhere under `nodes` (used to detect the branch to clone)
+const containsNode = (nodes: FileNode[], id: string): boolean => {
+    for (const node of nodes) {
+        if (node.id === id) return true;
+        if (node.children && containsNode(node.children, id)) return true;
+    }
+    return false;
+};
+
+// Remove a node by ID recursively
+const deleteNodeRecursive = (nodes: FileNode[], id: string): FileNode[] => {
+    // Structural sharing: only clone nodes on the path to (and including) the
+    // deleted node; untouched subtrees keep their identity so React can bail out.
+    let changed = false;
+    const result: FileNode[] = [];
+    for (const node of nodes) {
+        if (node.id === id) {
+            changed = true;
+            continue;
+        }
+        if (node.children) {
+            const newChildren = deleteNodeRecursive(node.children, id);
+            if (newChildren !== node.children) {
+                result.push({ ...node, children: newChildren });
+                changed = true;
+                continue;
+            }
+        }
+        result.push(node);
+    }
+    return changed ? result : nodes;
+};
+
+// Deep clone a node with new IDs based on new parent path
+const cloneNode = (node: FileNode, newParentPath: string): FileNode => {
+    const newId = newParentPath === 'root' ? node.name : `${newParentPath}/${node.name}`;
+    const cloned: FileNode = {
+        ...node,
+        id: newId,
+        name: node.name,
+        children: node.children?.map(child => cloneNode(child, newId))
+    };
+    return cloned;
 };
 
 // File templates for different languages and frameworks
@@ -256,11 +332,22 @@ const getUniqueName = (name: string, siblings: FileNode[], type: 'file' | 'folde
     return `${baseName} (${counter})${extension}`;
 };
 
-interface ProjectContextType {
+interface ProjectFileState {
     fileTree: FileNode[];
     activeFile: FileNode | null;
-    setActiveFile: (file: FileNode) => void;
+    modifiedFiles: Set<string>;
+}
+
+interface ProjectUIState {
     selectedFolder: string | null;
+    creationState: { type: 'file' | 'folder' | null; parentId: string | null; isActive: boolean };
+    selectedNodes: Set<string>;
+    clipboard: { nodeIds: string[]; mode: 'cut' | 'copy' } | null;
+    activeFileMeta: { id: string; name: string } | null;
+}
+
+interface ProjectActions {
+    setActiveFile: (file: FileNode) => void;
     setSelectedFolder: (folderId: string | null) => void;
     toggleFolder: (folderId: string) => void;
     createFile: (path: string, content?: string) => void;
@@ -269,7 +356,6 @@ interface ProjectContextType {
     createProjectTemplate: (template: string, name: string) => void;
     deleteNode: (id: string) => void;
     updateFileContent: (fileId: string, content: string) => void;
-    creationState: { type: 'file' | 'folder' | null; parentId: string | null; isActive: boolean };
     startCreating: (type: 'file' | 'folder', parentId?: string) => void;
     cancelCreation: () => void;
     commitCreation: (name: string) => void;
@@ -277,22 +363,28 @@ interface ProjectContextType {
     collapseAll: () => void;
     expandAll: () => void;
     moveNode: (sourceId: string, targetFolderId: string) => void;
-    selectedNodes: Set<string>;
     toggleSelection: (id: string, multi: boolean) => void;
     selectRange: (startId: string, endId: string, allVisibleNodes: string[]) => void;
     selectAll: (allVisibleNodes: string[]) => void;
     deleteMultipleNodes: (ids: string[]) => void;
     clearSelection: () => void;
-    clipboard: { nodeIds: string[]; mode: 'cut' | 'copy' } | null;
     cutNodes: (ids: string[]) => void;
     copyNodes: (ids: string[]) => void;
     pasteNodes: (targetFolderId: string) => void;
     duplicateNode: (id: string) => void;
-    modifiedFiles: Set<string>;
     expandRecursively: (folderId: string) => void;
+    getFileTree: () => FileNode[];
+    getActiveFile: () => FileNode | null;
 }
 
-const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
+// Three independent rendering domains:
+//  - FILE context   (per-keystroke): fileTree / activeFile / modifiedFiles
+//  - UI context     (discrete): selection, creation, clipboard, active-file meta
+//  - ACTIONS context (stable): every mutation action is referentially stable so
+//    subscribers never re-render from typing or selection churn.
+const ProjectFileContext = createContext<ProjectFileState | undefined>(undefined);
+const ProjectUIContext = createContext<ProjectUIState | undefined>(undefined);
+const ProjectActionsContext = createContext<ProjectActions | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
     const [fileTree, setFileTree] = useState<FileNode[]>(loadFileTree);
@@ -309,6 +401,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         }
         return null;
     });
+    const [activeFileMeta, setActiveFileMeta] = useState<{ id: string; name: string } | null>(() =>
+        activeFile ? { id: activeFile.id, name: activeFile.name } : null
+    );
     const [selectedFolder, setSelectedFolderState] = useState<string | null>('root');
     const [creationState, setCreationState] = useState<{ type: 'file' | 'folder' | null; parentId: string | null; isActive: boolean }>({
         type: null,
@@ -319,6 +414,14 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     const [clipboard, setClipboard] = useState<{ nodeIds: string[]; mode: 'cut' | 'copy' } | null>(null);
     const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
 
+    // Latest-state ref so every action stays referentially stable while still
+    // reading the freshest tree/active file/selection. Event handlers run after
+    // effects, so the ref is always current when an action is invoked.
+    const stateRef = useRef({ fileTree, activeFile, selectedFolder, creationState, clipboard });
+    useEffect(() => {
+        stateRef.current = { fileTree, activeFile, selectedFolder, creationState, clipboard };
+    });
+
     // Save fileTree to localStorage whenever it changes
     useEffect(() => {
         saveFileTree(fileTree);
@@ -327,33 +430,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     // Wrapper to also save active file ID
     const setActiveFile = useCallback((file: FileNode) => {
         setActiveFileState(file);
+        setActiveFileMeta({ id: file.id, name: file.name });
         localStorage.setItem(ACTIVE_FILE_KEY, file.id);
     }, []);
-
-    // Helper to toggle folder open/close state recursively
-    const toggleFolderRecursive = (nodes: FileNode[], folderId: string): FileNode[] => {
-        return nodes.map(node => {
-            if (node.id === folderId) {
-                return { ...node, isOpen: !node.isOpen };
-            }
-            if (node.children) {
-                return { ...node, children: toggleFolderRecursive(node.children, folderId) };
-            }
-            return node;
-        });
-    };
-
-    const openFolderRecursive = (nodes: FileNode[], folderId: string): FileNode[] => {
-        return nodes.map(node => {
-            if (node.id === folderId) {
-                return { ...node, isOpen: true };
-            }
-            if (node.children) {
-                return { ...node, children: openFolderRecursive(node.children, folderId) };
-            }
-            return node;
-        });
-    };
 
     const toggleFolder = useCallback((folderId: string) => {
         setFileTree(prev => toggleFolderRecursive(prev, folderId));
@@ -372,6 +451,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         
         // Get parent folder to check for existing files
         const parentId = path.lastIndexOf('/') !== -1 ? path.substring(0, path.lastIndexOf('/')) : 'root';
+        const { fileTree } = stateRef.current;
         let siblings: FileNode[] = [];
         
         if (parentId === 'root') {
@@ -417,7 +497,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         });
 
         setActiveFile(newFile);
-    }, [fileTree, setActiveFile]);
+    }, [setActiveFile]);
 
     const createFolder = useCallback((path: string) => {
         const parts = path.split('/');
@@ -432,6 +512,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         
         // Get parent folder to check for existing folders
         const parentId = path.lastIndexOf('/') !== -1 ? path.substring(0, path.lastIndexOf('/')) : 'root';
+        const { fileTree } = stateRef.current;
         let siblings: FileNode[] = [];
         
         if (parentId === 'root') {
@@ -473,7 +554,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
 
             return updateRecursive(prev);
         });
-    }, [fileTree]);
+    }, []);
 
     // Create nested folder structure
     const createNestedFolders = useCallback((path: string) => {
@@ -484,21 +565,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             currentPath = index === 0 ? folderName : `${currentPath}/${folderName}`;
             
             // Check if folder already exists
-            const existingFolder = findNodeById(fileTree, currentPath);
+            const existingFolder = findNodeById(stateRef.current.fileTree, currentPath);
             if (!existingFolder) {
                 createFolder(currentPath);
             }
         });
-    }, [fileTree, createFolder]);
-
-    const deleteNodeRecursive = (nodes: FileNode[], id: string): FileNode[] => {
-        return nodes.filter(node => node.id !== id).map(node => ({
-            ...node,
-            children: node.children ? deleteNodeRecursive(node.children, id) : undefined
-        }));
-    };
+    }, [createFolder]);
 
     const deleteNode = useCallback((id: string) => {
+        const { activeFile, selectedFolder } = stateRef.current;
         // Check if we are deleting the currently selected folder or one of its parents
         const isDeletingSelected = selectedFolder === id || selectedFolder?.startsWith(id + '/');
         if (isDeletingSelected) {
@@ -509,14 +584,16 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         const isActiveFileDeleted = activeFile?.id === id || activeFile?.id.startsWith(id + '/');
         if (isActiveFileDeleted) {
             setActiveFileState(null);
+            setActiveFileMeta(null);
             localStorage.removeItem(ACTIVE_FILE_KEY);
         }
 
         setFileTree(prev => deleteNodeRecursive(prev, id));
-    }, [activeFile, selectedFolder]);
+    }, []);
 
     // Bulk delete multiple nodes
     const deleteMultipleNodes = useCallback((ids: string[]) => {
+        const { activeFile, selectedFolder } = stateRef.current;
         // Check if selected folder or active file is among the deleted
         for (const id of ids) {
             const isDeletingSelected = selectedFolder === id || selectedFolder?.startsWith(id + '/');
@@ -526,6 +603,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             const isActiveFileDeleted = activeFile?.id === id || activeFile?.id.startsWith(id + '/');
             if (isActiveFileDeleted) {
                 setActiveFileState(null);
+                setActiveFileMeta(null);
                 localStorage.removeItem(ACTIVE_FILE_KEY);
             }
         }
@@ -539,7 +617,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         });
 
         setSelectedNodes(new Set());
-    }, [selectedFolder, activeFile]);
+    }, []);
 
     const clearSelection = useCallback(() => {
         setSelectedNodes(new Set());
@@ -555,20 +633,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         setClipboard({ nodeIds: ids, mode: 'copy' });
     }, []);
 
-    // Deep clone a node with new IDs based on new parent path
-    const cloneNode = (node: FileNode, newParentPath: string): FileNode => {
-        const newId = newParentPath === 'root' ? node.name : `${newParentPath}/${node.name}`;
-        const cloned: FileNode = {
-            ...node,
-            id: newId,
-            name: node.name,
-            children: node.children?.map(child => cloneNode(child, newId))
-        };
-        return cloned;
-    };
-
     // Clipboard: paste nodes into target folder
     const pasteNodes = useCallback((targetFolderId: string) => {
+        const { clipboard, fileTree } = stateRef.current;
         if (!clipboard || clipboard.nodeIds.length === 0) return;
 
         // Collect the actual nodes
@@ -651,13 +718,13 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         }
 
         setSelectedNodes(new Set());
-    }, [clipboard, fileTree]);
+    }, []);
 
     const startCreating = useCallback((type: 'file' | 'folder', parentId: string = 'root') => {
         // Validation: Ensure parentId exists in the tree (unless it's root)
         let actualParentId = parentId;
         if (parentId !== 'root') {
-            const parentNode = findNodeById(fileTree, parentId);
+            const parentNode = findNodeById(stateRef.current.fileTree, parentId);
             if (!parentNode) {
                 // Fallback to root or handle error. 
                 // For now, let's fallback to root to ensure UI shows up.
@@ -668,13 +735,14 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         // Always expand the parent folder to show the input
         setFileTree(prev => openFolderRecursive(prev, actualParentId));
         setCreationState({ type, parentId: actualParentId, isActive: true });
-    }, [fileTree, openFolderRecursive]);
+    }, []);
 
     const cancelCreation = useCallback(() => {
         setCreationState({ type: null, parentId: null, isActive: false });
     }, []);
 
     const commitCreation = useCallback((name: string) => {
+        const { creationState, fileTree } = stateRef.current;
         if (!creationState.isActive || !creationState.type) return;
 
         const parentId = creationState.parentId || 'root';
@@ -700,21 +768,31 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         }
 
         cancelCreation();
-    }, [creationState, fileTree, createFile, createFolder, getUniqueName, cancelCreation]);
+    }, [createFile, createFolder, cancelCreation]);
 
     // Update file content in the tree (for persistence)
+    // Preserves object identity for every node whose subtree did not change,
+    // so memoized explorer rows skip re-rendering on unrelated keystrokes.
     const updateFileContent = useCallback((fileId: string, content: string) => {
         setFileTree(prev => {
             const updateRecursive = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(node => {
+                let changed = false;
+                const next = nodes.map(node => {
                     if (node.id === fileId) {
+                        if (node.content === content) return node;
+                        changed = true;
                         return { ...node, content };
                     }
                     if (node.children) {
-                        return { ...node, children: updateRecursive(node.children) };
+                        const children = updateRecursive(node.children);
+                        if (children !== node.children) {
+                            changed = true;
+                            return { ...node, children };
+                        }
                     }
                     return node;
                 });
+                return changed ? next : prev;
             };
             return updateRecursive(prev);
         });
@@ -726,29 +804,37 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             return next;
         });
 
-        // Also update activeFile if it's the same file
-        if (activeFile?.id === fileId) {
-            setActiveFileState({ ...activeFile, content });
-        }
-    }, [activeFile]);
+        // Also update activeFile if it's the same file (functional update:
+        // no dependency on activeFile state keeps this callback stable)
+        setActiveFileState(prev => {
+            if (prev?.id === fileId && prev.content === content) return prev;
+            if (prev?.id === fileId) return { ...prev, content };
+            return prev;
+        });
+    }, []);
 
     const renameNode = useCallback((id: string, newName: string) => {
         setFileTree(prev => {
+            // Structural sharing: clone only the ancestor chain of the renamed
+            // node; identical-name renames return the same tree reference.
             const updateRecursive = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(node => {
+                let changed = false;
+                const next = nodes.map(node => {
                     if (node.id === id) {
-                        // const newId = node.id.substring(0, node.id.lastIndexOf('/')) + '/' + newName;
-                        // Ideally we would recursively update IDs of children too if it's a folder, 
-                        // but for this MVP let's just update the name and the ID of this node. 
-                        // Note: Breaking IDs of children might break their paths, but for a simple mock FS it might be okay for now.
-                        // A proper FS would handle paths more robustly.
+                        if (node.name === newName) return node;
+                        changed = true;
                         return { ...node, name: newName };
                     }
                     if (node.children) {
-                        return { ...node, children: updateRecursive(node.children) };
+                        const children = updateRecursive(node.children);
+                        if (children !== node.children) {
+                            changed = true;
+                            return { ...node, children };
+                        }
                     }
                     return node;
                 });
+                return changed ? next : prev;
             };
             return updateRecursive(prev);
         });
@@ -774,7 +860,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         }
         
         // Get unique name for project
-        const uniqueName = getUniqueName(name, fileTree, 'folder');
+        const uniqueName = getUniqueName(name, stateRef.current.fileTree, 'folder');
         
         // Create main project folder
         createFolder(uniqueName);
@@ -797,7 +883,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         // Expand the project folder
         toggleFolder(uniqueName);
         setSelectedFolder(uniqueName);
-    }, [fileTree, createFolder, createFile, createNestedFolders, toggleFolder, setSelectedFolder]);
+    }, [createFolder, createFile, createNestedFolders, toggleFolder, setSelectedFolder]);
 
     // Collapse all folders
     const collapseAll = useCallback(() => {
@@ -855,7 +941,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
 
     // Duplicate a node (file or folder)
     const duplicateNode = useCallback((id: string) => {
-        const node = findNodeById(fileTree, id);
+        const node = findNodeById(stateRef.current.fileTree, id);
         if (!node) return;
 
         // Determine parent
@@ -863,6 +949,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         const parentId = lastSlash !== -1 ? id.substring(0, lastSlash) : 'root';
 
         // Get siblings
+        const { fileTree } = stateRef.current;
         let siblings: FileNode[] = [];
         if (parentId === 'root') {
             siblings = fileTree;
@@ -901,7 +988,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             };
             return addToFolder(prev);
         });
-    }, [fileTree]);
+    }, []);
 
     // Select all visible nodes
     const selectAll = useCallback((allVisibleNodes: string[]) => {
@@ -910,7 +997,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
 
     // Move a node to a different folder
     const moveNode = useCallback((sourceId: string, targetFolderId: string) => {
-        const sourceNode = findNodeById(fileTree, sourceId);
+        const sourceNode = findNodeById(stateRef.current.fileTree, sourceId);
         if (!sourceNode) return;
         if (sourceId === targetFolderId) return;
         // Prevent moving a folder into itself or its children
@@ -946,7 +1033,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             }
             return newTree;
         });
-    }, [fileTree]);
+    }, []);
 
     const toggleSelection = useCallback((id: string, multi: boolean) => {
         setSelectedNodes(prev => {
@@ -970,11 +1057,14 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         setSelectedNodes(new Set(range));
     }, []);
 
-    const contextValue = React.useMemo(() => ({
-        fileTree,
-        activeFile,
+    // Imperative getters for components that need current state only inside
+    // event handlers (AI context, terminal mock shell, dev tools) — they can
+    // stay off the high-frequency FILE context entirely.
+    const getFileTree = useCallback(() => stateRef.current.fileTree, []);
+    const getActiveFile = useCallback(() => stateRef.current.activeFile, []);
+
+    const actionsValue = React.useMemo<ProjectActions>(() => ({
         setActiveFile,
-        selectedFolder,
         setSelectedFolder,
         toggleFolder,
         createFile,
@@ -983,7 +1073,6 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         createProjectTemplate,
         deleteNode,
         updateFileContent,
-        creationState,
         startCreating,
         cancelCreation,
         commitCreation,
@@ -991,38 +1080,81 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         collapseAll,
         expandAll,
         moveNode,
-        selectedNodes,
+        toggleSelection,
+        selectRange,
+        selectAll,
         deleteMultipleNodes,
         clearSelection,
-        clipboard,
         cutNodes,
         copyNodes,
         pasteNodes,
         duplicateNode,
-        modifiedFiles,
         expandRecursively,
-        selectAll,
-        toggleSelection,
-        selectRange
+        getFileTree,
+        getActiveFile,
     }), [
-        fileTree, activeFile, selectedFolder, creationState, selectedNodes, clipboard, modifiedFiles,
-        setActiveFile, setSelectedFolder, toggleFolder, createFile, createFolder, createNestedFolders, createProjectTemplate, deleteNode,
-        updateFileContent, startCreating, cancelCreation, commitCreation, renameNode,
-        collapseAll, expandAll, moveNode, deleteMultipleNodes, clearSelection, cutNodes,
-        copyNodes, pasteNodes, duplicateNode, expandRecursively, selectAll, toggleSelection, selectRange
+        setActiveFile, setSelectedFolder, toggleFolder, createFile, createFolder, createNestedFolders,
+        createProjectTemplate, deleteNode, updateFileContent, startCreating, cancelCreation, commitCreation,
+        renameNode, collapseAll, expandAll, moveNode, toggleSelection, selectRange, selectAll,
+        deleteMultipleNodes, clearSelection, cutNodes, copyNodes, pasteNodes, duplicateNode,
+        expandRecursively, getFileTree, getActiveFile,
     ]);
 
+    const fileValue = React.useMemo<ProjectFileState>(() => ({
+        fileTree,
+        activeFile,
+        modifiedFiles,
+    }), [fileTree, activeFile, modifiedFiles]);
+
+    const uiValue = React.useMemo<ProjectUIState>(() => ({
+        selectedFolder,
+        creationState,
+        selectedNodes,
+        clipboard,
+        activeFileMeta,
+    }), [selectedFolder, creationState, selectedNodes, clipboard, activeFileMeta]);
+
     return (
-        <ProjectContext.Provider value={contextValue}>
-            {children}
-        </ProjectContext.Provider>
+        <ProjectActionsContext.Provider value={actionsValue}>
+            <ProjectUIContext.Provider value={uiValue}>
+                <ProjectFileContext.Provider value={fileValue}>
+                    {children}
+                </ProjectFileContext.Provider>
+            </ProjectUIContext.Provider>
+        </ProjectActionsContext.Provider>
     );
 });
 
 export const useProject = () => {
-    const context = useContext(ProjectContext);
-    if (context === undefined) {
+    const actions = useContext(ProjectActionsContext);
+    const ui = useContext(ProjectUIContext);
+    const file = useContext(ProjectFileContext);
+    if (actions === undefined || ui === undefined || file === undefined) {
         throw new Error('useProject must be used within a ProjectProvider');
+    }
+    return { ...file, ...ui, ...actions };
+};
+
+export const useProjectFile = () => {
+    const context = useContext(ProjectFileContext);
+    if (context === undefined) {
+        throw new Error('useProjectFile must be used within a ProjectProvider');
+    }
+    return context;
+};
+
+export const useProjectUI = () => {
+    const context = useContext(ProjectUIContext);
+    if (context === undefined) {
+        throw new Error('useProjectUI must be used within a ProjectProvider');
+    }
+    return context;
+};
+
+export const useProjectActions = () => {
+    const context = useContext(ProjectActionsContext);
+    if (context === undefined) {
+        throw new Error('useProjectActions must be used within a ProjectProvider');
     }
     return context;
 };

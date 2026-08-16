@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, memo } from 'react';
-import { useProject } from './ProjectContext';
+import { useProjectActions, useProjectUI } from './ProjectContext';
 import { useTerminal } from './TerminalContext';
 import { explainFileOrSnippet } from '../utils/groqService';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
@@ -48,7 +48,8 @@ interface ExplanationContextType {
 const ExplanationContext = createContext<ExplanationContextType | undefined>(undefined);
 
 export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo(({ children }) => {
-    const { activeFile } = useProject();
+    const { activeFileMeta } = useProjectUI();
+    const { getActiveFile } = useProjectActions();
     const { writeToTerminal, activeTerminalId } = useTerminal();
     const [state, setState] = useState(() => loadPersisted());
     const { explanation, explanationError, explainedFor } = state;
@@ -71,12 +72,13 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
     }, []);
 
     useEffect(() => {
-        if (activeFile?.id != null && explainedFor != null && explainedFor !== activeFile.id) {
+        if (activeFileMeta?.id != null && explainedFor != null && explainedFor !== activeFileMeta.id) {
             persist({ explanation: null, explanationError: null, explainedFor: null });
         }
-    }, [activeFile?.id, explainedFor, persist]);
+    }, [activeFileMeta?.id, explainedFor, persist]);
 
     const handleExplain = useCallback(async () => {
+        const activeFile = getActiveFile();
         if (!activeFile?.content) return;
         persist({ explanationError: null });
         setIsExplaining(true);
@@ -95,7 +97,7 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
         } finally {
             setIsExplaining(false);
         }
-    }, [activeFile, persist]);
+    }, [getActiveFile, persist]);
 
     const handleExplainSelection = useCallback(() => {
         persist({ explanationError: null });
@@ -120,7 +122,7 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
                 .then((result) => persist({
                     explanation: result,
                     explanationError: null,
-                    explainedFor: activeFile?.id ?? null
+                    explainedFor: activeFileMeta?.id ?? null
                 }))
                 .catch((err: unknown) => {
                     persist({
@@ -137,7 +139,7 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
         }, 5000);
         window.addEventListener('editor-selection', handler, { once: true });
         window.dispatchEvent(new CustomEvent('request-editor-selection'));
-    }, [persist, activeFile?.id]);
+    }, [persist, activeFileMeta?.id]);
 
     const handleClearExplanation = useCallback(() => {
         persist({ explanation: null, explanationError: null, explainedFor: null });
@@ -145,10 +147,10 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
 
     const handleRetryExplanation = useCallback(() => {
         persist({ explanationError: null });
-        if (activeFile?.content) {
+        if (getActiveFile()?.content) {
             handleExplain();
         }
-    }, [activeFile, handleExplain, persist]);
+    }, [getActiveFile, handleExplain, persist]);
 
     const handleSendExplanationToTerminal = useCallback(() => {
         if (!explanation || !activeTerminalId) return;

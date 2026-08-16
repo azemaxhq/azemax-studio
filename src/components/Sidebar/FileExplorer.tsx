@@ -1,6 +1,6 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo, memo } from 'react';
 import type { FileNode } from '../../utils/mockFileSystem';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectFile, useProjectUI, useProjectActions } from '../../context/ProjectContext';
 import {
     Folder, FolderOpen, ChevronRight,
     Search, X, Settings, FileCode,
@@ -241,6 +241,14 @@ interface FileTreeNodeProps {
     renamingNodeId: string | null;
     focusedNodeId: string | null;
     searchQuery: string;
+    activeFileId: string | null;
+    selectedFolderId: string | null;
+    creationState: { type: 'file' | 'folder' | null; parentId: string | null; isActive: boolean };
+    onSetActiveFile: (node: FileNode) => void;
+    onToggleFolder: (id: string) => void;
+    onSetSelectedFolder: (id: string) => void;
+    onCommitCreation: (name: string) => void;
+    onCancelCreation: () => void;
     onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
     onRenameCommit: (name: string) => void;
     onRenameCancel: () => void;
@@ -272,7 +280,7 @@ const HighlightText = ({ text, query }: { text: string; query: string }) => {
     );
 };
 
-const FileTreeNode: React.FC<FileTreeNodeProps> = ({
+const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     node,
     depth,
     renamingNodeId,
@@ -291,13 +299,20 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
     onDownload,
     onBookmark,
     isBookmarked = false,
-    newlyCreatedNodes
+    newlyCreatedNodes,
+    activeFileId,
+    selectedFolderId,
+    creationState,
+    onSetActiveFile,
+    onToggleFolder,
+    onSetSelectedFolder,
+    onCommitCreation,
+    onCancelCreation
 }) => {
-    const { activeFile, setActiveFile, toggleFolder, creationState, commitCreation, cancelCreation, selectedFolder, setSelectedFolder } = useProject();
     const isFolder = node.type === 'folder';
-    const isActive = activeFile?.id === node.id;
+    const isActive = activeFileId === node.id;
     const isFocused = focusedNodeId === node.id;
-    const isFolderSelected = isFolder && selectedFolder === node.id;
+    const isFolderSelected = isFolder && selectedFolderId === node.id;
     const isRenaming = renamingNodeId === node.id;
     const isDragOver = dragOverNodeId === node.id && isFolder;
     const isNewlyCreated = newlyCreatedNodes?.has(node.id) ?? false;
@@ -311,12 +326,12 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
         e.stopPropagation();
         onFocus(node.id);
         if (isFolder) {
-            toggleFolder(node.id);
-            setSelectedFolder(node.id);
+            onToggleFolder(node.id);
+            onSetSelectedFolder(node.id);
         } else {
-            setActiveFile(node);
+            onSetActiveFile(node);
             const lastSlash = node.id.lastIndexOf('/');
-            setSelectedFolder(lastSlash !== -1 ? node.id.substring(0, lastSlash) : 'root');
+            onSetSelectedFolder(lastSlash !== -1 ? node.id.substring(0, lastSlash) : 'root');
         }
     };
 
@@ -491,6 +506,14 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
                                     renamingNodeId={renamingNodeId}
                                     focusedNodeId={focusedNodeId}
                                     searchQuery={searchQuery}
+                                    activeFileId={activeFileId}
+                                    selectedFolderId={selectedFolderId}
+                                    creationState={creationState}
+                                    onSetActiveFile={onSetActiveFile}
+                                    onToggleFolder={onToggleFolder}
+                                    onSetSelectedFolder={onSetSelectedFolder}
+                                    onCommitCreation={onCommitCreation}
+                                    onCancelCreation={onCancelCreation}
                                     onContextMenu={onContextMenu}
                                     onRenameCommit={onRenameCommit}
                                     onRenameCancel={onRenameCancel}
@@ -519,8 +542,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
                                 <InputNode
                                     type={creationState.type!}
                                     depth={depth + 1}
-                                    onCommit={commitCreation}
-                                    onCancel={cancelCreation}
+                                    onCommit={onCommitCreation}
+                                    onCancel={onCancelCreation}
                                 />
                             )}
                         </AnimatePresence>
@@ -529,7 +552,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = ({
             </AnimatePresence>
         </div>
     );
-};
+});
 
 // Flatten tree for keyboard navigation
 const flattenTree = (nodes: FileNode[]): FileNode[] => {
@@ -644,7 +667,9 @@ interface FileExplorerProps {
 }
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSearchClose }) => {
-    const { fileTree, renameNode, deleteNode, creationState, commitCreation, cancelCreation, startCreating, moveNode, toggleFolder, setActiveFile, setSelectedFolder } = useProject();
+    const { fileTree, activeFile } = useProjectFile();
+    const { selectedFolder, creationState } = useProjectUI();
+    const { renameNode, deleteNode, commitCreation, cancelCreation, startCreating, moveNode, toggleFolder, setActiveFile, setSelectedFolder } = useProjectActions();
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
     const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -755,7 +780,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     }, [bookmarkedFiles]);
 
     // Toggle bookmark
-    const toggleBookmark = (fileId: string) => {
+    const toggleBookmark = useCallback((fileId: string) => {
         setBookmarkedFiles(prev => {
             const newSet = new Set(prev);
             if (newSet.has(fileId)) {
@@ -765,7 +790,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             }
             return newSet;
         });
-    };
+    }, []);
 
     // Get bookmarked files
     const getBookmarkedFiles = useCallback(() => {
@@ -887,7 +912,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     }, [handleKeyDown]);
 
     // Enhanced drag and drop with visual feedback
-    const handleDragStart = (e: React.DragEvent, node: FileNode) => {
+    const handleDragStart = useCallback((e: React.DragEvent, node: FileNode) => {
         setDraggedNode(node);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', node.id);
@@ -899,15 +924,15 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 0, 0);
         setTimeout(() => document.body.removeChild(dragImage), 0);
-    };
+    }, []);
 
-    const handleDragOver = (_e: React.DragEvent, node: FileNode) => {
+    const handleDragOver = useCallback((_e: React.DragEvent, node: FileNode) => {
         if (node.type === 'folder' && draggedNode && draggedNode.id !== node.id) {
             setDragOverNodeId(node.id);
         }
-    };
+    }, [draggedNode]);
 
-    const handleDrop = (_e: React.DragEvent, targetNode: FileNode) => {
+    const handleDrop = useCallback((_e: React.DragEvent, targetNode: FileNode) => {
         if (draggedNode && targetNode.type === 'folder' && draggedNode.id !== targetNode.id) {
             // Prevent dropping a folder into its own children
             const isDescendant = (ancestor: FileNode, descendant: FileNode): boolean => {
@@ -922,18 +947,18 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         }
         setDraggedNode(null);
         setDragOverNodeId(null);
-    };
+    }, [draggedNode, moveNode]);
 
-    const handleDragEnd = () => {
+    const handleDragEnd = useCallback(() => {
         setDraggedNode(null);
         setDragOverNodeId(null);
-    };
+    }, []);
 
-    const handleContextMenu = (e: React.MouseEvent, node: FileNode) => {
+    const handleContextMenu = useCallback((e: React.MouseEvent, node: FileNode) => {
         e.preventDefault();
         e.stopPropagation();
         setContextMenu({ x: e.clientX, y: e.clientY, nodeId: node.id });
-    };
+    }, []);
 
     const handleContainerContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -951,7 +976,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         }
     };
 
-    const handleDelete = (id?: string) => {
+    const handleDelete = useCallback((id?: string) => {
         const targetId = id || contextMenu?.nodeId;
         setContextMenu(null);
         if (targetId && targetId !== 'root') {
@@ -959,18 +984,34 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 deleteNode(targetId);
             }, 50);
         }
-    };
+    }, [contextMenu, deleteNode]);
 
-    const handleRenameCommit = (newName: string) => {
+    const handleRenameCommit = useCallback((newName: string) => {
         if (renamingNodeId) {
             renameNode(renamingNodeId, newName);
             setRenamingNodeId(null);
         }
-    };
+    }, [renamingNodeId, renameNode]);
 
-    const handleRenameCancel = () => {
+    const handleRenameCancel = useCallback(() => {
         setRenamingNodeId(null);
+    }, []);
+
+    // Stable onDownload for memoized FileTreeNode. The ref keeps the identity
+    // constant while always dispatching to the latest tree/logic, so memoized
+    // rows never re-render for download purposes yet never act on stale data.
+    const downloadHandlerRef = useRef<(nodeId: string) => void>(() => {});
+    downloadHandlerRef.current = (nodeId: string) => {
+        const targetNode = findNodeById(fileTree, nodeId);
+        if (targetNode?.type === 'folder') {
+            downloadFolder(nodeId);
+        } else {
+            downloadFile(nodeId);
+        }
     };
+    const handleDownload = useCallback((nodeId: string) => {
+        downloadHandlerRef.current(nodeId);
+    }, []);
 
     // Find a node by ID recursively
     const findNodeById = useCallback((nodes: FileNode[], id: string): FileNode | null => {
@@ -1477,6 +1518,14 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                             renamingNodeId={renamingNodeId}
                             focusedNodeId={focusedNodeId}
                             searchQuery={searchQuery}
+                            activeFileId={activeFile?.id ?? null}
+                            selectedFolderId={selectedFolder}
+                            creationState={creationState}
+                            onSetActiveFile={setActiveFile}
+                            onToggleFolder={toggleFolder}
+                            onSetSelectedFolder={setSelectedFolder}
+                            onCommitCreation={commitCreation}
+                            onCancelCreation={cancelCreation}
                             onContextMenu={handleContextMenu}
                             onRenameCommit={handleRenameCommit}
                             onRenameCancel={handleRenameCancel}
@@ -1487,14 +1536,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                             onDrop={handleDrop}
                             onDragEnd={handleDragEnd}
                             dragOverNodeId={dragOverNodeId}
-                            onDownload={(nodeId) => {
-                                const targetNode = findNodeById(fileTree, nodeId);
-                                if (targetNode?.type === 'folder') {
-                                    downloadFolder(nodeId);
-                                } else {
-                                    downloadFile(nodeId);
-                                }
-                            }}
+                            onDownload={handleDownload}
                             onBookmark={toggleBookmark}
                             isBookmarked={bookmarkedFiles.has(node.id)}
                             newlyCreatedNodes={newlyCreatedNodes}

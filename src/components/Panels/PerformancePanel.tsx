@@ -18,7 +18,7 @@ import {
   Info,
   CheckCircle
 } from 'lucide-react';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
 import {
   analyzePerformance,
@@ -63,7 +63,8 @@ interface PerformancePanelProps {
 }
 
 export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionData }) => {
-  const { activeFile } = useProject();
+  const { getActiveFile } = useProjectActions();
+  const { activeFileMeta } = useProjectUI();
   const { isRunning } = useTerminal();
   
   const [currentReport, setCurrentReport] = useState<PerformanceReport | null>(null);
@@ -84,6 +85,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
 
   // Analyze new execution data
   useEffect(() => {
+    const activeFile = getActiveFile();
     if (executionData && activeFile && !isRunning) {
       // Get the previous report BEFORE saving the new one
       const previousReport = PerformanceHistory.getPrevious();
@@ -114,7 +116,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
         setAlerts(newAlerts);
       }
     }
-  }, [executionData, activeFile, isRunning]);
+  }, [executionData, isRunning, getActiveFile]);
 
   const getLanguageFromExtension = (filename: string): string => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -150,7 +152,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
     const data = {
       report: currentReport,
       timestamp: new Date().toISOString(),
-      file: activeFile?.name,
+      file: activeFileMeta?.name,
       exported: true
     };
     
@@ -195,7 +197,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
           <div>
             <h2 className="text-lg font-semibold text-white">Performance Analysis</h2>
             <p className="text-xs text-white/50">
-              {activeFile?.name} • {currentReport?.metrics.language}
+              {activeFileMeta?.name} • {currentReport?.metrics.language}
             </p>
           </div>
         </div>

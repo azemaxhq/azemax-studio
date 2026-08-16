@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { useTerminal } from '../../context/TerminalContext';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { TerminalSessionController } from '../../context/TerminalSessionController';
 import { type FileNode } from '../../utils/mockFileSystem';
 import '@xterm/xterm/css/xterm.css';
@@ -49,7 +49,8 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     const sessionRef = useRef<TerminalSessionController | null>(null);
 
     const { terminalEventEmitter, setIsRunning, setLastExecutionData, updateTerminalCwd, syncTerminalToFileExplorer } = useTerminal();
-    const { fileTree, createFile, createFolder, deleteNode, selectedFolder, setSelectedFolder } = useProject();
+    const { createFile, createFolder, deleteNode, setSelectedFolder, getFileTree } = useProjectActions();
+    const { selectedFolder } = useProjectUI();
 
     // Manage local CWD state for this specific terminal instance
     const [localCwd, setLocalCwdState] = React.useState(cwd || selectedFolder || 'root');
@@ -59,8 +60,9 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     const directoryHistory = useRef<string[]>([localCwd]);
     const historyIndexRef = useRef<number>(0);
 
-    // Refs for accessing latest state inside terminal event listeners without triggering re-runs
-    const fileTreeRef = useRef<FileNode[]>(fileTree);
+    // Latest file tree read lazily on demand inside command handlers; keeps this
+    // terminal completely off the per-keystroke file state.
+    const fileTreeRef = useRef<FileNode[]>(getFileTree());
 
     const setLocalCwd = (newCwd: string) => {
         setLocalCwdState(newCwd);
@@ -78,8 +80,8 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     };
 
     useEffect(() => {
-        fileTreeRef.current = fileTree;
-    }, [fileTree]);
+        fileTreeRef.current = getFileTree();
+    }, [getFileTree]);
 
     // Sync File Explorer Selection -> Terminal CWD
     useEffect(() => {
@@ -211,7 +213,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
 
         const findNode = (pathStr: string): FileNode | null => {
             const currentCwd = localCwdRef.current;
-            const currentTree = fileTreeRef.current;
+            const currentTree = getFileTree();
 
             // Enhanced path resolution
             let currentPath: string;
@@ -808,16 +810,48 @@ const handleRunData = (e: Event) => {
             term.focus();
 
             // Single source of truth for the session listeners (create + reuse).
-            const buildListeners = () => ({
-                onOutput: (data: string) => { const t = xtermRef.current; if (t) t.write(data); },
-                onState: (state: string) => {
-                    if (state === 'EXITED' || state === 'FAILED' || state === 'DISPOSED') {
-                        setIsRunning(false);
-                    }
-                },
-                onExit: (code: number | null, signal: string | null) => {
+            // Output arrives in many small chunks; batch writes and flush on a
+            // short timer so a busy stream doesn't force one React/render pass
+            // per chunk. The buffer is per-run and force-flushed on exit.
+            const buildListeners = () => {
+                let pending = '';
+                let flushTimer: ReturnType<typeof setTimeout> | null = null;
+                // Bound each synchronous xterm.write so a single massive output
+                // burst can't block the main thread; oversized buffers are sliced
+                // and the remainder is scheduled for the next tick.
+                const MAX_WRITE_CHUNK = 32768;
+                const flush = (drain = false) => {
+                    flushTimer = null;
                     const t = xtermRef.current;
-                    if (!t) return;
+                    if (!t || !pending) return;
+                    if (drain || pending.length <= MAX_WRITE_CHUNK) {
+                        t.write(pending);
+                        pending = '';
+                    } else {
+                        t.write(pending.slice(0, MAX_WRITE_CHUNK));
+                        pending = pending.slice(MAX_WRITE_CHUNK);
+                        flushTimer = setTimeout(flush, 0);
+                    }
+                };
+                const scheduleFlush = () => {
+                    if (flushTimer === null) {
+                        flushTimer = setTimeout(flush, 16);
+                    }
+                };
+                return {
+                    onOutput: (data: string) => {
+                        pending += data;
+                        scheduleFlush();
+                    },
+                    onState: (state: string) => {
+                        if (state === 'EXITED' || state === 'FAILED' || state === 'DISPOSED') {
+                            setIsRunning(false);
+                        }
+                    },
+                    onExit: (code: number | null, signal: string | null) => {
+                        flush(true);
+                        const t = xtermRef.current;
+                        if (!t) return;
                     if (signal) {
                         t.writeln(`\r\n\x1b[1;31mProcess terminated by ${signal}\x1b[0m`);
                     } else {
@@ -850,7 +884,8 @@ const handleRunData = (e: Event) => {
                     if (!t) return;
                     t.writeln(`\r\n\x1b[1;31m${message}\x1b[0m`);
                 },
-            });
+            };
+        };
 
             // Build (or reuse) the session controller for this terminal.
             let session = sessionRef.current;

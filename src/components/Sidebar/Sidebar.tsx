@@ -5,7 +5,7 @@ import {
     RefreshCw, Search, Sparkles
 } from 'lucide-react';
 import { FileExplorer } from './FileExplorer';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectFile, useProjectUI, useProjectActions } from '../../context/ProjectContext';
 import type { FileNode } from '../../utils/mockFileSystem';
 
 // Count all files and folders recursively
@@ -128,7 +128,9 @@ const HeaderActionBtn = ({
 };
 
 export const Sidebar: React.FC = () => {
-    const { fileTree, startCreating, selectedFolder, collapseAll, expandAll } = useProject();
+    const { fileTree } = useProjectFile();
+    const { selectedFolder } = useProjectUI();
+    const { startCreating, collapseAll, expandAll } = useProjectActions();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
 

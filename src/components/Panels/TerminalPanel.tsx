@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Terminal, Plus, X, Play, Square, Eraser, Clipboard, Trash, Copy, Keyboard } from 'lucide-react';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
 import { ShellTerminal } from './ShellTerminal';
 import { motion } from 'framer-motion';
 import { ContextMenu } from '../UI/ContextMenu';
 
 export const TerminalPanel: React.FC = () => {
-    const { activeFile, selectedFolder } = useProject();
+    const { selectedFolder, activeFileMeta } = useProjectUI();
+    const { getActiveFile } = useProjectActions();
     const {
         terminals,
         activeTerminalId,
@@ -25,6 +26,7 @@ export const TerminalPanel: React.FC = () => {
     const [stdinContent, setStdinContent] = useState('');
 
     const handleRun = () => {
+        const activeFile = getActiveFile();
         if (!activeFile) return;
         
         // Dispatch event to switch to terminal tab (though we're already here)
@@ -205,7 +207,7 @@ export const TerminalPanel: React.FC = () => {
                     {/* Run/Stop Button */}
                     <button
                         onClick={isRunning ? () => activeTerminalId && stopProcess(activeTerminalId) : handleRun}
-                        disabled={!isRunning && !activeFile}
+                        disabled={!isRunning && !activeFileMeta}
                         className={`
                             flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all
                             ${isRunning

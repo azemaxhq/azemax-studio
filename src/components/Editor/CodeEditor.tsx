@@ -2,7 +2,7 @@ import React, { useRef, useCallback, useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import type { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { useProject } from '../../context/ProjectContext';
+import { useProjectFile, useProjectActions } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../hooks/useTheme';
 import { getCodeSuggestion, cancelPendingRequest, getInlineCompletion } from '../../utils/codeSuggestionService';
@@ -11,7 +11,19 @@ import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, Gi
 import { ModernAILogo } from '../Icons/ModernAILogo';
 import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
+import { setCursorPosition, useCursorPosition } from '../../core/runtime/cursorPositionStore';
 import type { FileNode } from '../../utils/mockFileSystem';
+
+// Isolated status-bar readout. Subscribes to the external cursor store, so
+// cursor movement updates ONLY this tiny node instead of the whole editor tree.
+const CursorStatus: React.FC = React.memo(() => {
+    const pos = useCursorPosition();
+    return (
+        <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+            Ln {pos.lineNumber}, Col {pos.column}
+        </div>
+    );
+});
 
 const RunButton: React.FC<{ activeFile: FileNode | null; language: string }> = ({ activeFile, language }) => {
     const { runCode, isRunning } = useTerminal();
@@ -70,7 +82,8 @@ interface CodeEditorProps {
 let githubDarkThemeDefined = false;
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) => {
-    const { activeFile, updateFileContent } = useProject();
+    const { activeFile } = useProjectFile();
+    const { updateFileContent } = useProjectActions();
     const { settings, updateSettings } = useSettings();
     const { isDark } = useTheme();
     const monacoRef = useRef<typeof Monaco | null>(null);
@@ -83,9 +96,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     /** Cache last non-empty selection so Explain Selection still works after focus leaves editor */
     const lastSelectionRef = useRef<{ fileId: string; text: string; language: string; fileName?: string } | null>(null);
 
-    // Editor State - Use settings context instead of local state
-    const [cursorPosition, setCursorPosition] = useState({ lineNumber: 1, column: 1 });
-
+    // Editor State - cursor position lives in an external store (see CursorStatus)
     const isSuggestionsEnabledRef = useRef(settings.editor.isSuggestionsEnabled);
 
     // Update ref when settings change
@@ -133,16 +144,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
 
     // Run diagnostics
-    const runDiagnostics = async () => {
-        if (!activeFile || !monacoRef.current || !editorRef.current) return;
+    const runDiagnostics = useCallback(async () => {
+        const file = activeFileRef.current;
+        if (!file || !monacoRef.current || !editorRef.current) return;
 
-        console.log('Starting diagnostics for file:', activeFile.name);
+        console.log('Starting diagnostics for file:', file.name);
         setIsChecking(true);
         setHasErrors(false);
         setIsCheckSuccess(false);
         
-        const code = activeFile.content || '';
-        const fileName = activeFile.name;
+        const code = file.content || '';
+        const fileName = file.name;
         const model = editorRef.current.getModel();
 
         try {
@@ -196,7 +208,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         } finally {
             setIsChecking(false);
         }
-    };
+    }, []);
 
     // Debounced save to project state with auto-save setting
     const debouncedSave = useDebounceCallback((id: string, content: string) => {
@@ -1194,9 +1206,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
-                        Ln {cursorPosition.lineNumber}, Col {cursorPosition.column}
-                    </div>
+                    <CursorStatus />
                     <div className="w-px h-3 bg-white/30" />
                     <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
                         UTF-8
