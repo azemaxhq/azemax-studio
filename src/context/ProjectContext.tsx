@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, memo, type ReactNode } from 'react';
 import { initialFileTree, type FileNode } from '../utils/mockFileSystem';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { getSettings } from '../settings/settingsStore';
 
 const STORAGE_KEY = 'deepcontext-file-tree';
 const ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
@@ -422,16 +423,21 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         stateRef.current = { fileTree, activeFile, selectedFolder, creationState, clipboard };
     });
 
-    // Save fileTree to localStorage whenever it changes
+    // Save fileTree to localStorage whenever it changes (unless workspace
+    // persistence is disabled in Privacy settings).
     useEffect(() => {
-        saveFileTree(fileTree);
+        if (getSettings().privacy.saveWorkspaceState) {
+            saveFileTree(fileTree);
+        }
     }, [fileTree]);
 
     // Wrapper to also save active file ID
     const setActiveFile = useCallback((file: FileNode) => {
         setActiveFileState(file);
         setActiveFileMeta({ id: file.id, name: file.name });
-        localStorage.setItem(ACTIVE_FILE_KEY, file.id);
+        if (getSettings().privacy.saveWorkspaceState) {
+            localStorage.setItem(ACTIVE_FILE_KEY, file.id);
+        }
     }, []);
 
     const toggleFolder = useCallback((folderId: string) => {

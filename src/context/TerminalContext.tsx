@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { getSettings } from '../settings/settingsStore';
 
 export interface ExecutionData {
     executionTime: number;
@@ -169,11 +170,14 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     }, [terminalEventEmitter]);
 
     const stopProcess = useCallback((id: string) => {
+        if (getSettings().terminal.confirmBeforeKill && isRunning) {
+            if (!window.confirm('Stop the running process in this terminal?')) return;
+        }
         // Dispatch stop intent; the owning ShellTerminal maps it to its session
         // controller (signal/kill -> backend process termination -> exit frame).
         // isRunning is cleared authoritatively by the session EXITED/FAILED state.
         terminalEventEmitter.dispatchEvent(new CustomEvent('stop', { detail: { id } }));
-    }, [terminalEventEmitter]);
+    }, [terminalEventEmitter, isRunning]);
 
     const writeToTerminal = useCallback((id: string, text: string) => {
         terminalEventEmitter.dispatchEvent(new CustomEvent('writeText', { detail: { id, text } }));
@@ -184,6 +188,9 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
 
         // Auto-create terminal if none exists
         if (!termId || !terminals.find(t => t.id === termId)) {
+            if (!getSettings().terminal.autoOpenTerminal) {
+                return Promise.resolve();
+            }
             termId = Math.random().toString(36).substring(2, 9);
             setTerminals(prev => [...prev, { id: termId as string, title: `Run: ${filename || 'script'}`, cwd }]);
             setActiveTerminalId(termId);

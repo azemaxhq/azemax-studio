@@ -9,6 +9,8 @@ import {
 import { cn } from '../../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ContextMenu } from '../UI/ContextMenu';
+import { useSettingsSelector } from '../../context/SettingsContext';
+import { getSettings } from '../../settings/settingsStore';
 
 // Programming language icons
 import {
@@ -582,7 +584,7 @@ interface SearchFilters {
 const filterTreeAdvanced = (nodes: FileNode[], filters: SearchFilters): FileNode[] => {
     const { query, fileType, dateRange, sizeRange, showHidden } = filters;
     
-    if (!query && fileType === 'all' && dateRange === 'all' && sizeRange === 'all' && !showHidden) {
+    if (!query && fileType === 'all' && dateRange === 'all' && sizeRange === 'all' && showHidden) {
         return nodes;
     }
 
@@ -722,14 +724,21 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     }, [fileTree]);
     
     // Advanced search filters state
+    const showHiddenFilesSetting = useSettingsSelector(s => s.editor.showHiddenFiles);
+    const confirmDeleteSetting = useSettingsSelector(s => s.general.confirmDelete);
     const [searchFilters, setSearchFilters] = useState<SearchFilters>({
         query: '',
         fileType: 'all',
         dateRange: 'all',
         sizeRange: 'all',
-        showHidden: false
+        showHidden: getSettings().editor.showHiddenFiles
     });
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+    // Keep the search filter's hidden-file toggle in sync with the global setting
+    useEffect(() => {
+        setSearchFilters(prev => ({ ...prev, showHidden: showHiddenFilesSetting }));
+    }, [showHiddenFilesSetting]);
 
     // Filter tree based on search
     const filteredTree = useMemo(() => filterTreeAdvanced(fileTree, searchFilters), [fileTree, searchFilters]);
@@ -755,7 +764,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             fileType: 'all',
             dateRange: 'all',
             sizeRange: 'all',
-            showHidden: false
+            showHidden: showHiddenFilesSetting
         });
         setShowAdvancedFilters(false);
     };
@@ -892,8 +901,10 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             case 'Backspace':
                 if (focusedNodeId && focusedNodeId !== 'root' && !e.metaKey) {
                     e.preventDefault();
-                    // Direct delete for keyboard handler
-                    deleteNode(focusedNodeId);
+                    const targetNode = flatNodes.find(n => n.id === focusedNodeId);
+                    if (!confirmDeleteSetting || window.confirm(`Delete "${targetNode?.name ?? 'this item'}"?`)) {
+                        deleteNode(focusedNodeId);
+                    }
                 }
                 break;
             case '/':
@@ -904,7 +915,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 }
                 break;
         }
-    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder, creationState.isActive, renamingNodeId]);
+    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder, creationState.isActive, renamingNodeId, confirmDeleteSetting]);
 
     useEffect(() => {
         document.addEventListener('keydown', handleKeyDown);
@@ -980,11 +991,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         const targetId = id || contextMenu?.nodeId;
         setContextMenu(null);
         if (targetId && targetId !== 'root') {
-            setTimeout(() => {
-                deleteNode(targetId);
-            }, 50);
+            if (!confirmDeleteSetting || window.confirm('Delete this item?')) {
+                setTimeout(() => {
+                    deleteNode(targetId);
+                }, 50);
+            }
         }
-    }, [contextMenu, deleteNode]);
+    }, [contextMenu, deleteNode, confirmDeleteSetting]);
 
     const handleRenameCommit = useCallback((newName: string) => {
         if (renamingNodeId) {

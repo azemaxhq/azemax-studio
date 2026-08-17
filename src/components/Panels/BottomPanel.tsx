@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lo
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useProjectFile, useProjectActions } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
+import { useSettingsSelector } from '../../context/SettingsContext';
 import { analyzeCode, type AnalysisResult, type AgeingSignal, type AgeingHotspot } from '../../utils/codeAnalysisEngine';
 import { analysisHistory } from '../../utils/analysisHistory';
 
@@ -397,10 +398,12 @@ export const BottomPanel: React.FC = () => {
     const { lastExecutionData } = useTerminal();
     
     // Auto-switch to terminal tab when run button is clicked (before execution starts)
+    const autoOpenTerminalSetting = useSettingsSelector(s => s.terminal.autoOpenTerminal);
+
     useEffect(() => {
         // Listen for run button click event
         const handleRunButtonClick = () => {
-            if (activeTab !== 'terminal') {
+            if (autoOpenTerminalSetting && activeTab !== 'terminal') {
                 setActiveTab('terminal');
             }
         };
@@ -411,7 +414,7 @@ export const BottomPanel: React.FC = () => {
         return () => {
             window.removeEventListener('run-button-clicked', handleRunButtonClick);
         };
-    }, [activeTab]);
+    }, [activeTab, autoOpenTerminalSetting]);
     
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [showAllHotspots, setShowAllHotspots] = useState(false);

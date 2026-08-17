@@ -7,7 +7,7 @@ import {
 
 import { loadPrism, tryHighlight } from '../../utils/prismLoader';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { streamChatWithAI, generateCode, getAvailableModels, type ProjectContext } from '../../utils/groqService';
+import { streamChatWithAI, chatWithAI, generateCode, type ProjectContext } from '../../utils/groqService';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
 import { type FileNode } from '../../utils/mockFileSystem';
@@ -625,8 +625,6 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     // Deferred value for streaming performance
     const deferredStreamingText = useDeferredValue(streamingText);
 
-    const [selectedModel, setSelectedModel] = useState<string>('llama-3.3-70b-versatile');
-
     // Time-based greeting
     const getGreeting = () => {
         const hour = new Date().getHours();
@@ -644,24 +642,12 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         setGreeting(getGreeting());
     }, [isVisible]);
 
-    // Load available models on mount
-    useEffect(() => {
-        getAvailableModels().then(models => {
-            if (models.length > 0) {
-                // Check if current model is in list, if not set first
-                if (!models.includes(selectedModel)) {
-                    setSelectedModel(models[0]);
-                }
-            }
-        });
-    }, []);
-
     // Load saved sessions on mount
     useEffect(() => {
         const savedSessions = loadSessions();
         const savedCurrentSessionId = loadCurrentSessionId();
 
-        if (savedSessions.length > 0) {
+        if (savedSessions.length > 0 && settings.general.restoreSession) {
             setSessions(savedSessions);
             // Restore the current session if it exists, otherwise use the first one
             if (savedCurrentSessionId && savedSessions.some(s => s.id === savedCurrentSessionId)) {
@@ -670,7 +656,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                 setCurrentSessionId(savedSessions[0].id);
             }
         }
-    }, []);
+    }, [settings.general.restoreSession]);
 
     // Project Context
     const { createFile, updateFileContent, createFolder, deleteNode, getActiveFile, getFileTree } = useProjectActions();
@@ -727,7 +713,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
 
     // Use robust auto-scroll hook
     // We pass [messages, streamingText] as dependencies so the observer re-attaches/checks when content structure changes
-    const { containerRef: messagesContainerRef, scrollToBottom, handleScroll: hookHandleScroll, isStickyRef } = useAutoScroll(isVisible);
+    const { containerRef: messagesContainerRef, scrollToBottom, handleScroll: hookHandleScroll, isStickyRef } = useAutoScroll(isVisible && settings.ai.autoScroll);
 
     const handleStop = useCallback(() => {
         if (abortControllerRef.current) {
@@ -801,19 +787,23 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         const newSession = createSession();
         setSessions(prev => {
             const updated = [newSession, ...prev];
-            saveSessions(updated);
+            if (settings.privacy.localPersistence && settings.privacy.saveChatHistory) {
+                saveSessions(updated);
+            }
             return updated;
         });
         setCurrentSessionId(newSession.id);
         setStreamingText(''); // Fix: Clear streaming text so home page can show
         if (window.innerWidth < 768) setShowSidebar(false);
-    }, []);
+    }, [settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
     const handleDeleteSession = (e: React.MouseEvent, sessionId: string) => {
         e.stopPropagation();
         const newSessions = sessions.filter(s => s.id !== sessionId);
         setSessions(newSessions);
-        saveSessions(newSessions);
+        if (settings.privacy.localPersistence && settings.privacy.saveChatHistory) {
+            saveSessions(newSessions);
+        }
 
         if (currentSessionId === sessionId) {
             setCurrentSessionId(newSessions.length > 0 ? newSessions[0].id : null);
@@ -918,6 +908,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const handleSend = useCallback(async (arg?: string | React.MouseEvent | unknown) => {
         const textToSend = typeof arg === 'string' ? arg : input;
 
+        if (!settings.ai.enabled) return;
         if (!textToSend.trim() || isLoading || isSendingRef.current) return;
         isSendingRef.current = true; // Block duplicate calls
 
@@ -984,6 +975,32 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             const createMatch = userMessageText.match(/create (?:a )?file (?:named )?['"]?([\w./-]+)['"]?/i);
             let responseText = '';
 
+            const runRequest = async (prompt: string, history: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<string> => {
+                if (settings.ai.streaming) {
+                    let fullResponse = '';
+                    let lastUpdateTime = 0;
+                    const THROTTLE_MS = 50; // Tuned for better responsiveness
+
+                    for await (const chunk of streamChatWithAI(
+                        prompt,
+                        history,
+                        abortController.signal,
+                        projectContext,
+                        undefined,
+                        settings
+                    )) {
+                        fullResponse += chunk;
+                        const now = Date.now();
+                        if (now - lastUpdateTime > THROTTLE_MS) {
+                            scheduleStreamUpdate(requestId, fullResponse);
+                            lastUpdateTime = now;
+                        }
+                    }
+                    return fullResponse;
+                }
+                return chatWithAI(prompt, history, abortController.signal, projectContext, undefined, settings);
+            };
+
             if (createMatch) {
                 const fileName = createMatch[1];
                 const contentPrompt = `Generate code for a file named "${fileName}" based on this context: "${userMessageText}". Output ONLY the code, no markdown fences if possible, or minimally wrapped.`;
@@ -1012,35 +1029,14 @@ INSTRUCTIONS:
 2. If the user wants to WRITE, CREATE, IMPLEMENT, MODIFY, REFACTOR, or UPDATE the code, return the COMPLETE updated file content inside a single markdown code block.
 3. If providing updated code, do NOT truncate it. Return the full file.
 `;
-                // Try streaming 
+                // Try streaming or non-streaming based on settings
                 try {
-                    let fullResponse = '';
                     const history = messages.map(m => ({
                         role: m.role === 'ai' ? 'assistant' : 'user' as 'user' | 'assistant' | 'system',
                         content: m.text
                     })).filter(m => m.role !== 'system') as any[];
 
-                    let lastUpdateTime = 0;
-                    const THROTTLE_MS = 50; // Tuned for better responsiveness
-
-                    for await (const chunk of streamChatWithAI(
-                        prompt,
-                        history,
-                        abortController.signal,
-                        projectContext,
-                        selectedModel,
-                        settings
-                    )) {
-                        fullResponse += chunk;
-                        const now = Date.now();
-                        if (now - lastUpdateTime > THROTTLE_MS) {
-                            scheduleStreamUpdate(requestId, fullResponse);
-                            lastUpdateTime = now;
-                        }
-                    }
-                    // Ensure final update with any pending content
-                    // requestAnimationFrame(() => setStreamingText(fullResponse)); // REMOVED: Causing duplicate "ghost" message before clear
-                    responseText = fullResponse;
+                    responseText = await runRequest(prompt, history);
                 } catch (e: any) {
                     if (e.name === 'AbortError') {
                         responseText = streamingText;
@@ -1066,33 +1062,12 @@ INSTRUCTIONS:
                 }
             } else {
                 try {
-                    let fullResponse = '';
                     const history = messages.map(m => ({
                         role: m.role === 'ai' ? 'assistant' : 'user' as 'user' | 'assistant' | 'system',
                         content: m.text
                     })).filter(m => m.role !== 'system') as any[];
 
-                    let lastUpdateTime = 0;
-                    const THROTTLE_MS = 50; // Tuned for better responsiveness
-
-                    for await (const chunk of streamChatWithAI(
-                        userMessageText,
-                        history,
-                        abortController.signal,
-                        projectContext,
-                        selectedModel,
-                        settings
-                    )) {
-                        fullResponse += chunk;
-                        const now = Date.now();
-                        if (now - lastUpdateTime > THROTTLE_MS) {
-                            scheduleStreamUpdate(requestId, fullResponse);
-                            lastUpdateTime = now;
-                        }
-                    }
-                    // Ensure final update with any pending content
-                    // requestAnimationFrame(() => setStreamingText(fullResponse)); // REMOVED: Causing duplicate "ghost" message before clear
-                    responseText = fullResponse;
+                    responseText = await runRequest(userMessageText, history);
                 } catch (e: any) {
                     if (e.name === 'AbortError') {
                         responseText = streamingText;
@@ -1184,7 +1159,7 @@ INSTRUCTIONS:
                 isSendingRef.current = false;
             }, 300);
         }
-    }, [input, sessions, currentSessionId, isLoading, handleNewChat, selectedModel, getActiveFile, getFileTree]);
+    }, [input, sessions, currentSessionId, isLoading, handleNewChat, settings, getActiveFile, getFileTree]);
 
     handleSendRef.current = handleSend;
 
@@ -1202,15 +1177,17 @@ INSTRUCTIONS:
 
     // Persist sessions whenever they change
     useEffect(() => {
-        if (sessions.length > 0) {
+        if (sessions.length > 0 && settings.privacy.localPersistence && settings.privacy.saveChatHistory) {
             saveSessions(sessions);
         }
-    }, [sessions]);
+    }, [sessions, settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
     // Persist current session ID
     useEffect(() => {
-        saveCurrentSessionId(currentSessionId);
-    }, [currentSessionId]);
+        if (settings.privacy.localPersistence && settings.privacy.saveChatHistory) {
+            saveCurrentSessionId(currentSessionId);
+        }
+    }, [currentSessionId, settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1430,10 +1407,15 @@ INSTRUCTIONS:
                             <span className="text-[#8b949e]/60">{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
                             <button
                                 onClick={() => {
-                                    if (confirm('Clear all conversations?')) {
+                                    const doClear = () => {
                                         setSessions([]);
                                         saveSessions([]);
                                         handleNewChat();
+                                    };
+                                    if (settings.ai.confirmClearConversation) {
+                                        if (confirm('Clear all conversations?')) doClear();
+                                    } else {
+                                        doClear();
                                     }
                                 }}
                                 className="text-[#8b949e]/60 hover:text-red-400 transition-colors duration-200"
@@ -1516,13 +1498,18 @@ INSTRUCTIONS:
                 </div>
 
                 {/* Messages Container */}
+                {!settings.ai.enabled && (
+                    <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-[11px] text-yellow-200/80 z-10">
+                        AI features are disabled. Enable them in Settings → AI.
+                    </div>
+                )}
                 <div
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
                     className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pt-14 pb-10 space-y-6 custom-scrollbar w-full scroll-smooth ${messages.length > 0 || streamingText ? 'pb-40' : ''}`}
                     style={{ overflowAnchor: 'auto' }}
                 >
-                    {messages.length === 0 && !streamingText ? (
+                    {messages.length === 0 && !streamingText && settings.general.showWelcomeScreen ? (
                         <div className="min-h-full flex flex-col items-center justify-center p-4 pb-12 animate-fade-in-up w-full">
 
                             {/* Hero Section Container */}
@@ -1717,12 +1704,12 @@ INSTRUCTIONS:
                                 ) : (
                                     <button
                                         onClick={handleSend}
-                                        disabled={!input.trim()}
-                                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 ${input.trim()
+                                        disabled={!input.trim() || !settings.ai.enabled}
+                                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 ${input.trim() && settings.ai.enabled
                                             ? 'bg-white text-black hover:scale-105 active:scale-95 shadow-md shadow-white/10'
                                             : 'bg-white/10 text-white/30 cursor-not-allowed'
                                             }`}
-                                        title="Send (Enter)"
+                                        title={settings.ai.enabled ? "Send (Enter)" : "AI is disabled in settings"}
                                     >
                                         <ArrowRight
                                             size={18}

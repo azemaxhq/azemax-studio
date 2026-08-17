@@ -62,12 +62,12 @@ export interface ProjectContext {
 // Provider Configuration
 // ============================================================================
 
-// Function to get Groq client with settings
-export const getGroqClient = (settings?: Settings) => {
-    const apiKey = settings?.account.apiKey || import.meta.env.VITE_GROQ_API_KEY || '';
+// Function to get Groq client
+export const getGroqClient = () => {
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY || '';
     
     if (!apiKey) {
-        throw new Error('API key is required. Please set it in Settings or environment variables.');
+        throw new Error('API key is required. Please set it in the environment.');
     }
     
     return new Groq({
@@ -357,7 +357,7 @@ export const sendChatRequest = async (
                 return await sendORChatRequest(messages, { ...options, model: currentModel });
             }
 
-            const client = getGroqClient(settings);
+            const client = getGroqClient();
             
             // Determine max tokens based on response length setting
             const getMaxTokens = (length: 'short' | 'medium' | 'long') => {
@@ -436,7 +436,7 @@ export async function* streamChatRequest(
                 return;
             }
 
-            const client = getGroqClient(settings);
+            const client = getGroqClient();
             
             // Determine max tokens based on response length setting
             const getMaxTokens = (length: 'short' | 'medium' | 'long') => {
@@ -502,7 +502,9 @@ export const chatWithAI = async (
     userMessage: string,
     conversationHistory: ChatMessage[] = [],
     signal?: AbortSignal,
-    projectContext?: ProjectContext
+    projectContext?: ProjectContext,
+    model: string = DEFAULT_MODEL,
+    settings?: Settings
 ): Promise<string> => {
     const systemPrompt = buildSystemPrompt(projectContext);
     const messages: ChatMessage[] = [
@@ -510,7 +512,7 @@ export const chatWithAI = async (
         ...conversationHistory,
         { role: 'user', content: userMessage }
     ];
-    return sendChatRequest(messages, { signal });
+    return sendChatRequest(messages, { signal, model }, settings);
 };
 
 export async function* streamChatWithAI(

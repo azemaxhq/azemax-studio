@@ -7,6 +7,8 @@ import { CodeEditor } from '../Editor/CodeEditor';
 import { AIAssistant } from '../Panels/AIAssistant';
 import { BottomPanel } from '../Panels/BottomPanel';
 import { PerformanceBudgetMonitor, ProfilerWrapper } from '../PerformanceBudgetMonitor';
+import { getSettings } from '../../settings/settingsStore';
+import { useSettingsSelector } from '../../settings/settingsStore';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -36,6 +38,9 @@ const PanelFallback = () => (
   );
 
 export const MainLayout: React.FC = () => {
+    // Developer diagnostics overlay (gated by the Advanced setting)
+    const developerDiagnostics = useSettingsSelector((s) => s.advanced.developerDiagnostics);
+
     // Helper to load from storage or default
     const loadState = (key: string, defaultVal: number) => {
         try {
@@ -57,7 +62,11 @@ export const MainLayout: React.FC = () => {
     const [leftSidebarWidth, setLeftSidebarWidth] = React.useState(() => loadState('layout-left-sidebar-width', 256));
     const [bottomPanelHeight, setBottomPanelHeight] = React.useState(() => loadState('layout-bottom-panel-height', 256));
     const [isAiSidebarOpen, setIsAiSidebarOpen] = React.useState(() => loadState('layout-ai-sidebar-open', 1) === 1);
-    const [isLeftSidebarOpen, setIsLeftSidebarOpen] = React.useState(() => loadState('layout-left-sidebar-open', 1) === 1);
+    const [isLeftSidebarOpen, setIsLeftSidebarOpen] = React.useState(() => {
+        const stored = localStorage.getItem('layout-left-sidebar-open');
+        if (stored !== null) return stored === '1';
+        return getSettings().general.sidebarDefault;
+    });
     const [leftSidebarView, setLeftSidebarView] = React.useState<'explorer' | 'explanation' | 'settings'>(() => {
         try {
             const v = localStorage.getItem('layout-left-sidebar-view');
@@ -445,7 +454,7 @@ export const MainLayout: React.FC = () => {
 </div>
             </div>
         </div>
-        <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development'} />
+        <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development' && developerDiagnostics} />
     </div>
     );
 };

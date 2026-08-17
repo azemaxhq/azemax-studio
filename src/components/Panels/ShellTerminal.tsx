@@ -5,6 +5,8 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { useTerminal } from '../../context/TerminalContext';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
+import { useSettingsSelector } from '../../context/SettingsContext';
+import { getSettings } from '../../settings/settingsStore';
 import { TerminalSessionController } from '../../context/TerminalSessionController';
 import { type FileNode } from '../../utils/mockFileSystem';
 import '@xterm/xterm/css/xterm.css';
@@ -51,6 +53,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     const { terminalEventEmitter, setIsRunning, setLastExecutionData, updateTerminalCwd, syncTerminalToFileExplorer } = useTerminal();
     const { createFile, createFolder, deleteNode, setSelectedFolder, getFileTree } = useProjectActions();
     const { selectedFolder } = useProjectUI();
+    const terminalSettings = useSettingsSelector(s => s.terminal);
 
     // Manage local CWD state for this specific terminal instance
     const [localCwd, setLocalCwdState] = React.useState(cwd || selectedFolder || 'root');
@@ -125,17 +128,19 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 brightCyan: '#29b8db',
                 brightWhite: '#f5f5f5',
             },
-            fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Geist Mono", Menlo, Consolas, monospace',
-            fontSize: 14,
+            fontFamily: getSettings().terminal.fontFamily,
+            fontSize: getSettings().terminal.fontSize,
             lineHeight: 1.45,
             fontWeight: '400',
             fontWeightBold: '600',
             letterSpacing: 0.5,
-            cursorBlink: true,
-            allowTransparency: true,
+            cursorBlink: getSettings().terminal.cursorBlink,
+            allowTransparency: getSettings().terminal.allowTransparency,
+            cursorStyle: getSettings().terminal.cursorStyle,
+            rightClickSelectsWord: getSettings().terminal.rightClickSelectsWord,
             convertEol: true, // Auto convert \n to \r\n
             overviewRuler: { width: 0 },
-            scrollback: 1000,
+            scrollback: getSettings().terminal.scrollback,
         });
 
         const fitAddon = new FitAddon();
@@ -174,6 +179,33 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             fitAddonRef.current = null;
         };
     }, []);
+
+    // Apply terminal settings changes incrementally without recreating xterm
+    useEffect(() => {
+        const term = xtermRef.current;
+        if (!term) return;
+        term.options.fontSize = terminalSettings.fontSize;
+        term.options.fontFamily = terminalSettings.fontFamily;
+        term.options.cursorBlink = terminalSettings.cursorBlink;
+        term.options.cursorStyle = terminalSettings.cursorStyle;
+        term.options.allowTransparency = terminalSettings.allowTransparency;
+        term.options.rightClickSelectsWord = terminalSettings.rightClickSelectsWord;
+        term.options.scrollback = terminalSettings.scrollback;
+        if (visible) fitAddonRef.current?.fit();
+    }, [terminalSettings, visible]);
+
+    // Copy the current selection to the clipboard automatically when enabled
+    useEffect(() => {
+        const term = xtermRef.current;
+        if (!term || !terminalSettings.copyOnSelect) return;
+        const handleSelectionChange = () => {
+            if (term.hasSelection()) {
+                navigator.clipboard.writeText(term.getSelection());
+            }
+        };
+        document.addEventListener('selectionchange', handleSelectionChange);
+        return () => document.removeEventListener('selectionchange', handleSelectionChange);
+    }, [terminalSettings.copyOnSelect]);
 
     // Recreate WebGL renderer when the terminal tab becomes visible; dispose it when hidden
     useEffect(() => {
@@ -803,6 +835,9 @@ const handleRunData = (e: Event) => {
                 ? rawFilename
                 : `snippet.${runLanguage === 'javascript' ? 'js' : runLanguage === 'python' ? 'py' : runLanguage}`;
 
+            if (getSettings().terminal.clearBeforeRun) {
+                term.clear();
+            }
             term.writeln(`\r\n\x1b[3;36m> Running ${displayName} [${runLanguage}]...\x1b[0m`);
             if (preStdin) {
                 term.writeln(`\x1b[3;33m  (with pre-provided stdin)\x1b[0m`);
@@ -820,6 +855,8 @@ const handleRunData = (e: Event) => {
                 // burst can't block the main thread; oversized buffers are sliced
                 // and the remainder is scheduled for the next tick.
                 const MAX_WRITE_CHUNK = 32768;
+                // Batching can be disabled for lowest-latency writes.
+                const batched = getSettings().performance.terminalOutputBatching;
                 const flush = (drain = false) => {
                     flushTimer = null;
                     const t = xtermRef.current;
@@ -835,7 +872,7 @@ const handleRunData = (e: Event) => {
                 };
                 const scheduleFlush = () => {
                     if (flushTimer === null) {
-                        flushTimer = setTimeout(flush, 16);
+                        flushTimer = setTimeout(flush, batched ? 16 : 0);
                     }
                 };
                 return {
@@ -953,9 +990,16 @@ const handleRunData = (e: Event) => {
             if (ce.detail.id === terminalId) {
                 try {
                     const text = await navigator.clipboard.readText();
+                    const isMultiLine = /\r?\n/.test(text);
+                    if (isMultiLine && getSettings().terminal.pasteProtection) {
+                        const flattened = text.replace(/\r?\n/g, ' ').trim();
+                        if (!window.confirm(
+                            `Paste multi-line text into the terminal? It will be flattened to a single line:\n\n"${flattened.length > 80 ? flattened.slice(0, 80) + '…' : flattened}"`
+                        )) return;
+                    }
                     const left = commandBuffer.current.slice(0, cursorPos.current);
                     const right = commandBuffer.current.slice(cursorPos.current);
-                    const cleanText = text.replace(/\n/g, ' '); // treat multi-line paste mildly
+                    const cleanText = text.replace(/\r?\n/g, ' '); // treat multi-line paste mildly
                     commandBuffer.current = left + cleanText + right;
                     cursorPos.current += cleanText.length;
 

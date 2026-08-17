@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useState, useEffect } from 'react';
+import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import Editor from '@monaco-editor/react';
 import type { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
@@ -97,12 +97,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const lastSelectionRef = useRef<{ fileId: string; text: string; language: string; fileName?: string } | null>(null);
 
     // Editor State - cursor position lives in an external store (see CursorStatus)
-    const isSuggestionsEnabledRef = useRef(settings.editor.isSuggestionsEnabled);
+    const isSuggestionsEnabledRef = useRef(settings.ai.inlineSuggestions);
 
     // Update ref when settings change
     useEffect(() => {
-        isSuggestionsEnabledRef.current = settings.editor.isSuggestionsEnabled;
-    }, [settings.editor.isSuggestionsEnabled]);
+        isSuggestionsEnabledRef.current = settings.ai.inlineSuggestions;
+    }, [settings.ai.inlineSuggestions]);
 
     useEffect(() => {
         activeFileRef.current = activeFile;
@@ -145,6 +145,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     // Run diagnostics
     const runDiagnostics = useCallback(async () => {
+        if (!settings.code.diagnostics) return;
         const file = activeFileRef.current;
         if (!file || !monacoRef.current || !editorRef.current) return;
 
@@ -208,14 +209,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         } finally {
             setIsChecking(false);
         }
-    }, []);
+    }, [settings.code.diagnostics]);
 
     // Debounced save to project state with auto-save setting
     const debouncedSave = useDebounceCallback((id: string, content: string) => {
-        if (settings.autoFeatures.autoSave) {
-            updateFileContent(id, content);
+        if (!settings.editor.autoSave) return;
+        let finalContent = content;
+        if (settings.code.formatOnSave && editorRef.current) {
+            try {
+                editorRef.current.getAction('editor.action.formatDocument')?.run();
+                finalContent = editorRef.current.getValue();
+            } catch {
+                // Formatter may not be registered; keep the original content.
+            }
         }
-    }, settings.autoFeatures.autoSave ? 500 : 0);
+        updateFileContent(id, finalContent);
+    }, settings.editor.autoSave ? settings.editor.autoSaveDelay : 0);
 
     const handleEditorChange = (value: string | undefined) => {
         // Clear check status when user starts typing
@@ -803,11 +812,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         );
     }, []);
 
-    // Format Document - use auto-format setting
+    // Format Document - use format-on-save setting as the permission gate
     const handleFormat = () => {
         setIsFormatting(true);
         if (editorRef.current) {
-            if (settings.autoFeatures.autoFormat) {
+            if (settings.code.formatOnSave) {
                 editorRef.current.getAction('editor.action.formatDocument')?.run();
                 setTimeout(() => setIsFormatting(false), 600);
             } else {
@@ -903,8 +912,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
         editor.updateOptions({
             inlineSuggest: { enabled: true, mode: 'subwordSmart' },
-            quickSuggestions: true,
-            suggestOnTriggerCharacters: true,
+            quickSuggestions: settings.code.quickSuggestions,
+            suggestOnTriggerCharacters: settings.code.quickSuggestions,
+            formatOnPaste: settings.code.formatOnPaste,
+            formatOnType: settings.code.formatOnType,
         });
 
         // Signal that editor is ready - this triggers effects that depend on the editor
@@ -912,6 +923,66 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     };
 
     const language = getLanguage(activeFile?.name || '');
+
+    const densityPadding = useMemo(() => {
+        switch (settings.general.uiDensity) {
+            case 'compact': return { top: 8, bottom: 8 };
+            case 'comfortable': return { top: 24, bottom: 24 };
+            default: return { top: 16, bottom: 16 };
+        }
+    }, [settings.general.uiDensity]);
+
+    const editorOptions = useMemo<Monaco.editor.IStandaloneEditorConstructionOptions>(() => ({
+        minimap: { enabled: settings.editor.showMinimap, renderCharacters: !settings.performance.optimizeEditorRendering },
+        wordWrap: settings.editor.wordWrap ? 'on' : 'off',
+        fontSize: settings.editor.fontSize,
+        fontFamily: settings.editor.fontFamily,
+        padding: densityPadding,
+        inlineSuggest: { enabled: true, mode: 'subwordSmart' },
+        quickSuggestions: settings.code.quickSuggestions,
+        suggestOnTriggerCharacters: settings.code.quickSuggestions,
+        formatOnPaste: settings.code.formatOnPaste,
+        formatOnType: settings.code.formatOnType,
+        tabCompletion: 'on',
+        scrollBeyondLastLine: true,
+        smoothScrolling: settings.editor.smoothScrolling,
+        cursorBlinking: settings.editor.cursorBlinking,
+        cursorStyle: settings.editor.cursorStyle,
+        cursorSmoothCaretAnimation: settings.performance.optimizeEditorRendering ? 'off' : 'on',
+        renderLineHighlight: settings.performance.optimizeEditorRendering ? 'none' : 'all',
+        occurrencesHighlight: settings.performance.optimizeEditorRendering ? 'off' : 'singleFile',
+        largeFileOptimizations: settings.performance.optimizeEditorRendering,
+        fontLigatures: settings.performance.optimizeEditorRendering ? false : undefined,
+        tabSize: settings.editor.tabSize,
+        insertSpaces: settings.editor.insertSpaces,
+        detectIndentation: false,
+        autoIndent: 'advanced',
+        lineNumbers: settings.editor.lineNumbers ? 'on' : 'off',
+        bracketPairColorization: { enabled: settings.editor.bracketPairColorization },
+        renderWhitespace: settings.editor.renderWhitespace,
+        stickyScroll: { enabled: settings.editor.stickyScroll },
+        folding: settings.editor.codeFolding,
+    }), [
+        settings.editor.showMinimap,
+        settings.editor.wordWrap,
+        settings.editor.fontSize,
+        settings.editor.fontFamily,
+        settings.editor.tabSize,
+        settings.editor.lineNumbers,
+        settings.editor.smoothScrolling,
+        settings.editor.cursorBlinking,
+        settings.editor.cursorStyle,
+        settings.editor.insertSpaces,
+        settings.editor.bracketPairColorization,
+        settings.editor.renderWhitespace,
+        settings.editor.stickyScroll,
+        settings.editor.codeFolding,
+        settings.code.quickSuggestions,
+        settings.code.formatOnPaste,
+        settings.code.formatOnType,
+        settings.performance.optimizeEditorRendering,
+        densityPadding,
+    ]);
 
     if (!activeFile) {
         return (
@@ -976,23 +1047,23 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                     {/* Code Suggestions Toggle */}
                     <button
-                        onClick={() => updateSettings('editor', { isSuggestionsEnabled: !settings.editor.isSuggestionsEnabled })}
+                        onClick={() => updateSettings('ai', { inlineSuggestions: !settings.ai.inlineSuggestions })}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${settings.editor.isSuggestionsEnabled
+                            ${settings.ai.inlineSuggestions
                                 ? 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/20'
                                 : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
                         `}
-                        title={settings.editor.isSuggestionsEnabled ? "Disable AI Suggestions" : "Enable AI Suggestions"}
+                        title={settings.ai.inlineSuggestions ? "Disable AI Suggestions" : "Enable AI Suggestions"}
                     >
-                        <Zap size={12} className={settings.editor.isSuggestionsEnabled ? "fill-yellow-400" : ""} />
+                        <Zap size={12} className={settings.ai.inlineSuggestions ? "fill-yellow-400" : ""} />
                         {toolbarSize === 'full' && <span>AI</span>}
                     </button>
 
                     <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                     {/* Save Button - only show when auto-save is disabled */}
-                    {!settings.autoFeatures.autoSave && (
+                    {!settings.editor.autoSave && (
                         <button
                             onClick={handleSave}
                             className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
@@ -1166,31 +1237,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     onChange={handleEditorChange}
                     beforeMount={handleEditorBeforeMount}
                     onMount={handleEditorMount}
-                    options={{
-                        minimap: { enabled: settings.editor.showMinimap },
-                        wordWrap: settings.editor.wordWrap ? 'on' : 'off',
-                        fontSize: settings.editor.fontSize,
-                        fontFamily: settings.appearance.fontFamily,
-                        padding: { top: 20, bottom: 20 },
-                        inlineSuggest: { enabled: true, mode: 'subwordSmart' },
-                        quickSuggestions: true,
-                        suggestOnTriggerCharacters: true,
-                        tabCompletion: 'on',
-                        scrollBeyondLastLine: true,
-                        smoothScrolling: true,
-                        cursorBlinking: 'smooth',
-                        cursorSmoothCaretAnimation: 'on',
-                        renderLineHighlight: 'all',
-                        tabSize: settings.editor.tabSize,
-                        insertSpaces: true,
-                        detectIndentation: false,
-                        autoIndent: 'advanced',
-                        lineNumbers: settings.editor.lineNumbers ? 'on' : 'off',
-                    }}
+                    options={editorOptions}
                 />
             </div>
 
             {/* Glass Status Bar */}
+            {settings.general.showStatusBar && (
             <div className="h-7 bg-gradient-to-r from-primary/90 to-primary/70 text-white text-[11px] flex items-center justify-between px-3 shrink-0 select-none font-medium backdrop-blur-sm">
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1.5 hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
@@ -1221,6 +1273,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     </div>
                 </div>
             </div>
+            )}
         </div >
     );
 };

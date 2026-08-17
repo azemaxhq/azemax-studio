@@ -1,13 +1,34 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, memo } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useEffect, useMemo, memo } from 'react';
 import type { ReactNode } from 'react';
 import type { Settings } from '../types/settings';
-import { defaultSettings } from '../types/settings';
-import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { saveSettings } from '../settings/settingsPersistence';
+import {
+  setSettings,
+  getSettings,
+  getSetting,
+  getAllSettings,
+  setSetting,
+  resetSetting,
+  resetCategory,
+  resetAllSettings,
+  subscribe,
+  useSettingsStore,
+  useSettingsSelector,
+} from '../settings/settingsStore';
+import type { SettingValue } from '../settings/settingsTypes';
+import { useSettingsApplier } from '../hooks/useSettingsApplier';
 
-interface SettingsContextType {
+export interface SettingsContextType {
   settings: Settings;
   updateSettings: (section: keyof Settings, updates: Partial<Settings[keyof Settings]>) => void;
   resetSettings: () => void;
+  setSetting: (key: string, value: SettingValue) => void;
+  resetSetting: (key: string) => void;
+  resetCategory: (category: keyof Settings) => void;
+  resetAllSettings: () => void;
+  getSetting: (key: string) => unknown;
+  getAllSettings: () => Settings;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -20,51 +41,45 @@ export const useSettings = () => {
   return context;
 };
 
+export { useSettingsSelector, useSettingsStore };
+
 interface SettingsProviderProps {
   children: ReactNode;
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = memo(({ children }) => {
-  // Load settings from localStorage synchronously on initial render
-  const getInitialSettings = (): Settings => {
-    try {
-      const savedSettings = localStorage.getItem('editor-settings');
-      if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        return { ...defaultSettings, ...parsed };
-      }
-    } catch (error) {
-      console.warn('Failed to load settings from localStorage:', error);
-    }
-    return defaultSettings;
-  };
-
-  const [settings, setSettings] = useState<Settings>(getInitialSettings);
-
-  // Save settings to localStorage whenever they change (coalesced writes)
   useEffect(() => {
-    try {
-      debouncedLocalStorageSet('editor-settings', JSON.stringify(settings));
-    } catch (error) {
-      console.warn('Failed to save settings to localStorage:', error);
-    }
-  }, [settings]);
-
-  const updateSettings = useCallback((section: keyof Settings, updates: Partial<Settings[keyof Settings]>) => {
-    setSettings(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        ...updates,
-      },
-    }));
+    const unsubscribe = subscribe(() => {
+      try {
+        saveSettings(getSettings());
+      } catch {
+        // Persistence failures are non-fatal; settings remain in memory.
+      }
+    });
+    return unsubscribe;
   }, []);
 
-  const resetSettings = useCallback(() => {
-    setSettings(defaultSettings);
-  }, []);
+  useSettingsApplier();
 
-  const value = useMemo(() => ({ settings, updateSettings, resetSettings }), [settings, updateSettings, resetSettings]);
+  const settings = useSettingsStore((s) => s);
+
+  const value = useMemo<SettingsContextType>(() => ({
+    settings,
+    updateSettings: (section, updates) => {
+      const sectionValue = settings[section];
+      const merged = sectionValue && typeof sectionValue === 'object'
+        ? { ...(sectionValue as unknown as Record<string, unknown>), ...updates }
+        : { ...updates };
+      setSettings({ ...settings, [section]: merged } as Partial<Settings>);
+    },
+    resetSettings: resetAllSettings,
+    setSetting,
+    resetSetting,
+    resetCategory,
+    resetAllSettings,
+    getSetting,
+    getAllSettings,
+  }), [settings]);
 
   return (
     <SettingsContext.Provider value={value}>

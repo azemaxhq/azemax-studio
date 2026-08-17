@@ -373,6 +373,18 @@ body {
   }
 }
 
+/* One-shot fade used when switching Settings views (home / category / search).
+   Opacity-only so it stays GPU-light; disabled for reduced motion. */
+.settings-fade-in {
+  animation: fade-in 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-fade-in {
+    animation: none !important;
+  }
+}
+
 @keyframes slide-in-right {
   from {
     opacity: 0;
@@ -2078,6 +2090,85 @@ body {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ============================================
+   SETTINGS-DRIVEN ROOT CLASSES
+   Applied to <html> by the settings store.
+   ============================================ */
+
+/* Reduced Motion (performance.reducedMotion) */
+html.settings-reduced-motion *,
+html.settings-reduced-motion *::before,
+html.settings-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Disable decorative animations (performance.disableAnimations) */
+html.settings-no-animations .animate-pulse,
+html.settings-no-animations .animate-bounce,
+html.settings-no-animations .animate-spin,
+html.settings-no-animations .animate-ping,
+html.settings-no-animations .animate-float,
+html.settings-no-animations .animate-float-slow,
+html.settings-no-animations .animate-fade-in-up,
+html.settings-no-animations .animate-fade-in,
+html.settings-no-animations .animate-slide-in,
+html.settings-no-animations .animate-cursor-blink,
+html.settings-no-animations [class*="animate-"] {
+  animation: none !important;
+}
+
+/* Performance mode (performance.performanceMode): drop GPU-heavy effects */
+html.settings-performance-mode *,
+html.settings-performance-mode *::before,
+html.settings-performance-mode *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+}
+html.settings-performance-mode .blur-2xl,
+html.settings-performance-mode .blur-xl,
+html.settings-performance-mode .blur-lg,
+html.settings-performance-mode .blur-md,
+html.settings-performance-mode .blur-sm,
+html.settings-performance-mode .blur {
+  filter: none !important;
+}
+
+/* Larger UI text (accessibility.largerUiText) */
+html.settings-larger-ui-text {
+  font-size: 16px;
+}
+html.settings-larger-ui-text .text-[10px] {
+  font-size: 12px !important;
+}
+html.settings-larger-ui-text .text-[11px] {
+  font-size: 13px !important;
+}
+html.settings-larger-ui-text .text-[12px] {
+  font-size: 14px !important;
+}
+html.settings-larger-ui-text .text-[13px] {
+  font-size: 15px !important;
+}
+
+/* High contrast (accessibility.highContrast) */
+html.settings-high-contrast .text-white\/40,
+html.settings-high-contrast .text-white\/30,
+html.settings-high-contrast .text-white\/25,
+html.settings-high-contrast .text-zinc-400,
+html.settings-high-contrast .text-zinc-500 {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+html.settings-high-contrast .border-white\/10,
+html.settings-high-contrast .border-white\/[0.08],
+html.settings-high-contrast .border-white\/5,
+html.settings-high-contrast .border-white\/[0.04] {
+  border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 .perf-defer-hydration {
