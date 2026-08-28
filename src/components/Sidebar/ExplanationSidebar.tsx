@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, FileText, MousePointer, Settings, History, Star, TrendingUp } from 'lucide-react';
+import { BookOpen, FileText, MousePointer } from 'lucide-react';
 import { useExplanation } from '../../context/ExplanationContext';
 import { ExplanationPanel } from '../Panels/ExplanationPanel';
 import { motion } from 'framer-motion';
@@ -13,8 +13,6 @@ export const ExplanationSidebar: React.FC = () => {
         handleExplainSelection,
         handleClearExplanation,
         handleRetryExplanation,
-        handleSendExplanationToTerminal,
-        canSendToTerminal,
     } = useExplanation();
 
     const extractTopics = (text: string): string[] => {

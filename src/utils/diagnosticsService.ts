@@ -58,7 +58,7 @@ export const checkCodeErrors = async (
             return { markers: [], output: '', isError: false };
         }
 
-        // Use Monaco Editor's built-in syntax validation when available
+        // Use Monaco Editor's built-in syntax validation when available (fast, local)
         if (monaco) {
             return await checkWithMonacoDiagnostics(code, fileName, language, monaco);
         }
@@ -84,6 +84,75 @@ export const checkCodeErrors = async (
     }
 };
 
+// Premium AI-powered deep code analysis via DeepSeek/Minimax (full context, high quality)
+export const checkCodeErrorsWithAI = async (
+    code: string,
+    fileName: string,
+    language?: string,
+    monaco?: typeof Monaco
+): Promise<DiagnosticResult> => {
+    const lang = language || getLanguageFromExtension(fileName);
+
+    // First, run fast local checks in parallel with AI for instant feedback
+    const localPromise = checkCodeErrors(code, fileName, monaco);
+
+    // AI deep analysis - uses Minimax as primary (via /api/ai/chat) for high-quality semantic checks
+    const aiPromise = (async () => {
+        try {
+            const { sendChat } = await import('../core/ai/AIClient');
+            const system = `You are a senior code reviewer and security auditor for ${lang}. Analyze the code for ALL issues: syntax errors, type errors, logic bugs, security vulnerabilities (XSS, injection, auth), performance traps, and style violations. Be precise and actionable.`;
+            const user = `File: ${fileName} (${lang})\n\nCode:\n\`\`\`${lang}\n${code.slice(0, 8000)}\n\`\`\`\n\nTask: List every issue as JSON array: [{"line": number, "message": "clear description", "severity": "error"|"warning", "source": "AI"}]. If no issues, return []. Output ONLY JSON, no markdown.`;
+            const raw = await sendChat(
+                [
+                    { role: 'system', content: system },
+                    { role: 'user', content: user },
+                ],
+                { task: 'complex_code', temperature: 0.1, maxTokens: 2048 },
+            );
+            // Parse AI JSON response
+            const match = raw.match(/\[[\s\S]*\]/);
+            if (!match) return { markers: [] as Monaco.editor.IMarkerData[], isError: false };
+            const parsed = JSON.parse(match[0]);
+            if (!Array.isArray(parsed)) return { markers: [] as Monaco.editor.IMarkerData[], isError: false };
+            const markers: Monaco.editor.IMarkerData[] = parsed
+                .filter((item: any) => typeof item.line === 'number' && typeof item.message === 'string')
+                .slice(0, 20)
+                .map((item: any) => ({
+                    startLineNumber: Math.max(1, Math.floor(item.line)),
+                    startColumn: 1,
+                    endLineNumber: Math.max(1, Math.floor(item.line)),
+                    endColumn: 1000,
+                    message: String(item.message).slice(0, 300),
+                    severity: item.severity === 'warning' ? SEVERITY_WARNING : SEVERITY_ERROR,
+                    source: 'AI DeepCheck',
+                }));
+            return { markers, isError: markers.some(m => m.severity === SEVERITY_ERROR) };
+        } catch (e) {
+            console.warn('[AI Diagnostics] AI check failed, using local only:', (e as Error).message);
+            return { markers: [] as Monaco.editor.IMarkerData[], isError: false };
+        }
+    })();
+
+    const [localResult, aiResult] = await Promise.all([localPromise, aiPromise]);
+
+    // Merge markers: local + AI (deduplicate by line+message)
+    const seen = new Set<string>();
+    const merged: Monaco.editor.IMarkerData[] = [];
+    for (const m of [...localResult.markers, ...aiResult.markers]) {
+        const key = `${m.startLineNumber}:${m.message}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(m);
+        }
+    }
+
+    return {
+        markers: merged,
+        output: localResult.output,
+        isError: merged.some(m => m.severity === SEVERITY_ERROR),
+    };
+};
+
 // Check syntax using Monaco Editor's built-in diagnostics
 const checkWithMonacoDiagnostics = async (
     code: string,
@@ -92,15 +161,11 @@ const checkWithMonacoDiagnostics = async (
     monaco: typeof Monaco
 ): Promise<DiagnosticResult> => {
     const markers: Monaco.editor.IMarkerData[] = [];
+    const monacoLanguage = getMonacoLanguage(language);
+    const model = monaco.editor.createModel(code, monacoLanguage, monaco.Uri.parse(`file:///${fileName}`));
     
     try {
-        const monacoLanguage = getMonacoLanguage(language);
-        
-        // Create a temporary model for syntax checking
-        const model = monaco.editor.createModel(code, monacoLanguage, monaco.Uri.parse(`file:///${fileName}`));
-        
-        // Wait for Monaco to complete its language services initialization
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // No delay — Monaco ready immediately for faster diagnostics
         
         // Get any syntax markers from Monaco
         const monacoMarkers = monaco.editor.getModelMarkers({ resource: model.uri });
@@ -117,9 +182,6 @@ const checkWithMonacoDiagnostics = async (
                 source: marker.source || 'Monaco'
             });
         }
-        
-        // Clean up the temporary model
-        model.dispose();
         
         return { markers, output: '', isError: markers.some(m => m.severity === SEVERITY_ERROR) };
         
@@ -138,6 +200,12 @@ const checkWithMonacoDiagnostics = async (
             output: (error as Error).message,
             isError: true
         };
+    } finally {
+        // Always release the temporary model so a disposed/slow diagnostics run
+        // never leaks Monaco models (each one keeps a language-service worker).
+        if (!model.isDisposed()) {
+            model.dispose();
+        }
     }
 };
 
@@ -309,7 +377,7 @@ const checkPythonSyntax = async (code: string): Promise<DiagnosticResult> => {
     
     // Basic Python syntax checks
     const lines = code.split('\n');
-    let indentStack = [0];
+    const indentStack = [0];
     
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];

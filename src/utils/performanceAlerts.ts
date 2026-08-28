@@ -350,7 +350,17 @@ export class PerformanceAlertManager {
     try {
       const stored = localStorage.getItem(this.storageKey);
       if (stored) {
-        this.alerts = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        // Defensive: stored data is untrusted. A non-array payload must not
+        // leave `alerts` in a state where getAlerts().filter() crashes, and a
+        // huge payload is capped to the same bound as live additions.
+        if (Array.isArray(parsed)) {
+          this.alerts = parsed
+            .filter((a): a is PerformanceAlert => !!a && typeof a === 'object' && typeof (a as PerformanceAlert).id === 'string')
+            .slice(-this.maxAlerts);
+        } else {
+          this.alerts = [];
+        }
       }
     } catch (error) {
       console.warn('Failed to load performance alerts:', error);

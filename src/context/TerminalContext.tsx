@@ -56,7 +56,18 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     const [terminals, setTerminals] = useState<TerminalSession[]>(() => {
         try {
             const saved = localStorage.getItem(TERMINALS_STORAGE_KEY);
-            if (saved) return JSON.parse(saved);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                // Defensive: stored terminals are untrusted. Keep only
+                // well-formed session objects so corrupt data can never
+                // crash terminal rendering.
+                if (Array.isArray(parsed)) {
+                    const valid = parsed.filter((t: unknown): t is TerminalSession =>
+                        !!t && typeof t === 'object' && typeof (t as TerminalSession).id === 'string'
+                    );
+                    if (valid.length > 0) return valid;
+                }
+            }
         } catch (e) {
             console.warn('Failed to load terminals from storage', e);
         }
@@ -195,8 +206,8 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
             setTerminals(prev => [...prev, { id: termId as string, title: `Run: ${filename || 'script'}`, cwd }]);
             setActiveTerminalId(termId);
 
-            // Allow React to render the new ShellTerminal before sending the run event
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Immediate — no delay for faster AI terminal feedback
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
 
         // Set running state immediately to trigger tab switching
@@ -236,7 +247,7 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
             if (terminal.id === terminalId) {
                 const currentHistory = terminal.directoryHistory || [];
                 const newHistory = currentHistory[currentHistory.length - 1] !== newCwd 
-                    ? [...currentHistory, newCwd]
+                    ? [...currentHistory, newCwd].slice(-200)
                     : currentHistory;
                 
                 return {

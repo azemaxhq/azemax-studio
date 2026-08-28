@@ -43,6 +43,7 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   overflow: hidden;
   background:
@@ -54,8 +55,31 @@ body {
 #root {
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* Viewport-height helper with a vh fallback for browsers without dvh
+   (mobile URL-bar/keyboard shrink tracked by dvh, static vh otherwise). */
+.app-viewport {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Hide scrollbars while keeping scrolling (used by the terminal tab strip). */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Right-edge fade mask for horizontally scrollable strips. */
+.mask-gradient-right {
+  -webkit-mask-image: linear-gradient(to right, black 0%, black calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, black 0%, black calc(100% - 28px), transparent 100%);
 }
 
 /* ============================================
@@ -315,42 +339,6 @@ body {
    ANIMATIONS
    ============================================ */
 
-@keyframes glass-shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-@keyframes glass-pulse {
-
-  0%,
-  100% {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.8;
-    transform: scale(1.05);
-  }
-}
-
-@keyframes glass-float {
-
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-5px);
-  }
-}
-
 @keyframes fade-in-up {
   from {
     opacity: 0;
@@ -409,103 +397,9 @@ body {
   animation: slide-in-right 0.4s ease-out forwards;
 }
 
-.animate-glass-pulse {
-  animation: glass-pulse 2s ease-in-out infinite;
-}
-
-.animate-glass-float {
-  animation: glass-float 3s ease-in-out infinite;
-}
-
-/* Glass Shimmer Loading Effect */
-.glass-shimmer {
-  background: linear-gradient(90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.05) 50%,
-      transparent 100%);
-  background-size: 200% 100%;
-  animation: glass-shimmer 1.5s infinite;
-}
-
-@keyframes gradient-xy {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.animate-gradient-xy {
-  animation: gradient-xy 3s ease infinite;
-}
-
-@keyframes sparkle-float {
-  0% {
-    transform: translateY(0) scale(0);
-    opacity: 0;
-  }
-
-  50% {
-    transform: translateY(-10px) scale(1);
-    opacity: 1;
-  }
-
-  100% {
-    transform: translateY(-20px) scale(0);
-    opacity: 0;
-  }
-}
-
-@keyframes spin-slow {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin-slow {
-  animation: spin-slow 4s linear infinite;
-}
-
 /* ============================================
    FILE/FOLDER CREATION PREMIUM ANIMATIONS
    ============================================ */
-
-@keyframes creation-shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-@keyframes creation-glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 8px rgba(59, 130, 246, 0.15), 0 0 20px rgba(59, 130, 246, 0.05);
-  }
-  50% {
-    box-shadow: 0 0 16px rgba(59, 130, 246, 0.3), 0 0 40px rgba(59, 130, 246, 0.1);
-  }
-}
-
-@keyframes creation-glow-pulse-folder {
-  0%, 100% {
-    box-shadow: 0 0 8px rgba(168, 85, 247, 0.15), 0 0 20px rgba(168, 85, 247, 0.05);
-  }
-  50% {
-    box-shadow: 0 0 16px rgba(168, 85, 247, 0.3), 0 0 40px rgba(168, 85, 247, 0.1);
-  }
-}
 
 @keyframes creation-success-flash {
   0% {
@@ -540,35 +434,12 @@ body {
   }
 }
 
-@keyframes creation-border-glow {
-  0% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.4;
-  }
-}
-
-@keyframes creation-typing-dot {
-  0%, 100% {
-    opacity: 0.3;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 .animate-creation-glow {
-  animation: creation-glow-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.18), 0 0 28px rgba(59, 130, 246, 0.07);
 }
 
 .animate-creation-glow-folder {
-  animation: creation-glow-pulse-folder 2s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.18), 0 0 28px rgba(168, 85, 247, 0.07);
 }
 
 .animate-creation-success {
@@ -598,8 +469,6 @@ body {
     rgba(59, 130, 246, 0.5) 75%,
     transparent 100%
   );
-  background-size: 200% 100%;
-  animation: creation-shimmer 2s linear infinite;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -616,8 +485,6 @@ body {
     rgba(168, 85, 247, 0.5) 75%,
     transparent 100%
   );
-  background-size: 200% 100%;
-  animation: creation-shimmer 2s linear infinite;
 }
 
 /* ============================================
@@ -1049,30 +916,6 @@ body {
 }
 
 /* ============================================
-   GLASS STATUS INDICATORS
-   ============================================ */
-
-.glass-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.glass-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-.glass-status-dot.online {
-  background: #3fb950;
-  box-shadow: 0 0 10px rgba(63, 185, 80, 0.5);
-}
-
-/* ============================================
    INLINE AI LOADING
    ============================================ */
 
@@ -1175,6 +1018,45 @@ body {
   border-left: 2px solid #e879f9;
 }
 
+/* Premium Diagnostics Annotations — smooth, glass, why + fix */
+.premium-diag-error-line {
+  background: linear-gradient(90deg, rgba(248,81,73,0.14) 0%, rgba(248,81,73,0.04) 60%, transparent 100%) !important;
+  border-left: 2px solid rgba(248,81,73,0.5);
+}
+.premium-diag-warning-line {
+  background: linear-gradient(90deg, rgba(254,188,46,0.13) 0%, rgba(254,188,46,0.03) 60%, transparent 100%) !important;
+  border-left: 2px solid rgba(254,188,46,0.45);
+}
+.premium-diag-error-inline {
+  background: rgba(248,81,73,0.12);
+  border-bottom: 2px wavy rgba(248,81,73,0.85);
+  border-radius: 2px;
+}
+.premium-diag-warning-inline {
+  background: rgba(254,188,46,0.12);
+  border-bottom: 2px wavy rgba(254,188,46,0.85);
+  border-radius: 2px;
+}
+.premium-diag-glyph-error::after {
+  content: '●';
+  color: #f85149;
+  font-size: 10px;
+  text-shadow: 0 0 8px rgba(248,81,73,0.6);
+}
+.premium-diag-glyph-warning::after {
+  content: '▲';
+  color: #febc2e;
+  font-size: 9px;
+  text-shadow: 0 0 6px rgba(254,188,46,0.6);
+}
+@keyframes diagFadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.premium-diag-hover {
+  animation: diagFadeIn 220ms ease-out;
+}
+
 /* Line highlight when AI is processing - using opacity for smooth animation */
 .glass-line-highlight {
   background: linear-gradient(90deg,
@@ -1207,30 +1089,6 @@ body {
 
   50% {
     opacity: 1;
-  }
-}
-
-.glass-status-dot.offline {
-  background: #f85149;
-  box-shadow: 0 0 10px rgba(248, 81, 73, 0.5);
-}
-
-.glass-status-dot.pending {
-  background: #febc2e;
-  box-shadow: 0 0 10px rgba(254, 188, 46, 0.5);
-}
-
-@keyframes pulse-glow {
-
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 10px currentColor;
-  }
-
-  50% {
-    opacity: 0.7;
-    box-shadow: 0 0 20px currentColor;
   }
 }
 
@@ -1297,7 +1155,6 @@ body {
       transparent,
       rgba(163, 113, 247, 0.2));
   opacity: 0.5;
-  animation: glass-pulse 3s ease-in-out infinite;
 }
 
 /* ============================================
@@ -1320,108 +1177,12 @@ body {
   position: relative;
 }
 
-.glass-meter-fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg,
-      transparent,
-      rgba(255, 255, 255, 0.3),
-      transparent);
-  animation: glass-shimmer 2s infinite;
-}
-
 /* ============================================
    AI TOGGLE BUTTON ANIMATIONS
    Premium interactive effects
    ============================================ */
 
-/* Sparkle/Twinkle Animation */
-@keyframes ai-sparkle {
-
-  0%,
-  100% {
-    transform: scale(1) rotate(0deg);
-    filter: brightness(1);
-  }
-
-  25% {
-    transform: scale(1.1) rotate(-5deg);
-    filter: brightness(1.2);
-  }
-
-  50% {
-    transform: scale(1.05) rotate(5deg);
-    filter: brightness(1.4);
-  }
-
-  75% {
-    transform: scale(1.15) rotate(-3deg);
-    filter: brightness(1.2);
-  }
-}
-
-/* Continuous pulse glow for active state */
-@keyframes ai-glow-pulse {
-
-  0%,
-  100% {
-    box-shadow:
-      0 0 8px rgba(168, 85, 247, 0.3),
-      0 0 16px rgba(168, 85, 247, 0.15);
-  }
-
-  50% {
-    box-shadow:
-      0 0 16px rgba(168, 85, 247, 0.5),
-      0 0 32px rgba(168, 85, 247, 0.25),
-      0 0 48px rgba(168, 85, 247, 0.1);
-  }
-}
-
-/* Orbiting particles animation */
-@keyframes ai-orbit {
-  0% {
-    transform: rotate(0deg) translateX(20px) rotate(0deg);
-    opacity: 0;
-  }
-
-  10% {
-    opacity: 1;
-  }
-
-  90% {
-    opacity: 1;
-  }
-
-  100% {
-    transform: rotate(360deg) translateX(20px) rotate(-360deg);
-    opacity: 0;
-  }
-}
-
-/* Secondary orbit */
-@keyframes ai-orbit-reverse {
-  0% {
-    transform: rotate(360deg) translateX(16px) rotate(-360deg);
-    opacity: 0;
-  }
-
-  15% {
-    opacity: 0.7;
-  }
-
-  85% {
-    opacity: 0.7;
-  }
-
-  100% {
-    transform: rotate(0deg) translateX(16px) rotate(0deg);
-    opacity: 0;
-  }
-}
-
-/* Shimmer sweep effect */
+/* Shimmer sweep effect (one-shot on hover) */
 @keyframes ai-shimmer-sweep {
   0% {
     transform: translateX(-100%) skewX(-15deg);
@@ -1438,19 +1199,6 @@ body {
   }
 }
 
-/* Icon float animation */
-@keyframes ai-icon-float {
-
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-
-  50% {
-    transform: translateY(-2px) scale(1.05);
-  }
-}
-
 /* Ripple effect on click */
 @keyframes ai-ripple {
   0% {
@@ -1461,21 +1209,6 @@ body {
   100% {
     transform: scale(2.5);
     opacity: 0;
-  }
-}
-
-/* Border gradient rotation */
-@keyframes ai-border-rotate {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
   }
 }
 
@@ -1514,7 +1247,6 @@ body {
       rgba(168, 85, 247, 0.4),
       rgba(139, 92, 246, 0.2),
       rgba(88, 166, 255, 0.4));
-  background-size: 200% 200%;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -1525,17 +1257,17 @@ body {
 
 .ai-toggle-btn:hover::before {
   opacity: 1;
-  animation: ai-border-rotate 3s linear infinite;
 }
 
 .ai-toggle-btn.active::before {
   opacity: 1;
-  animation: ai-border-rotate 2s linear infinite;
 }
 
-/* Active state glow */
+/* Active state glow (static) */
 .ai-toggle-btn.active {
-  animation: ai-glow-pulse 2s ease-in-out infinite;
+  box-shadow:
+    0 0 12px rgba(168, 85, 247, 0.3),
+    0 0 24px rgba(168, 85, 247, 0.15);
 }
 
 /* Orbiting particles container */
@@ -1556,21 +1288,7 @@ body {
   border-radius: 50%;
   background: linear-gradient(135deg, #a855f7, #6366f1);
   box-shadow: 0 0 6px rgba(168, 85, 247, 0.8);
-}
-
-.ai-toggle-btn.active .particle:nth-child(1) {
-  animation: ai-orbit 3s linear infinite;
-  animation-delay: 0s;
-}
-
-.ai-toggle-btn.active .particle:nth-child(2) {
-  animation: ai-orbit-reverse 2.5s linear infinite;
-  animation-delay: 0.5s;
-}
-
-.ai-toggle-btn.active .particle:nth-child(3) {
-  animation: ai-orbit 4s linear infinite;
-  animation-delay: 1s;
+  opacity: 0;
 }
 
 /* Shimmer sweep effect */
@@ -1603,14 +1321,6 @@ body {
 /* Icon animation on hover */
 .ai-toggle-icon {
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.ai-toggle-btn:hover .ai-toggle-icon {
-  animation: ai-icon-float 1s ease-in-out infinite;
-}
-
-.ai-toggle-btn.active .ai-toggle-icon {
-  animation: ai-sparkle 2s ease-in-out infinite;
 }
 
 /* Ripple effect element */
@@ -1700,209 +1410,6 @@ body {
   transform: rotate(67.5deg);
 }
 
-/* ============================================
-   AI CHAT - PERFORMANCE OPTIMIZED ANIMATIONS
-   GPU-accelerated using transform/opacity only
-   ============================================ */
-
-/* Smooth fade in animation */
-@keyframes ai-fade-in {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* Fade up with stagger support */
-@keyframes ai-fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Message appear - GPU optimized */
-@keyframes ai-message-appear {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Float animation for orb */
-@keyframes ai-float-slow {
-
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-
-  50% {
-    transform: translateY(-10px) scale(1.02);
-  }
-}
-
-/* Pulse for ambient effects */
-@keyframes ai-pulse-slow {
-
-  0%,
-  100% {
-    opacity: 0.4;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.7;
-    transform: scale(1.05);
-  }
-}
-
-/* Gentle pulse for loading */
-@keyframes ai-pulse-gentle {
-
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-
-  50% {
-    opacity: 1;
-  }
-}
-
-/* Loading bar animation */
-@keyframes ai-loading-bar {
-  0% {
-    transform: translateX(-100%);
-  }
-
-  50% {
-    transform: translateX(0%);
-  }
-
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-/* Gradient shift for input glow */
-@keyframes ai-gradient-xy {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-/* Fast shimmer for input focus */
-@keyframes ai-shimmer-fast {
-  0% {
-    transform: translateX(-100%);
-  }
-
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-/* Cursor blink */
-@keyframes ai-cursor-blink {
-
-  0%,
-  45% {
-    opacity: 1;
-  }
-
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
-/* Animation utility classes */
-.ai-animate-fade-in {
-  animation: ai-fade-in 0.6s ease-out forwards;
-}
-
-.ai-animate-fade-in-up {
-  animation: ai-fade-in-up 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-.ai-animate-message {
-  animation: ai-message-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.ai-animate-float {
-  animation: ai-float-slow 6s ease-in-out infinite;
-}
-
-.ai-animate-pulse-slow {
-  animation: ai-pulse-slow 4s ease-in-out infinite;
-}
-
-.ai-animate-pulse-gentle {
-  animation: ai-pulse-gentle 2s ease-in-out infinite;
-}
-
-.ai-animate-loading-bar {
-  animation: ai-loading-bar 1.5s ease-in-out infinite;
-}
-
-.ai-animate-gradient {
-  animation: ai-gradient-xy 3s ease infinite;
-  background-size: 400% 400%;
-}
-
-.ai-animate-shimmer {
-  animation: ai-shimmer-fast 1.5s ease-in-out infinite;
-}
-
-.ai-animate-cursor-blink {
-  animation: ai-cursor-blink 1s ease-in-out infinite;
-}
-
-/* Delay utilities */
-.ai-delay-100 {
-  animation-delay: 100ms;
-}
-
-.ai-delay-200 {
-  animation-delay: 200ms;
-}
-
-.ai-delay-300 {
-  animation-delay: 300ms;
-}
-
-/* GPU hints for animate elements.
-   NOTE: no permanent will-change/translateZ here — promoting layers forever
-   pins GPU memory and can hurt. Will-change should only be applied by the
-   framework while an actual transition is running. */
-.ai-gpu-accelerated {
-  backface-visibility: hidden;
-}
-
 /* Scroll to bottom button */
 .ai-scroll-btn {
   position: absolute;
@@ -1975,26 +1482,6 @@ body {
 .ai-context-chip:hover {
   background: rgba(139, 92, 246, 0.25);
   border-color: rgba(139, 92, 246, 0.4);
-}
-
-/* Skeleton loading */
-.ai-skeleton {
-  background: linear-gradient(90deg,
-      rgba(255, 255, 255, 0.05) 0%,
-      rgba(255, 255, 255, 0.1) 50%,
-      rgba(255, 255, 255, 0.05) 100%);
-  background-size: 200% 100%;
-  animation: ai-shimmer-fast 1.5s ease-in-out infinite;
-  border-radius: 4px;
-}
-
-.ai-skeleton-line {
-  height: 14px;
-  margin-bottom: 8px;
-}
-
-.ai-skeleton-line:last-child {
-  width: 60%;
 }
 
 /* Keyboard shortcut hint */
@@ -2079,6 +1566,11 @@ body {
   }
 }
 
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
 /* Global zero-idle-motion policy: users who prefer reduced motion get all
    decorative infinite animations stopped, which also eliminates their
    compositor/GPU cost. */
@@ -2118,6 +1610,12 @@ html.settings-no-animations .animate-fade-in-up,
 html.settings-no-animations .animate-fade-in,
 html.settings-no-animations .animate-slide-in,
 html.settings-no-animations .animate-cursor-blink,
+html.settings-no-animations .loader-ring,
+html.settings-no-animations .loader-ring-reverse,
+html.settings-no-animations .loader-dot,
+html.settings-no-animations .ai-loading-dot,
+html.settings-no-animations .ai-thinking-label,
+html.settings-no-animations .stream-caret,
 html.settings-no-animations [class*="animate-"] {
   animation: none !important;
 }
@@ -2199,52 +1697,169 @@ html.settings-high-contrast .border-white\/[0.04] {
   animation: message-appear 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-/* Typing Indicator */
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  width: fit-content;
-  backdrop-filter: blur(10px);
+/* ============================================
+   PREMIUM LOADING INDICATORS
+   GPU-light: transform/opacity only, no blur repaints
+   ============================================ */
+
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.typing-dot {
-  width: 6px;
-  height: 6px;
-  background: linear-gradient(135deg, #58a6ff, #a371f7);
-  border-radius: 50%;
-  animation: typing-bounce 1.4s infinite ease-in-out both;
+@keyframes loader-spin-reverse {
+  to {
+    transform: rotate(-360deg);
+  }
 }
 
-.typing-dot:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.typing-dot:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-.typing-dot:nth-child(3) {
-  animation-delay: 0s;
-}
-
-@keyframes typing-bounce {
+@keyframes loader-bounce {
 
   0%,
-  80%,
+  60%,
   100% {
-    transform: scale(0);
-    opacity: 0.5;
+    transform: translateY(0) scale(0.6);
+    opacity: 0.4;
   }
 
-  40% {
-    transform: scale(1);
+  30% {
+    transform: translateY(-3px) scale(1);
     opacity: 1;
   }
+}
+
+/* Rotating conic-gradient ring — the premium spinner core.
+   Uses mask-composite to render as a thin glowing arc. */
+.loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(from 0deg,
+      transparent 0deg,
+      rgba(163, 113, 247, 0.8) 80deg,
+      rgba(88, 166, 255, 0.8) 175deg,
+      transparent 265deg,
+      transparent 360deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: loader-spin 2.6s linear infinite;
+  pointer-events: none;
+}
+
+.loader-ring-reverse {
+  animation: loader-spin-reverse 3.4s linear infinite;
+}
+
+.loader-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a371f7, #58a6ff);
+  box-shadow: 0 0 6px rgba(163, 113, 247, 0.5);
+  animation: loader-bounce 1.3s ease-in-out infinite;
+}
+
+.loader-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.loader-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* AI "Thinking" pill — premium minimal loading indicator: a soft glass
+   capsule with a shimmering label and three breathing gradient bars. */
+.ai-loading-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 15px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 0 1px rgba(163, 113, 247, 0.04), 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.ai-thinking-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  background: linear-gradient(90deg,
+      rgba(200, 210, 225, 0.45) 0%,
+      #ffffff 50%,
+      rgba(200, 210, 225, 0.45) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ai-shimmer 2.2s linear infinite;
+}
+
+.ai-loading-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 13px;
+}
+
+.ai-loading-dot {
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #a371f7, #58a6ff);
+  transform-origin: bottom;
+  animation: ai-dot-pulse 1.1s ease-in-out infinite;
+}
+
+.ai-loading-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ai-loading-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ai-dot-pulse {
+
+  0%,
+  100% {
+    transform: scaleY(0.25);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ai-shimmer {
+  to {
+    background-position: -200% center;
+  }
+}
+
+/* Streaming text caret: blinking block cursor that flows inline after the
+   last word of the assistant's in-progress response. */
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 3px;
+  vertical-align: -3px;
+  background: rgba(200, 210, 225, 0.85);
+  border-radius: 1px;
+  animation: stream-caret-blink 0.9s steps(1) infinite;
+}
+
+@keyframes stream-caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
 
 /* Input Focus Glow */
@@ -2262,19 +1877,6 @@ html.settings-high-contrast .border-white\/[0.04] {
    FILE EXPLORER PREMIUM STYLES
    ============================================ */
 
-/* Indent guide glow on hover */
-@keyframes indent-glow {
-
-  0%,
-  100% {
-    opacity: 0.06;
-  }
-
-  50% {
-    opacity: 0.15;
-  }
-}
-
 .file-explorer-indent-guide {
   transition: all 0.3s ease;
 }
@@ -2287,23 +1889,8 @@ html.settings-high-contrast .border-white\/[0.04] {
   width: 2px !important;
 }
 
-/* Drop zone pulse */
-@keyframes drop-pulse {
-
-  0%,
-  100% {
-    box-shadow: 0 0 8px rgba(88, 166, 255, 0.15);
-    border-color: rgba(88, 166, 255, 0.35);
-  }
-
-  50% {
-    box-shadow: 0 0 20px rgba(88, 166, 255, 0.3);
-    border-color: rgba(88, 166, 255, 0.6);
-  }
-}
-
+/* Drop zone highlight */
 .file-explorer-drop-zone {
-  animation: drop-pulse 1.2s ease-in-out infinite;
   background: linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(163, 113, 247, 0.05)) !important;
 }
 
@@ -2420,27 +2007,12 @@ html.settings-high-contrast .border-white\/[0.04] {
 }
 
 /* Modified dot indicator */
-@keyframes modified-pulse {
-
-  0%,
-  100% {
-    opacity: 0.7;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.3);
-  }
-}
-
 .file-modified-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: linear-gradient(135deg, #f0c674, #e6a23c);
   box-shadow: 0 0 6px rgba(240, 198, 116, 0.4);
-  animation: modified-pulse 2s ease-in-out infinite;
   flex-shrink: 0;
 }
 
@@ -2460,25 +2032,9 @@ html.settings-high-contrast .border-white\/[0.04] {
   border-color: rgba(88, 166, 255, 0.3);
 }
 
-/* Empty state animation */
-@keyframes empty-float {
-
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-
-  25% {
-    transform: translateY(-6px) rotate(-2deg);
-  }
-
-  75% {
-    transform: translateY(-3px) rotate(1deg);
-  }
-}
-
+/* Empty state */
 .file-explorer-empty-icon {
-  animation: empty-float 3s ease-in-out infinite;
+  opacity: 0.9;
 }
 
 /* Search result count */
@@ -2592,58 +2148,10 @@ html.settings-high-contrast .border-white\/[0.04] {
   }
 }
 
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% center;
-  }
-  100% {
-    background-position: 200% center;
-  }
-}
-
-@keyframes glow {
-  0%, 100% {
-    box-shadow: 0 0 5px rgba(88, 166, 255, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(88, 166, 255, 0.6);
-  }
-}
-
 /* Animation classes */
-.animate-fade-in-up {
-  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
 .animate-slide-in {
   animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   animation-fill-mode: both;
-}
-
-.animate-pulse-once {
-  animation: pulse 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.animate-shimmer {
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    rgba(255,255,255,0.1) 50%, 
-    transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 2s infinite;
-}
-
-.animate-glow {
-  animation: glow 2s ease-in-out infinite;
 }
 
 /* Enhanced hover effects */
@@ -2675,19 +2183,6 @@ html.settings-high-contrast .border-white\/[0.04] {
 .glass-analysis-card:nth-child(1) { animation-delay: 0.1s; }
 .glass-analysis-card:nth-child(2) { animation-delay: 0.2s; }
 .glass-analysis-card:nth-child(3) { animation-delay: 0.3s; }
-
-/* Enhanced loading spinner */
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.loading-enhanced {
-  animation: spin 1s linear infinite;
-  border: 2px solid rgba(88, 166, 255, 0.2);
-  border-top: 2px solid #58a6ff;
-  border-radius: 50%;
-}
 
 /* Progress bar animations */
 @keyframes progressFill {

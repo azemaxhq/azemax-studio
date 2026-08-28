@@ -8,7 +8,9 @@ import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettingsSelector } from '../../context/SettingsContext';
 import { getSettings } from '../../settings/settingsStore';
 import { TerminalSessionController } from '../../context/TerminalSessionController';
-import { type FileNode } from '../../utils/mockFileSystem';
+import { type FileNode, ROOT_NODE_ID } from '../../utils/mockFileSystem';
+import { findNodeById, pathOf } from '../../utils/safeTree';
+import { createShellExecutor, findNode as shellFindNode } from '../../core/shell/inBrowserShell';
 import '@xterm/xterm/css/xterm.css';
 
 interface ShellTerminalProps {
@@ -49,9 +51,11 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     // Per-terminal session controller. Stable for the terminal's lifetime;
     // a disposed controller is replaced the next time a run starts.
     const sessionRef = useRef<TerminalSessionController | null>(null);
+    // Drains a previous run's batched output buffer (used on re-run + unmount).
+    const flushCleanupRef = useRef<(() => void) | null>(null);
 
     const { terminalEventEmitter, setIsRunning, setLastExecutionData, updateTerminalCwd, syncTerminalToFileExplorer } = useTerminal();
-    const { createFile, createFolder, deleteNode, setSelectedFolder, getFileTree } = useProjectActions();
+    const { createFileInFolder, ensureFolderUnder, deleteNode, setSelectedFolder, getFileTree } = useProjectActions();
     const { selectedFolder } = useProjectUI();
     const terminalSettings = useSettingsSelector(s => s.terminal);
 
@@ -74,10 +78,11 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         // Update context with new CWD
         updateTerminalCwd(terminalId, newCwd);
         
-        // Add to local directory history (avoid duplicates)
+        // Add to local directory history (avoid duplicates, bounded so a
+        // long navigation session can't grow the array without limit)
         const currentHistory = directoryHistory.current;
         if (currentHistory[currentHistory.length - 1] !== newCwd) {
-            directoryHistory.current = [...currentHistory, newCwd];
+            directoryHistory.current = [...currentHistory, newCwd].slice(-200);
             historyIndexRef.current = directoryHistory.current.length - 1;
         }
     };
@@ -86,18 +91,20 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         fileTreeRef.current = getFileTree();
     }, [getFileTree]);
 
-    // Sync File Explorer Selection -> Terminal CWD
+    // Sync File Explorer Selection -> Terminal CWD (both are node ids now)
     useEffect(() => {
         if (selectedFolder && selectedFolder !== localCwd) {
             setLocalCwd(selectedFolder);
             if (xtermRef.current && visible) {
                 commandBuffer.current = '';
-                const promptName = selectedFolder === 'root' ? '~' : selectedFolder.split('/').pop();
-                xtermRef.current.write(`\r\n\x1b[3;33m[Directory changed to /${selectedFolder.replace(/^root\/?/, '')}]\x1b[0m`);
+                const node = findNodeById(getFileTree(), selectedFolder);
+                const promptName = selectedFolder === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
+                const dir = pathOf(getFileTree(), selectedFolder);
+                xtermRef.current.write(`\r\n\x1b[3;33m[Directory changed to /${dir}]\x1b[0m`);
                 xtermRef.current.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
             }
         }
-    }, [selectedFolder, visible]);
+    }, [selectedFolder, visible, getFileTree]);
 
     // 1. Initialize XTerm.js
     useEffect(() => {
@@ -239,355 +246,27 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
 
         const writePrompt = () => {
             const currentCwd = localCwdRef.current;
-            const promptName = currentCwd === 'root' ? '~' : currentCwd.split('/').pop();
+            const node = findNodeById(getFileTree(), currentCwd);
+            const promptName = currentCwd === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
             term.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
         };
 
-        const findNode = (pathStr: string): FileNode | null => {
-            const currentCwd = localCwdRef.current;
-            const currentTree = getFileTree();
-
-            // Enhanced path resolution
-            let currentPath: string;
-            if (pathStr.startsWith('/')) {
-                // Absolute path from root
-                currentPath = pathStr.replace(/^\//, '').replace(/^root\/?/, '');
-            } else if (pathStr.startsWith('root')) {
-                // Path starting with root
-                currentPath = pathStr.replace(/^root\/?/, '');
-            } else {
-                // Relative path from current directory
-                currentPath = `${currentCwd.replace(/^root\/?/, '')}/${pathStr}`;
-            }
-            
-            currentPath = currentPath.replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
-
-            // Handle root case
-            if (!currentPath) {
-                return { id: 'root', name: 'root', type: 'folder', children: currentTree };
-            }
-            // Enhanced path resolution with proper .. handling
-            const parts = currentPath.split('/');
-            const resolvedParts: string[] = [];
-            
-            for (const part of parts) {
-                if (part === '..') {
-                    if (resolvedParts.length > 0) {
-                        resolvedParts.pop();
-                    }
-                } else if (part === '.' || part === '') {
-                    continue;
-                } else {
-                    resolvedParts.push(part);
-                }
-            }
-            
-            // Navigate through resolved path
-            let currentNodes: FileNode[] = currentTree;
-            let targetNode: FileNode | null = null;
-            
-            for (let i = 0; i < resolvedParts.length; i++) {
-                const part = resolvedParts[i];
-                const found = currentNodes.find(n => n.name === part);
-                if (!found) return null;
-                
-                targetNode = found;
-                if (i < resolvedParts.length - 1) {
-                    if (found.type !== 'folder') return null;
-                    currentNodes = found.children || [];
-                }
-            }
-            
-            return targetNode;
+        const shellDeps = {
+            getFileTree,
+            localCwdRef,
+            setLocalCwd,
+            setSelectedFolder,
+            syncTerminalToFileExplorer,
+            createFileInFolder,
+            ensureFolderUnder,
+            deleteNode,
+            terminalId,
+            term,
+            directoryHistory: directoryHistory,
+            historyIndexRef,
         };
-
-        const executeCommand = async (cmd: string) => {
-            const args = cmd.trim().split(/\s+/);
-            const command = args[0];
-
-            term.write('\r\n');
-
-            switch (command) {
-                case 'ls': {
-                    const showHidden = args.includes('-a') || args.includes('--all');
-                    const longFormat = args.includes('-l') || args.includes('--long');
-                    const targetDir = args.find(arg => !arg.startsWith('-')) ? findNode(args.find(arg => !arg.startsWith('-'))!) : findNode('.');
-                    
-                    if (!targetDir || targetDir.type !== 'folder') {
-                        term.write(`ls: cannot access '${args.find(arg => !arg.startsWith('-')) || '.'}': No such file or directory`);
-                    } else {
-                        const children = targetDir.children || [];
-                        let output = '';
-                        
-                        if (longFormat) {
-                            // Detailed listing format
-                            const sortedChildren = children.sort((a, b) => {
-                                // Folders first, then files, both alphabetically
-                                if (a.type !== b.type) {
-                                    return a.type === 'folder' ? -1 : 1;
-                                }
-                                return a.name.localeCompare(b.name);
-                            });
-                            
-                            sortedChildren.forEach(child => {
-                                if (!showHidden && child.name.startsWith('.')) return;
-                                
-                                const isFolder = child.type === 'folder';
-                                const permissions = isFolder ? 'drwxr-xr-x' : '-rw-r--r--';
-                                const size = isFolder ? '0' : (child.content?.length || '0').toString();
-                                const name = isFolder ? `\x1b[1;34m${child.name}\x1b[0m/` : child.name;
-                                
-                                output += `${permissions} 1 guest staff ${size.padStart(8)} ${name}\r\n`;
-                            });
-                        } else {
-                            // Simple listing format
-                            const sortedChildren = children.sort((a, b) => a.name.localeCompare(b.name));
-                            const visibleChildren = showHidden ? sortedChildren : sortedChildren.filter(c => !c.name.startsWith('.'));
-                            output = visibleChildren.map(c => {
-                                if (c.type === 'folder') {
-                                    return `\x1b[1;34m${c.name}\x1b[0m/`;
-                                }
-                                return c.name;
-                            }).join('  ');
-                        }
-                        
-                        if (output) term.write(output);
-                    }
-                    break;
-                }
-                case 'cd': {
-                    const target = args[1] || 'root';
-                    if (target === '~' || target === '/') {
-                        setLocalCwd('root');
-                        setSelectedFolder('root');
-                    } else if (target === '..') {
-                        if (localCwdRef.current !== 'root') {
-                            const parts = localCwdRef.current.split('/');
-                            parts.pop();
-                            const newCwd = parts.length > 0 ? parts.join('/') : 'root';
-                            setLocalCwd(newCwd);
-                            setSelectedFolder(newCwd);
-                        }
-                    } else if (target === '-') {
-                        // cd - : go to previous directory
-                        const history = directoryHistory.current;
-                        const currentIndex = historyIndexRef.current;
-                        if (history.length >= 2 && currentIndex > 0) {
-                            const previousCwd = history[currentIndex - 1];
-                            setLocalCwd(previousCwd);
-                            setSelectedFolder(previousCwd);
-                            historyIndexRef.current = currentIndex - 1;
-                            term.write(`\x1b[33mChanged to previous directory: ${previousCwd}\x1b[0m`);
-                        } else {
-                            term.write(`cd -: no previous directory in history`);
-                        }
-                    } else {
-                        const targetNode = findNode(target);
-                        if (!targetNode || targetNode.type !== 'folder') {
-                            term.write(`cd: ${target}: No such file or directory`);
-                        } else {
-                            const newCwd = targetNode.id === 'root' ? 'root' : targetNode.id;
-                            setLocalCwd(newCwd);
-                            setSelectedFolder(newCwd);
-                            // Sync to file explorer when directory changes via terminal
-                            syncTerminalToFileExplorer(terminalId);
-                        }
-                    }
-                    break;
-                }
-                case 'pwd': {
-                    const currentPath = localCwdRef.current === 'root' ? '/' : `/${localCwdRef.current.replace(/^root\/?/, '')}`;
-                    term.write(currentPath);
-                    break;
-                }
-                case 'clear': {
-                    term.clear();
-                    break;
-                }
-                case 'echo': {
-                    term.write(args.slice(1).join(' '));
-                    break;
-                }
-                case 'cat': {
-                    if (!args[1]) {
-                        term.write('cat: missing operand');
-                    } else {
-                        const file = findNode(args[1]);
-                        if (!file || file.type !== 'file') {
-                            term.write(`cat: ${args[1]}: No such file or directory`);
-                        } else {
-                            const content = file.content || '';
-                            // Replace newlines with \r\n for xterm
-                            term.write(content.replace(/\r?\n/g, '\r\n'));
-                        }
-                    }
-                    break;
-                }
-                case 'touch': {
-                    if (!args[1]) {
-                        term.write('touch: missing file operand');
-                    } else {
-                        const pathId = localCwdRef.current === 'root' ? args[1] : `${localCwdRef.current}/${args[1]}`;
-                        createFile(pathId);
-                    }
-                    break;
-                }
-                case 'mkdir': {
-                    if (!args[1]) {
-                        term.write('mkdir: missing operand');
-                    } else {
-                        const pathId = localCwdRef.current === 'root' ? args[1] : `${localCwdRef.current}/${args[1]}`;
-                        createFolder(pathId);
-                    }
-                    break;
-                }
-                case 'rm': {
-                    if (!args[1]) {
-                        term.write('rm: missing operand');
-                    } else {
-                        const targetNode = findNode(args[1]);
-                        if (!targetNode) {
-                            term.write(`rm: ${args[1]}: No such file or directory`);
-                        } else {
-                            if (targetNode.id === 'root') {
-                                term.write(`rm: cannot remove root directory`);
-                            } else {
-                                deleteNode(targetNode.id);
-                            }
-                        }
-                    }
-                    break;
-                }
-                case 'help': {
-                    term.writeln('AI Code Editor - Enhanced Browser Shell');
-                    term.writeln('Available commands:');
-                    term.writeln('  ls [-a] [-l]      List directory contents');
-                    term.writeln('  cd <path>         Change the shell working directory');
-                    term.writeln('  cd -              Go to previous directory');
-                    term.writeln('  pwd               Print name of current/working directory');
-                    term.writeln('  cat <file>        Concatenate files and print on the standard output');
-                    term.writeln('  echo <text>       Write arguments to the standard output');
-                    term.writeln('  touch <file>      Change file timestamps (or create an empty file)');
-                    term.writeln('  mkdir <dir>       Make directories');
-                    term.writeln('  rm <file/dir>     Remove files or directories');
-                    term.writeln('  find <pattern>    Search for files/directories by name');
-                    term.writeln('  grep <pattern> <file>  Search for text patterns in files');
-                    term.writeln('  tree              Display directory tree structure');
-                    term.writeln('  clear             Clear the terminal screen');
-                    term.writeln('');
-                    term.writeln('Path examples:');
-                    term.writeln('  cd src/components  Navigate to relative path');
-                    term.writeln('  cd /src           Navigate to absolute path');
-                    term.writeln('  cd ..             Go up one directory');
-                    term.writeln('  cd -              Go to previous directory');
-                    term.writeln('  cd ~              Go to home directory');
-                    break;
-                }
-                case '':
-                    break; // Empty Enter hit
-                case 'find': {
-                    const pattern = args[1];
-                    if (!pattern) {
-                        term.write('find: missing search pattern');
-                        term.write('\r\nUsage: find <pattern>');
-                    } else {
-                        const searchInDir = args[2] ? findNode(args[2]) : findNode('.');
-                        if (!searchInDir || searchInDir.type !== 'folder') {
-                            term.write(`find: ${args[2] || '.'}: No such directory`);
-                        } else {
-                            const results: string[] = [];
-                            const searchRecursive = (node: FileNode, path: string = '') => {
-                                const currentPath = path ? `${path}/${node.name}` : node.name;
-                                if (node.name.toLowerCase().includes(pattern.toLowerCase())) {
-                                    results.push(node.type === 'folder' ? `${currentPath}/` : currentPath);
-                                }
-                                if (node.children) {
-                                    node.children.forEach(child => searchRecursive(child, currentPath));
-                                }
-                            };
-                            searchRecursive(searchInDir);
-                            
-                            if (results.length === 0) {
-                                term.write(`find: No matches found for "${pattern}"`);
-                            } else {
-                                results.forEach(result => {
-                                    term.write(result + '\r\n');
-                                });
-                            }
-                        }
-                    }
-                    break;
-                }
-                case 'grep': {
-                    const pattern = args[1];
-                    const filename = args[2];
-                    if (!pattern || !filename) {
-                        term.write('grep: missing pattern or filename');
-                        term.write('\r\nUsage: grep <pattern> <filename>');
-                    } else {
-                        const file = findNode(filename);
-                        if (!file || file.type !== 'file') {
-                            term.write(`grep: ${filename}: No such file`);
-                        } else {
-                            const content = file.content || '';
-                            const lines = content.split('\n');
-                            const matches: string[] = [];
-                            
-                            lines.forEach((line, index) => {
-                                if (line.toLowerCase().includes(pattern.toLowerCase())) {
-                                    matches.push(`${index + 1}:${line}`);
-                                }
-                            });
-                            
-                            if (matches.length === 0) {
-                                term.write(`grep: No matches found for "${pattern}" in ${filename}`);
-                            } else {
-                                matches.forEach(match => {
-                                    term.write(`\x1b[32m${match}\x1b[0m\r\n`);
-                                });
-                            }
-                        }
-                    }
-                    break;
-                }
-                case 'tree': {
-                    const showTree = (node: FileNode, prefix: string = '', isLast: boolean = true): string => {
-                        const connector = isLast ? '└── ' : '├── ';
-                        const displayName = node.type === 'folder' ? `\x1b[1;34m${node.name}\x1b[0m/` : node.name;
-                        let result = prefix + connector + displayName + '\r\n';
-                        
-                        if (node.children && node.children.length > 0) {
-                            const sortedChildren = node.children.sort((a, b) => {
-                                if (a.type !== b.type) {
-                                    return a.type === 'folder' ? -1 : 1;
-                                }
-                                return a.name.localeCompare(b.name);
-                            });
-                            
-                            sortedChildren.forEach((child, index) => {
-                                const isLastChild = index === sortedChildren.length - 1;
-                                const childPrefix = prefix + (isLast ? '    ' : '│   ');
-                                result += showTree(child, childPrefix, isLastChild);
-                            });
-                        }
-                        
-                        return result;
-                    };
-                    
-                    const targetDir = args[1] ? findNode(args[1]) : findNode('.');
-                    if (!targetDir || targetDir.type !== 'folder') {
-                        term.write(`tree: ${args[1] || '.'}: No such directory`);
-                    } else {
-                        const treeOutput = showTree(targetDir);
-                        term.write(treeOutput);
-                    }
-                    break;
-                }
-                default:
-                    term.write(`bash: ${command}: command not found`);
-                    term.write('\r\nType "help" for available commands.');
-            }
-        };
+        const executeCommand = createShellExecutor(shellDeps);
+        const findNode = (path: string) => shellFindNode(path, shellDeps);
 
         // Welcome message and first prompt
         term.writeln('\x1b[1;36mWelcome to AI Code Editor Terminal\x1b[0m');
@@ -650,7 +329,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
 
                 if (args.length === 1) {
                     const cmds = ['ls', 'cd', 'pwd', 'cat', 'echo', 'touch', 'mkdir', 'rm', 'clear', 'help', 'find', 'grep', 'tree'];
-                    const matches = cmds.filter(c => c.startsWith(lastArg));
+                    const matches = cmds.filter((c: string) => c.startsWith(lastArg));
                     if (matches.length === 1) {
                         const newData = matches[0].slice(lastArg.length) + ' ';
                         const left = commandBuffer.current.slice(0, cursorPos.current);
@@ -663,10 +342,10 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 } else if (args.length > 1) {
                     const dirNode = findNode('.');
                     if (dirNode && dirNode.children) {
-                        const matches = dirNode.children.map(c => c.name).filter(n => n.startsWith(lastArg));
+                        const matches = dirNode.children.map((c: { name: string }) => c.name).filter((n: string) => n.startsWith(lastArg));
                         if (matches.length === 1) {
                             let match = matches[0];
-                            if (dirNode.children.find(c => c.name === match && c.type === 'folder')) {
+                            if (dirNode.children.find((c: { name: string; type: string }) => c.name === match && c.type === 'folder')) {
                                 match += '/';
                             } else {
                                 match += ' ';
@@ -830,7 +509,7 @@ const handleRunData = (e: Event) => {
             const runLanguage: string = ce.detail.language || 'code';
             const rawFilename: string | undefined = ce.detail.filename;
             const preStdin: string = ce.detail.stdinInput || '';
-            const runCwd: string = ce.detail.cwd || localCwdRef.current;
+            const runCwd: string = ce.detail.cwd || pathOf(getFileTree(), localCwdRef.current) || 'root';
             const displayName = rawFilename && typeof rawFilename === 'string'
                 ? rawFilename
                 : `snippet.${runLanguage === 'javascript' ? 'js' : runLanguage === 'python' ? 'py' : runLanguage}`;
@@ -849,6 +528,9 @@ const handleRunData = (e: Event) => {
             // short timer so a busy stream doesn't force one React/render pass
             // per chunk. The buffer is per-run and force-flushed on exit.
             const buildListeners = () => {
+                // Drain a previous run's batch buffer before a new one starts so
+                // no bytes are silently dropped on rapid re-runs.
+                flushCleanupRef.current?.();
                 let pending = '';
                 let flushTimer: ReturnType<typeof setTimeout> | null = null;
                 // Bound each synchronous xterm.write so a single massive output
@@ -875,9 +557,28 @@ const handleRunData = (e: Event) => {
                         flushTimer = setTimeout(flush, batched ? 16 : 0);
                     }
                 };
+                // Force-drain on unmount / re-run; must be invoked from outside
+                // the closure so no buffered bytes are stranded.
+                flushCleanupRef.current = () => {
+                    if (flushTimer !== null) {
+                        clearTimeout(flushTimer);
+                        flushTimer = null;
+                    }
+                    const t = xtermRef.current;
+                    if (t && pending) {
+                        t.write(pending);
+                    }
+                    pending = '';
+                };
                 return {
                     onOutput: (data: string) => {
                         pending += data;
+                        // Never let the batch buffer grow without bound — an
+                        // oversize burst is force-flushed (chunked) immediately.
+                        if (pending.length > MAX_WRITE_CHUNK * 8) {
+                            flush(true);
+                            return;
+                        }
                         scheduleFlush();
                     },
                     onState: (state: string) => {
@@ -904,7 +605,8 @@ const handleRunData = (e: Event) => {
                         timestamp: Date.now(),
                     });
                     const currentCwd = localCwdRef.current;
-                    const promptName = currentCwd === 'root' ? '~' : currentCwd.split('/').pop();
+                    const node = findNodeById(getFileTree(), currentCwd);
+                    const promptName = currentCwd === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
                     t.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
                 },
                 onStdinRequired: (interactive: boolean) => {
@@ -956,8 +658,11 @@ const handleRunData = (e: Event) => {
             const ce = e as CustomEvent;
             if (ce.detail.id === terminalId) {
                 const session = sessionRef.current;
-                if (session && session.isActive) {
-                    session.stop();
+                // Permanent removal (Kill Terminal context action / removeTerminal):
+                // fully dispose so the socket and backend process are torn down
+                // even while STOPPING or CONNECTING (`isActive` excludes those).
+                if (session && session.state !== 'EXITED' && session.state !== 'FAILED' && session.state !== 'DISPOSED') {
+                    session.dispose();
                 }
             }
         };
@@ -1007,7 +712,9 @@ const handleRunData = (e: Event) => {
                     if (right.length > 0) {
                         term.write(`\x1b[${right.length}D`);
                     }
-                } catch { }
+                } catch {
+                    // clipboard read failed — ignore
+                }
             }
         };
 
@@ -1046,12 +753,17 @@ const handleRunData = (e: Event) => {
 
             terminalEventEmitter.dispatchEvent(new CustomEvent('terminalUnmounted', { detail: { id: terminalId } }));
 
-            // Terminate the session's process + transport on unmount (no orphans).
+            // Terminate the session's process + transport on unmount (no
+            // orphans). This must also cover STOPPING and CONNECTING states —
+            // `isActive` excludes STOPPING, which would otherwise leave the
+            // socket open and the backend process alive after unmount.
             const session = sessionRef.current;
-            if (session && session.isActive) {
+            if (session && session.state !== 'EXITED' && session.state !== 'FAILED' && session.state !== 'DISPOSED') {
                 session.dispose();
             }
             sessionRef.current = null;
+            flushCleanupRef.current?.();
+            flushCleanupRef.current = null;
             setIsRunning(false);
         };
     }, [terminalId, terminalEventEmitter, setIsRunning]);

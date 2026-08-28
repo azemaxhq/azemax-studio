@@ -1,4 +1,6 @@
-export const API_BASE = import.meta.env.VITE_API_URL || '/api';
+// Defensive reads: Vite always provides import.meta.env, but server-side runs
+// (tests, SSR tooling) may not — never crash on a missing env bag.
+export const API_BASE = import.meta.env?.VITE_API_URL || '/api';
 
 export class ApiError extends Error {
     status: number;
@@ -40,13 +42,15 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 }
 
 export function getWebSocketUrl(): string {
-    if (import.meta.env.VITE_WS_URL) {
+    if (import.meta.env?.VITE_WS_URL) {
         return import.meta.env.VITE_WS_URL;
     }
-    const port = import.meta.env.VITE_WS_PORT || '3001';
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const port = import.meta.env?.VITE_WS_PORT || '3001';
+    const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
     // In development, always use localhost since backend runs on same machine.
     // window.location.hostname can be a network IP (e.g., 172.20.10.8) which the backend may not bind to.
-    const hostname = import.meta.env.DEV ? 'localhost' : window.location.hostname;
+    const hostname = import.meta.env?.DEV
+        ? 'localhost'
+        : (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
     return `${protocol}://${hostname}:${port}`;
 }

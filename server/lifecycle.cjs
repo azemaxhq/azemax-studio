@@ -186,7 +186,7 @@ async function reportPortInUse(port, siblingPid) {
  *   5. close HTTP server (force-close remaining connections)
  *   6. bounded force-exit so shutdown never hangs
  */
-function installGracefulShutdown({ server, wss, terminalManager, onComplete }) {
+function installGracefulShutdown({ server, wss, terminalManager, onComplete, beforeClose }) {
     let shuttingDown = false;
 
     const shutdown = (code, signal, err) => {
@@ -200,6 +200,13 @@ function installGracefulShutdown({ server, wss, terminalManager, onComplete }) {
             process.exit(code);
         }, SHUTDOWN_FORCE_MS);
         if (force && force.unref) force.unref();
+
+        // Abort any in-flight AI streams so no orphan upstream requests remain.
+        try {
+            if (typeof beforeClose === 'function') beforeClose();
+        } catch (e) {
+            console.error('[server] AI stream cleanup error:', e);
+        }
 
         // Terminate every live terminal session/PTY (no orphan processes).
         try {

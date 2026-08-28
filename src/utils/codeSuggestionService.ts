@@ -3,12 +3,24 @@
  */
 
 import { modifyCode } from './groqService';
+import { parseStructuredEdits } from '../core/ai/AIResponseParser';
+import {
+    aiAbortManager,
+    NO_AUTO_COMMENTS_INSTRUCTION,
+    sanitizeEditorOutputWithPolicy,
+    isCommentingIntent,
+    shiftReplacementIndent,
+    AIError,
+    aiErrorToUserMessage,
+} from '../core/ai';
 
 export interface SuggestionContext {
     code: string;           // Full code in the file
     cursorPosition: number; // Cursor position in the code
     language: string;       // Programming language
     fileName: string;       // Current file name
+    documentVersion?: number; // Editor document version at request time
+    isStale?: () => boolean;  // Optional live staleness check (editor moved on)
 }
 
 export interface SuggestionResult {
@@ -17,38 +29,43 @@ export interface SuggestionResult {
     isModify?: boolean;
     startOffset?: number;
     error?: string;
+    /** Structured edits if available for multi-line transformations */
+    structuredEdits?: { startLine: number; endLine: number; replacement: string }[];
 }
 
-// Abort controller for cancellation
-let abortController: AbortController | null = null;
+// Separate keys so /// commands and inline completions don't cancel each other.
+const INLINE_SUGGESTION_KEY = 'inline-suggestion';
+const COMMENT_SUGGESTION_KEY = 'comment-suggestion';
+// Keep backward-compatible single-key cancel for callers that don't know which type is pending
+const SUGGESTION_KEY = INLINE_SUGGESTION_KEY;
 
 /**
- * Cancel any pending AI request
+ * Cancel any pending AI request (both inline and /// comment flows)
  */
 export const cancelPendingRequest = (): void => {
-    if (abortController) {
-        abortController.abort();
-        abortController = null;
-        console.log('[AI] Request cancelled by user');
-    }
+    aiAbortManager.abort(INLINE_SUGGESTION_KEY, 'superseded');
+    aiAbortManager.abort(COMMENT_SUGGESTION_KEY, 'superseded');
+    aiAbortManager.abort(SUGGESTION_KEY, 'superseded');
 };
 
 /**
  * Check if a request is currently in progress
  */
 export const isRequestInProgress = (): boolean => {
-    return abortController !== null;
+    return aiAbortManager.has(INLINE_SUGGESTION_KEY) || aiAbortManager.has(COMMENT_SUGGESTION_KEY);
 };
 
 /**
  * Main function to get AI code suggestion based on /// commands
  */
 export const getCodeSuggestion = async (context: SuggestionContext): Promise<SuggestionResult | null> => {
-    // Cancel any pending request
-    cancelPendingRequest();
+    // Cancel only the previous /// request — inline completions run on a separate key
+    aiAbortManager.abort(COMMENT_SUGGESTION_KEY, 'superseded');
 
-    // Create new abort controller
-    abortController = new AbortController();
+    // Track the new request via the runtime abort manager. The controller is
+    // kept so the /// request itself is abortable (it is what makes a stale
+    // auto-replace vanish mid-flight when the user keeps typing).
+    const controller = aiAbortManager.get(COMMENT_SUGGESTION_KEY);
 
     console.log('[AI] getCodeSuggestion called. Cursor at:', context.cursorPosition);
 
@@ -69,7 +86,7 @@ export const getCodeSuggestion = async (context: SuggestionContext): Promise<Sug
 
     if (!sameLineMatch) {
         console.log('[AI] No /// command detected. Exiting.');
-        abortController = null;
+        aiAbortManager.release(COMMENT_SUGGESTION_KEY);
         return null;
     }
 
@@ -100,53 +117,88 @@ export const getCodeSuggestion = async (context: SuggestionContext): Promise<Sug
         const generatedCode = await modifyCode(
             contextCode,
             commandText,
-            context.language
+            context.language,
+            controller.signal
         );
 
         if (!generatedCode) {
             console.error('[AI] Empty response from API');
-            abortController = null;
+            aiAbortManager.release(COMMENT_SUGGESTION_KEY);
             return { text: '', error: 'Empty response - try rephrasing' };
         }
 
-        // Apply indentation
-        // We replace from column 1, so we must indent the first line too.
-        // We should NOT trim the AI output lines because languages like Python
-        // rely on internal relative indentation (e.g. loops, ifs).
-        let finalCode = generatedCode;
-        if (indentation) {
-            finalCode = generatedCode
-                .split('\n')
-                .map(line => {
-                    // Only apply base indentation if the line has content (not just a newline)
-                    if (line.trim() === '') return line;
-                    return indentation + line;
-                })
-                .join('\n');
-        }
-
-        console.log('[AI] Generated code length:', finalCode.length);
-
-        const replaceLength = context.cursorPosition - replaceStartOffset;
-
-        abortController = null;
-        return {
-            text: finalCode,
-            replaceLength,
-            isModify: true,
-            startOffset: replaceStartOffset
-        };
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-        console.error('[AI] Error:', error.message);
-        abortController = null;
-
-        if (error.name === 'AbortError' || error.message?.includes('abort')) {
+        // Reject stale edits: user kept typing / moved the cursor while the
+        // request was in flight — never apply a response to text it no longer
+        // describes.
+        if (context.isStale?.()) {
+            aiAbortManager.release(COMMENT_SUGGESTION_KEY);
             return { text: '', error: 'Cancelled' };
         }
 
-        return { text: '', error: error.message || 'AI request failed' };
+        // Sanitize FIRST so reasoning/meta-commentary never reaches the editor.
+        const finalCode = sanitizeEditorOutputWithPolicy(generatedCode, {
+            task: 'comment',
+            language: context.language,
+            filename: context.fileName,
+            userInstruction: commandText,
+            outputMode: isCommentingIntent(commandText) ? 'comment' : 'edit',
+            preserve: contextCode,
+        });
+
+        // Apply indentation relative to the target line. We only align the
+        // FIRST content line to the line's base indentation; the rest of the
+        // replacement keeps its internal relative indentation (multiline
+        // replacements must not get the base indent prepended to every line).
+        // String-aware: lines inside multiline strings are never re-indented.
+        const indented = indentation
+            ? (() => {
+                const firstContentIndex = finalCode.split('\n').findIndex(l => l.trim() !== '');
+                if (firstContentIndex === -1) return finalCode;
+                const firstIndent = finalCode.split('\n')[firstContentIndex].match(/^[ \t]*/)?.[0] ?? '';
+                return shiftReplacementIndent(finalCode, indentation.length - firstIndent.length);
+            })()
+            : finalCode;
+
+        console.log('[AI] Generated code length:', indented.length);
+
+        // Try to parse structured edits from the generated code for multi-line support
+        let structuredEdits: { startLine: number; endLine: number; replacement: string }[] | undefined;
+        try {
+            const edits = parseStructuredEdits(generatedCode);
+            if (edits && edits.edits.length > 0) {
+                structuredEdits = edits.edits;
+            }
+        } catch {
+            // Ignore parse errors, fall back to text replacement
+        }
+
+        const replaceLength = context.cursorPosition - replaceStartOffset;
+
+        aiAbortManager.release(COMMENT_SUGGESTION_KEY);
+        return {
+            text: indented,
+            replaceLength,
+            isModify: true,
+            startOffset: replaceStartOffset,
+            structuredEdits
+        };
+
+        } catch (error) {
+        console.error('[AI] Error:', error);
+        aiAbortManager.release(COMMENT_SUGGESTION_KEY);
+
+        if (error instanceof AIError) {
+            // Typed provider failure: surface a user-safe message. The editor
+            // write path MUST NOT receive the raw developer message or the
+            // error string as generated code.
+            return { text: '', error: aiErrorToUserMessage(error) };
+        }
+
+        if (error instanceof Error && (error.name === 'AbortError' || error.message?.includes('abort'))) {
+            return { text: '', error: 'Cancelled' };
+        }
+
+        return { text: '', error: 'AI request failed' };
     }
 };
 
@@ -332,18 +384,18 @@ const balanceBrackets = (
  * file name, and language conventions.
  */
 export const getInlineCompletion = async (context: SuggestionContext): Promise<SuggestionResult | null> => {
-    // Cancel any pending request
-    cancelPendingRequest();
-    abortController = new AbortController();
+    // Cancel any pending request and register the new one via the runtime manager.
+    aiAbortManager.abort(INLINE_SUGGESTION_KEY, 'superseded');
+    const controller = aiAbortManager.get(INLINE_SUGGESTION_KEY);
 
     const textBeforeCursor = context.code.substring(
-        Math.max(0, context.cursorPosition - 1500),
+        Math.max(0, context.cursorPosition - 1000),
         context.cursorPosition
     );
 
     const textAfterCursor = context.code.substring(
         context.cursorPosition,
-        Math.min(context.code.length, context.cursorPosition + 500)
+        Math.min(context.code.length, context.cursorPosition + 300)
     );
 
     const lastLine = textBeforeCursor.split('\n').pop() || '';
@@ -353,7 +405,7 @@ export const getInlineCompletion = async (context: SuggestionContext): Promise<S
 
     // Don't suggest if cursor is inside a regular comment (not ///)
     if (!isEmptyOrNewFile && lastLine.trim().startsWith('//') && !lastLine.includes('///')) {
-        abortController = null;
+        aiAbortManager.release(INLINE_SUGGESTION_KEY);
         return null;
     }
 
@@ -382,25 +434,19 @@ export const getInlineCompletion = async (context: SuggestionContext): Promise<S
             break;
     }
 
-    const systemPrompt = `You are an expert ${context.language} code autocomplete engine embedded in a code editor. Your job is to predict what the developer wants to type next.
+    const systemPrompt = `You are a ${context.language} autocomplete engine. Predict what the developer types next.
 
-FILE CONTEXT:
-${fileConventionHint}
+FILE: "${context.fileName}". ${fileConventionHint}
 
 RULES:
-- Output ONLY the completion text that should be inserted at the cursor
-- Do NOT repeat any code that already exists before the cursor
-- Do NOT wrap output in markdown backticks or add language tags
-- Do NOT add explanations or comments about what you're doing
-- Match the existing code style, indentation, and patterns exactly
-- For new/empty files: suggest the standard boilerplate for the language matching the filename
-- For partial code: predict the most likely next 1-8 lines based on context
-- If the user started a construct (function, class, loop, if, switch, try-catch, struct, enum, etc.), ALWAYS complete the ENTIRE skeleton including the closing brace/bracket/parenthesis
-- ALWAYS ensure every opening { has a matching closing }. Every opening [ has a matching ]. Every opening ( has a matching )
-- When completing a class or function body, include the full body with the closing brace on its own line
-- For example, if the user typed "class HelloWorld {", you MUST include the closing "}" in the suggestion
-- Be precise: only suggest what belongs at this exact cursor position
-- Output empty string if unsure`;
+- Output ONLY the text to insert at the cursor
+- Do NOT repeat existing code before the cursor
+- No markdown, no explanations
+- Match the existing indentation and style
+- Complete the ENTIRE skeleton for any started construct (function/class/loop/if/try), including closing braces
+- For new/empty files: minimal standard boilerplate for the language
+- Predict the most likely next 1-8 lines; output empty string if unsure
+- ${NO_AUTO_COMMENTS_INSTRUCTION}`;
 
     let userPrompt: string;
 
@@ -436,30 +482,39 @@ Output ONLY the text to insert at █. Do not repeat existing code.`;
     }
 
     try {
-        const { sendChatRequest } = await import('./groqService');
+        const { sendChatRequest, getSmartModel } = await import('./groqService');
         const completion = await sendChatRequest(
             [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
             ],
             {
-                temperature: 0.1,
-                maxTokens: 300,
-                signal: abortController.signal
+                model: getSmartModel('inline-suggest'),
+                task: 'autocomplete',
+                signal: controller.signal,
+                allowFallback: false,
             }
         );
 
-        abortController = null;
+        aiAbortManager.release(INLINE_SUGGESTION_KEY);
 
         if (!completion || completion.trim() === '') {
             return null;
         }
 
-        // Clean up the completion
-        let cleanedCompletion = completion
-            .replace(/^```\w*\n?/, '')
-            .replace(/\n?```$/, '')
-            .trimEnd();
+        // Reject stale completions: typing/cursor moved on while awaiting.
+        if (context.isStale?.()) return null;
+
+        // Sanitize: strip thinking, fences, conversational wrappers, and any
+        // AI meta-commentary. Mode "autocomplete" forbids new comments; comments
+        // already present in the surrounding code are preserved.
+        let cleanedCompletion = sanitizeEditorOutputWithPolicy(completion, {
+            task: 'inline-suggest',
+            language: context.language,
+            filename: context.fileName,
+            outputMode: 'autocomplete',
+            preserve: context.code,
+        });
 
         // If the completion starts with the last line's content, strip it (AI repeated context)
         if (!isEmptyOrNewFile && lastLine.trim() && cleanedCompletion.startsWith(lastLine.trim())) {
@@ -480,7 +535,7 @@ Output ONLY the text to insert at █. Do not repeat existing code.`;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-        abortController = null;
+        aiAbortManager.release(INLINE_SUGGESTION_KEY);
         if (error.name === 'AbortError' || error.message?.includes('abort')) {
             return null;
         }

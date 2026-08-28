@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef, useState, useCallback, useEffect, startTransition, ReactNode } from 'react';
+import React, { createContext, useContext, useRef, useState, useCallback, useEffect, startTransition, type ReactNode } from 'react';
 import { DisposableStore, EventBus } from '../core/runtime';
 
 interface PerformanceContextValue {
@@ -150,7 +150,7 @@ export const useRenderTracker = (componentName: string) => {
 
 export const useFrameCallback = (callback: (time: number) => void, deps: React.DependencyList = []) => {
   const { onFrame } = usePerformance();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   useEffect(() => {
     return onFrame(callback);
   }, deps);

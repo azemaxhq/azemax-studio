@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, startTransition } from 'react';
+import React, { lazy } from 'react';
 import { Layers, BookOpen, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../Sidebar/Sidebar';
@@ -6,22 +6,15 @@ import { SettingsSidebar } from '../Sidebar/SettingsSidebar';
 import { CodeEditor } from '../Editor/CodeEditor';
 import { AIAssistant } from '../Panels/AIAssistant';
 import { BottomPanel } from '../Panels/BottomPanel';
-import { PerformanceBudgetMonitor, ProfilerWrapper } from '../PerformanceBudgetMonitor';
+import { PerformanceBudgetMonitor } from '../PerformanceBudgetMonitor';
 import { getSettings } from '../../settings/settingsStore';
 import { useSettingsSelector } from '../../settings/settingsStore';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const ExplanationSidebar = lazy(() =>
     import('../Sidebar/ExplanationSidebar').then(m => ({ default: m.ExplanationSidebar }))
-);
-
-const PerformancePanel = lazy(() =>
-    import('../Panels/PerformancePanel').then(m => ({ default: m.PerformancePanel }))
-);
-
-const TerminalPanel = lazy(() =>
-    import('../Panels/TerminalPanel').then(m => ({ default: m.TerminalPanel }))
 );
 
 const SidebarFallback = () => (
@@ -31,15 +24,14 @@ const SidebarFallback = () => (
     </div>
 );
 
-const PanelFallback = () => (
-    <div className="flex-1 flex items-center justify-center bg-transparent perf-content-visibility-auto">
-        <div className="text-white/30 text-sm">Loading panel...</div>
-    </div>
-  );
-
 export const MainLayout: React.FC = () => {
     // Developer diagnostics overlay (gated by the Advanced setting)
     const developerDiagnostics = useSettingsSelector((s) => s.advanced.developerDiagnostics);
+
+    // Below 1024px the app switches to an overlay-drawer layout: the side panels
+    // slide over the editor instead of stealing inline width. The media query is
+    // tracked via matchMedia (no resize listeners / polling).
+    const isDesktop = useMediaQuery('(min-width: 1024px)');
 
     // Helper to load from storage or default
     const loadState = (key: string, defaultVal: number) => {
@@ -67,6 +59,7 @@ export const MainLayout: React.FC = () => {
         if (stored !== null) return stored === '1';
         return getSettings().general.sidebarDefault;
     });
+    const [isBottomOpen, setIsBottomOpen] = React.useState(true);
     const [leftSidebarView, setLeftSidebarView] = React.useState<'explorer' | 'explanation' | 'settings'>(() => {
         try {
             const v = localStorage.getItem('layout-left-sidebar-view');
@@ -128,11 +121,28 @@ export const MainLayout: React.FC = () => {
     }, []);
 
     const toggleAiSidebar = React.useCallback(() => {
-        setIsAiSidebarOpen(prev => !prev);
-    }, []);
+        setIsAiSidebarOpen(prev => {
+            if (!prev && !isDesktop) {
+                setIsLeftSidebarOpen(false);
+                setIsBottomOpen(false);
+            }
+            return !prev;
+        });
+    }, [isDesktop]);
+
+    const toggleBottomPanel = React.useCallback(() => {
+        setIsBottomOpen(prev => {
+            if (!prev && !isDesktop) setIsAiSidebarOpen(false);
+            return !prev;
+        });
+    }, [isDesktop]);
 
     const openExplanation = React.useCallback(() => {
         if (!isLeftSidebarOpen) {
+            if (!isDesktop) {
+                setIsAiSidebarOpen(false);
+                setIsBottomOpen(false);
+            }
             setIsLeftSidebarOpen(true);
             setLeftSidebarView('explanation');
         } else if (leftSidebarView === 'explanation') {
@@ -140,10 +150,14 @@ export const MainLayout: React.FC = () => {
         } else {
             setLeftSidebarView('explanation');
         }
-    }, [isLeftSidebarOpen, leftSidebarView]);
+    }, [isLeftSidebarOpen, leftSidebarView, isDesktop]);
 
     const openExplorer = React.useCallback(() => {
         if (!isLeftSidebarOpen) {
+            if (!isDesktop) {
+                setIsAiSidebarOpen(false);
+                setIsBottomOpen(false);
+            }
             setIsLeftSidebarOpen(true);
             setLeftSidebarView('explorer');
         } else if (leftSidebarView === 'explorer') {
@@ -151,10 +165,14 @@ export const MainLayout: React.FC = () => {
         } else {
             setLeftSidebarView('explorer');
         }
-    }, [isLeftSidebarOpen, leftSidebarView]);
+    }, [isLeftSidebarOpen, leftSidebarView, isDesktop]);
 
     const openSettings = React.useCallback(() => {
         if (!isLeftSidebarOpen) {
+            if (!isDesktop) {
+                setIsAiSidebarOpen(false);
+                setIsBottomOpen(false);
+            }
             setIsLeftSidebarOpen(true);
             setLeftSidebarView('settings');
         } else if (leftSidebarView === 'settings') {
@@ -162,7 +180,7 @@ export const MainLayout: React.FC = () => {
         } else {
             setLeftSidebarView('settings');
         }
-    }, [isLeftSidebarOpen, leftSidebarView]);
+    }, [isLeftSidebarOpen, leftSidebarView, isDesktop]);
 
 
     const startResizingRight = React.useCallback((e: React.MouseEvent) => {
@@ -283,7 +301,7 @@ export const MainLayout: React.FC = () => {
     }, []);
 
     return (
-        <div className={`flex h-screen w-full bg-background text-text overflow-hidden relative ${resizingSide ? 'select-none' : ''}`}>
+        <div className={`flex app-viewport w-full bg-background text-text overflow-hidden relative ${resizingSide ? 'select-none' : ''}`}>
             {/* Resizing Overlay to capture mouse events and prevent iframe swallowing */}
             {resizingSide && (
                 <div className={`absolute inset-0 z-[100] ${resizingSide === 'bottom' ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
@@ -296,7 +314,7 @@ export const MainLayout: React.FC = () => {
             </div>
 
             {/* Activity Bar (Explorer + Explanation) */}
-            <div className="shrink-0 z-20 flex flex-col items-center justify-start gap-2 py-3 w-[56px] bg-[#0d1117]/80 border-r border-white/[0.04]">
+            <div className={`shrink-0 flex flex-col items-center justify-start gap-2 py-3 w-[56px] bg-[#0d1117]/80 border-r border-white/[0.04] ${isDesktop ? 'z-20' : 'z-40'}`}>
                 <button
                     onClick={openExplorer}
                     className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"
@@ -339,14 +357,31 @@ export const MainLayout: React.FC = () => {
                 </button>
             </div>
 
+            {/* Overlay backdrop (only when side panels render as drawers below 1024px) */}
+            {!isDesktop && (isLeftSidebarOpen || isAiSidebarOpen || isBottomOpen) && (
+                <div
+                    className="absolute inset-0 z-30 bg-black/50 backdrop-blur-[2px]"
+                    onClick={() => {
+                        if (isLeftSidebarOpen) setIsLeftSidebarOpen(false);
+                        if (isAiSidebarOpen) setIsAiSidebarOpen(false);
+                        if (isBottomOpen) setIsBottomOpen(false);
+                    }}
+                    aria-hidden="true"
+                />
+            )}
+
             {/* Left Sidebar (Explorer or Explanation) - smooth open/close */}
             <div
                 ref={leftSidebarRef}
                 style={{
-                    width: isLeftSidebarOpen ? Math.max(150, leftSidebarWidth) : 0,
+                    width: isLeftSidebarOpen ? (isDesktop ? `${Math.max(150, leftSidebarWidth)}px` : `min(${Math.max(150, leftSidebarWidth)}px, calc(100vw - 72px))`) : '0px',
                     opacity: isLeftSidebarOpen ? 1 : 0
                 }}
-                className={`glass-panel flex flex-col shrink-0 relative z-10 overflow-hidden ${resizingSide === 'left' ? 'transition-none' : 'transition-all duration-300 ease-in-out'} ${isLeftSidebarOpen ? 'border-r border-white/5 shadow-2xl' : 'border-none'}`}
+                className={`glass-panel flex flex-col shrink-0 overflow-hidden
+                    ${isDesktop
+                        ? `relative z-10 ${resizingSide === 'left' ? 'transition-none' : 'transition-all duration-300 ease-in-out'}`
+                        : 'absolute top-0 bottom-0 left-[56px] z-40 transition-all duration-300 ease-in-out'}
+                    ${isLeftSidebarOpen ? 'border-r border-white/5 shadow-2xl' : 'border-none'}`}
             >
                 <AnimatePresence mode="wait" initial={false}>
                     {leftSidebarView === 'explorer' ? (
@@ -390,7 +425,7 @@ export const MainLayout: React.FC = () => {
 
             {/* Left Resize Handle */}
             <div
-                style={{ display: isLeftSidebarOpen ? 'flex' : 'none' }}
+                style={{ display: isDesktop && isLeftSidebarOpen ? 'flex' : 'none' }}
                 className="w-1.5 glass-resize-handle cursor-col-resize z-20 flex items-center justify-center shrink-0 hover:w-2 transition-all"
                 onMouseDown={startResizingLeft}
             >
@@ -413,27 +448,31 @@ export const MainLayout: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Bottom Resize Handle */}
-                    <div
-                        className="h-1.5 glass-resize-handle-vertical cursor-row-resize z-20 flex items-center justify-center shrink-0 hover:h-2 transition-all"
-                        onMouseDown={startResizingBottom}
-                    >
-                        <div className="w-20 h-0.5 bg-white/10 rounded-full" />
-                    </div>
+                    {/* Bottom Resize Handle (desktop only — resizing is mouse-driven) */}
+                    {isDesktop && (
+                        <div
+                            className="h-1.5 glass-resize-handle-vertical cursor-row-resize z-20 flex items-center justify-center shrink-0 hover:h-2 transition-all"
+                            onMouseDown={startResizingBottom}
+                        >
+                            <div className="w-20 h-0.5 bg-white/10 rounded-full" />
+                        </div>
+                    )}
 
-                    {/* Bottom Panel */}
-                    <div
-                        ref={bottomPanelRef}
-                        style={{ height: bottomPanelHeight }}
-                        className="glass-panel shrink-0 border-t border-white/10"
-                    >
-                        <BottomPanel />
-                    </div>
+                    {/* Bottom Panel (desktop: docked inline as today) */}
+                    {isDesktop && (
+                        <div
+                            ref={bottomPanelRef}
+                            style={{ height: bottomPanelHeight }}
+                            className="glass-panel shrink-0 border-t border-white/10"
+                        >
+                            <BottomPanel />
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Resize Handle */}
                 <div
-                    style={{ display: isAiSidebarOpen ? 'flex' : 'none' }}
+                    style={{ display: isDesktop && isAiSidebarOpen ? 'flex' : 'none' }}
                     className="w-1.5 glass-resize-handle cursor-col-resize z-20 flex items-center justify-center shrink-0 hover:w-2 transition-all"
                     onMouseDown={startResizingRight}
                 >
@@ -444,15 +483,29 @@ export const MainLayout: React.FC = () => {
                 <div
                     ref={rightSidebarRef}
                     style={{
-                        width: isAiSidebarOpen ? aiPanelWidth : 0,
+                        width: isAiSidebarOpen ? (isDesktop ? `${aiPanelWidth}px` : `min(${Math.max(200, aiPanelWidth)}px, 92vw)`) : '0px',
                         opacity: isAiSidebarOpen ? 1 : 0,
                     }}
-                    className={`glass-panel flex flex-col shrink-0 border-l border-white/10 ${resizingSide === 'right' ? 'transition-none' : 'transition-all duration-300 ease-in-out'} ${!isAiSidebarOpen ? 'border-none overflow-hidden' : ''}`}
+                    className={`glass-panel flex flex-col shrink-0 overflow-hidden
+                        ${isDesktop
+                            ? `relative z-10 ${resizingSide === 'right' ? 'transition-none' : 'transition-all duration-300 ease-in-out'}`
+                            : 'absolute top-0 bottom-0 right-0 z-40 transition-all duration-300 ease-in-out'}
+                        ${isAiSidebarOpen ? 'border-l border-white/10' : 'border-none'}`}
                 >
-                <div className="flex-1 min-h-0 flex flex-col" ref={rightInnerRef} style={{ width: aiPanelWidth }}>
+                <div className="flex-1 min-h-0 flex flex-col" ref={rightInnerRef} style={isDesktop ? { width: aiPanelWidth } : undefined}>
                     <AIAssistant isVisible={isAiSidebarOpen} />
 </div>
             </div>
+
+            {/* Bottom Sheet (mobile/tablet overlay — replaces the docked panel below 1024px) */}
+            {!isDesktop && (
+                <div
+                    className="absolute left-[56px] right-0 bottom-0 z-40 overflow-hidden transition-all duration-300 ease-in-out"
+                    style={{ height: isBottomOpen ? `min(${bottomPanelHeight}px, 75dvh)` : '32px' }}
+                >
+                    <BottomPanel isOverlay isOpen={isBottomOpen} onToggle={toggleBottomPanel} />
+                </div>
+            )}
         </div>
         <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development' && developerDiagnostics} />
     </div>

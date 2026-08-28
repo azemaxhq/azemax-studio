@@ -12,20 +12,25 @@ type LazyViewer = React.ComponentType<MarkdownRendererProps>;
 
 let markdownPromise: Promise<LazyViewer> | null = null;
 
+/**
+ * Security: rehype-raw was removed — it rendered raw HTML from AI output
+ * enabling XSS (e.g. `<img onerror>`). We now render markdown without raw
+ * HTML; any HTML in AI output is escaped by react-markdown's default.
+ */
 function loadMarkdownViewer(): Promise<LazyViewer> {
   if (!markdownPromise) {
     markdownPromise = Promise.all([
       import('react-markdown'),
       import('remark-gfm'),
-      import('rehype-raw'),
-    ]).then(([markdownMod, gfmMod, rawMod]) => {
+    ]).then(([markdownMod, gfmMod]) => {
       const ReactMarkdown = markdownMod.default;
       const gfm = (gfmMod as { default?: unknown }).default ?? gfmMod;
-      const raw = (rawMod as { default?: unknown }).default ?? rawMod;
       const LazyViewer: LazyViewer = (props) => (
         <ReactMarkdown
           remarkPlugins={[gfm as never]}
-          rehypePlugins={[raw as never]}
+          // No rehype-raw: raw HTML from AI is escaped (safe by default)
+          // Enable only with DOMPurify if raw HTML is ever needed
+          skipHtml
           components={props.components}
         >
           {props.children as string}
@@ -43,7 +48,7 @@ function loadMarkdownViewer(): Promise<LazyViewer> {
 const LIGHTWEIGHT_PARSER_CACHE = new Map<string, ReactNode>();
 const MAX_CACHE_SIZE = 100;
 
-function lightweightParse(markdown: string): ReactNode {
+function lightweightParse(markdown: string, appendCaret = false): ReactNode {
   if (!markdown) return '';
 
   const lines = markdown.split('\n');
@@ -181,6 +186,19 @@ function lightweightParse(markdown: string): ReactNode {
   flushCodeBlock();
   flushList();
 
+  // While streaming, append a blinking caret to the last inline text run so it
+  // flows right after the final word instead of on its own line.
+  if (appendCaret) {
+    const lastIndex = result.length - 1;
+    const lastEl = result[lastIndex] as { type: string; props: { children?: React.ReactNode } } | undefined;
+    if (lastEl && ['p', 'h1', 'h2', 'h3', 'blockquote', 'li'].includes(lastEl.type)) {
+      const caret = React.createElement('span', { className: 'stream-caret' });
+      const children = lastEl.props.children;
+      const newChildren = Array.isArray(children) ? [...children, caret] : [children, caret];
+      result[lastIndex] = React.createElement(lastEl.type as never, { ...lastEl.props, children: newChildren });
+    }
+  }
+
   return React.createElement(React.Fragment, null, ...result);
 }
 
@@ -199,14 +217,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     if (LIGHTWEIGHT_PARSER_CACHE.has(cacheKey)) {
       return LIGHTWEIGHT_PARSER_CACHE.get(cacheKey)!;
     }
-    const result = lightweightParse(contentStr);
+    const result = lightweightParse(contentStr, isStreaming);
     if (LIGHTWEIGHT_PARSER_CACHE.size >= MAX_CACHE_SIZE) {
       const firstKey = LIGHTWEIGHT_PARSER_CACHE.keys().next().value;
       if (firstKey) LIGHTWEIGHT_PARSER_CACHE.delete(firstKey);
     }
     LIGHTWEIGHT_PARSER_CACHE.set(cacheKey, result);
     return result;
-  }, [cacheKey]);
+  }, [cacheKey, isStreaming]);
 
   const onParseCompleteRef = useRef(onParseComplete);
 
@@ -245,7 +263,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   }
 
   if (!Viewer) {
-    return <div className="animate-pulse whitespace-pre-wrap text-white/40">Rendering...</div>;
+    return <div className="whitespace-pre-wrap text-white/40">Rendering...</div>;
   }
 
   return <Viewer components={components}>{children}</Viewer>;

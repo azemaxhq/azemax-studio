@@ -7,10 +7,14 @@ import {
 
 import { loadPrism, tryHighlight } from '../../utils/prismLoader';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { streamChatWithAI, chatWithAI, generateCode, type ProjectContext } from '../../utils/groqService';
+import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
+import { buildWorkspaceSnapshot } from '../../core/workspace/workspaceContext';
+import { useAILoading } from '../../hooks/useAILoading';
+import { AILoadingIndicator } from '../AI/AILoadingIndicator';
+import { AIStreamingIndicator } from '../AI/AIStreamingIndicator';
+import '../AI/ai-loading.css';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
-import { type FileNode } from '../../utils/mockFileSystem';
 import {
     saveSessions,
     loadSessions,
@@ -20,22 +24,11 @@ import {
     type ChatSession,
     type Message
 } from '../../utils/chatStorage';
-
-// Helper to flatten file tree for context with depth limit
-const flattenFileTree = (nodes: FileNode[], depth = 0, maxDepth = 2): string => {
-    if (depth > maxDepth) return '';
-
-    let result = '';
-    const indent = '  '.repeat(depth);
-    for (const node of nodes) {
-        result += `${indent} - ${node.name} (${node.type}) \n`;
-        if (node.children) {
-            result += flattenFileTree(node.children, depth + 1, maxDepth);
-        }
-    }
-    return result;
-};
-
+import { streamChat } from '../../core/ai/AIClient';
+import { cleanResponse } from '../../core/ai/AIResponseParser';
+import type { ChatMessage } from '../../core/ai/types';
+import { parseArtifacts } from './ai/artifactParser';
+import { AI_ERROR_CODES } from '../../core/ai/AIError';
 
 // Custom Gemini-style Animated Logo
 const GeminiLogo = ({ size = 24, className = "" }: { size?: number, className?: string }) => {
@@ -81,15 +74,15 @@ const QUICK_ACTIONS = [
 // Artifact Block Component - Claude-like artifact rendering
 interface ArtifactProps {
     title: string;
-    type: 'code' | 'example' | 'explanation' | 'diagram';
+    type: 'code' | 'example' | 'explanation' | 'diagram' | string;
     language?: string;
     content: string;
-    onCopy: (text: string, id: string) => void;
-    copiedId: string | null;
-    id: string;
+    onCopy?: (text: string, id: string) => void;
+    copiedId?: string | null;
+    id?: string;
 }
 
-const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content, onCopy, copiedId, id }) => {
+const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content, onCopy, copiedId, id = '' }) => {
     const [isExpanded, setIsExpanded] = useState(true);
 
     const getIcon = () => {
@@ -131,7 +124,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={(e) => { e.stopPropagation(); onCopy(content, id); }}
+                        onClick={(e) => { e.stopPropagation(); onCopy?.(content, id); }}
                         className="p-1.5 rounded-md text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] transition-colors"
                         title="Copy content"
                     >
@@ -163,46 +156,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
     );
 };
 
-// Parse artifact blocks from AI response
-const parseArtifacts = (text: string): { segments: Array<{ type: 'text' | 'artifact'; content: string; artifact?: ArtifactProps }>; } => {
-    const artifactRegex = /```artifact\s*\n(?:title:\s*"([^"]+)"\s*\n)?(?:type:\s*(\w+)\s*\n)?(?:language:\s*(\w+)\s*\n)?([\s\S]*?)```/gi;
-    const segments: Array<{ type: 'text' | 'artifact'; content: string; artifact?: any }> = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = artifactRegex.exec(text)) !== null) {
-        // Add text before artifact
-        if (match.index > lastIndex) {
-            segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
-        }
-
-        // Add artifact
-        segments.push({
-            type: 'artifact',
-            content: '',
-            artifact: {
-                title: match[1] || 'Code Example',
-                type: (match[2] as any) || 'code',
-                language: match[3] || 'typescript',
-                content: match[4]?.trim() || ''
-            }
-        });
-
-        lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text
-    if (lastIndex < text.length) {
-        segments.push({ type: 'text', content: text.slice(lastIndex) });
-    }
-
-    // If no artifacts found, return original text
-    if (segments.length === 0) {
-        segments.push({ type: 'text', content: text });
-    }
-
-    return { segments };
-};
+// parseArtifacts moved to ./ai/artifactParser for single responsibility
 
 
 // Memoized Message Item to prevent re-renders
@@ -223,14 +177,14 @@ const MessageItem = React.memo(({
     onReaction,
     prismReady
 }: {
-    msg: Message | { text: string; role: 'ai' | 'user'; id: string; timestamp?: number };
+    msg: Message | { text: string; role: 'ai' | 'user'; id: string; timestamp: number };
     index: number | string;
     isEditing: boolean;
     editText: string;
     setEditText: (text: string) => void;
     onSaveEdit: (id: string) => void;
     onCancelEdit: () => void;
-    onEditStart: (msg: any) => void;
+    onEditStart: (msg: Message) => void;
     onCopy: (text: string, id: string) => void;
     onRegenerate?: (index: number) => void;
     onApplyCode?: (code: string) => void;
@@ -241,7 +195,7 @@ const MessageItem = React.memo(({
 }) => {
     // Enhanced markdown renderer using react-markdown
     const components = {
-        code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode; [key: string]: any }) {
+        code({ inline, className, children, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : 'text';
             const code = String(children).replace(/\n$/, '');
@@ -296,53 +250,53 @@ const MessageItem = React.memo(({
                 </code>
             );
         },
-        h1({ children, ...props }: any) {
+        h1({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
             return <h1 className="text-[22px] font-semibold text-[#e6edf3] mt-8 mb-4 pb-2 border-b border-[#30363d]" {...props}>{children}</h1>;
         },
-        h2({ children, ...props }: any) {
+        h2({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
             return <h2 className="text-[18px] font-semibold text-[#e6edf3] mt-6 mb-3" {...props}>{children}</h2>;
         },
-        h3({ children, ...props }: any) {
+        h3({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
             return <h3 className="text-[16px] font-medium text-[#e6edf3] mt-5 mb-2" {...props}>{children}</h3>;
         },
-        p({ children, ...props }: any) {
+        p({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
             return <p className="leading-[1.7] mb-4 text-[#c9d1d9] last:mb-0" {...props}>{children}</p>;
         },
-        ul({ children, ...props }: any) {
+        ul({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) {
             return <ul className="list-disc list-outside ml-6 mb-4 space-y-2 text-[#c9d1d9]" {...props}>{children}</ul>;
         },
-        ol({ children, ...props }: any) {
+        ol({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) {
             return <ol className="list-decimal list-outside ml-6 mb-4 space-y-2 text-[#c9d1d9]" {...props}>{children}</ol>;
         },
-        li({ children, ...props }: any) {
+        li({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) {
             return <li className="pl-1 leading-[1.7]" {...props}>{children}</li>;
         },
-        blockquote({ children, ...props }: any) {
+        blockquote({ children, ...props }: React.QuoteHTMLAttributes<HTMLQuoteElement>) {
             return (
                 <blockquote className="border-l-3 border-[#58a6ff] bg-[#161b22] pl-4 py-3 my-4 rounded-r-lg text-[#8b949e]" {...props}>
                     {children}
                 </blockquote>
             );
         },
-        strong({ children, ...props }: any) {
+        strong({ children, ...props }: React.HTMLAttributes<HTMLElement>) {
             return <strong className="font-semibold text-[#e6edf3]" {...props}>{children}</strong>;
         },
-        em({ children, ...props }: any) {
+        em({ children, ...props }: React.HTMLAttributes<HTMLElement>) {
             return <em className="italic text-[#c9d1d9]" {...props}>{children}</em>;
         },
-        hr({ ...props }: any) {
+        hr({ ...props }: React.HTMLAttributes<HTMLHRElement>) {
             return <hr className="my-6 border-white/10" {...props} />;
         },
         // Links
-        a({ node, children, ...props }: any) {
+        a({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
             return (
                 <a target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors" {...props}>
-                    {children}
+                    {children ?? ''}
                 </a>
             );
         },
         // Tables
-        table({ children, ...props }: any) {
+        table({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) {
             return (
                 <div className="overflow-x-auto my-6 border border-white/10 rounded-lg bg-black/20">
                     <table className="min-w-full divide-y divide-white/10 text-sm" {...props}>
@@ -351,13 +305,13 @@ const MessageItem = React.memo(({
                 </div>
             );
         },
-        thead({ children, ...props }: any) {
+        thead({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
             return <thead className="bg-white/5" {...props}>{children}</thead>;
         },
-        th({ children, ...props }: any) {
+        th({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
             return <th className="px-4 py-3 text-left text-xs font-semibold text-white/70 uppercase tracking-wider" {...props}>{children}</th>;
         },
-        td({ children, ...props }: any) {
+        td({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
             return <td className="px-4 py-3 whitespace-nowrap text-white/80 border-t border-white/5" {...props}>{children}</td>;
         }
     };
@@ -534,65 +488,94 @@ const StaticPlaceholder: React.FC = () => {
     );
 };
 
-export // Custom hook for robust auto-scrolling
-    const useAutoScroll = (active: boolean = true) => {
+export const useAutoScroll = (active: boolean = true) => {
         const containerRef = useRef<HTMLDivElement>(null);
         const isStickyRef = useRef(true);
-        const lastScrollTopRef = useRef(0);
+        const tickingRef = useRef(false);
+        const rafIdRef = useRef<number | null>(null);
+        const scheduledRef = useRef(false);
 
         const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
-            if (containerRef.current) {
-                containerRef.current.scrollTo({
-                    top: containerRef.current.scrollHeight,
-                    behavior
-                });
+            const el = containerRef.current;
+            if (!el) return;
+            // Cancel any pending scheduled scroll to avoid double work
+            if (rafIdRef.current !== null) {
+                cancelAnimationFrame(rafIdRef.current);
+                rafIdRef.current = null;
+                scheduledRef.current = false;
             }
+            el.scrollTo({ top: el.scrollHeight, behavior });
         }, []);
 
-        // 1. Handle User Scroll
+        // Throttled scroll handler — rAF coalesced, avoids handling every pixel
         const handleScroll = useCallback(() => {
-            if (!containerRef.current) return;
-            const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-            const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-
-            // If we are scrolling UP, break sticky
-            // If we are scrolling DOWN and hit bottom, re-enable sticky
-            if (distanceFromBottom < 10) {
-                isStickyRef.current = true;
-            } else if (scrollTop < lastScrollTopRef.current) {
-                // User is scrolling UP
-                isStickyRef.current = false;
-            }
-
-            lastScrollTopRef.current = scrollTop;
+            if (tickingRef.current) return;
+            tickingRef.current = true;
+            requestAnimationFrame(() => {
+                tickingRef.current = false;
+                const el = containerRef.current;
+                if (!el) return;
+                const { scrollTop, scrollHeight, clientHeight } = el;
+                const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+                // Sticky when near bottom (within 120px). Break sticky when clearly scrolled up (>200px)
+                if (distanceFromBottom < 120) {
+                    isStickyRef.current = true;
+                } else if (distanceFromBottom > 200) {
+                    isStickyRef.current = false;
+                }
+            });
         }, []);
 
-        // 2. Observer for content changes (Streaming/New Messages) - created once
+        // Efficient content-change observer: ResizeObserver on inner content + MutationObserver coalesced via single rAF.
+        // No polling, no setInterval, no smooth animation during streaming (instant 'auto' avoids queueing).
         useEffect(() => {
-            const container = containerRef.current;
-            if (!container || !active) return;
+            const el = containerRef.current;
+            if (!el || !active) return;
 
-            // Create ResizeObserver once and observe the container itself
-            const observer = new ResizeObserver(() => {
-                if (isStickyRef.current) {
-                    container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
-                }
-            });
-            observer.observe(container);
+            const schedule = () => {
+                if (scheduledRef.current) return;
+                scheduledRef.current = true;
+                rafIdRef.current = requestAnimationFrame(() => {
+                    rafIdRef.current = null;
+                    scheduledRef.current = false;
+                    if (!isStickyRef.current) return;
+                    const { scrollTop, scrollHeight, clientHeight } = el;
+                    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+                    // Already at bottom — no work
+                    if (distanceFromBottom < 2) return;
+                    // If sticky but user is still near bottom, keep pinned instantly (no smooth to avoid animation queue)
+                    if (distanceFromBottom < 400) {
+                        el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+                    }
+                });
+            };
 
-            // Also use MutationObserver to detect content changes more efficiently
-            const mutationObserver = new MutationObserver(() => {
-                if (isStickyRef.current) {
-                    container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
-                }
-            });
-            mutationObserver.observe(container, { childList: true, subtree: true, characterData: true });
+            // ResizeObserver: inner content height is what matters. Observe the container's scrollable content.
+            // The container itself has fixed height (flex-1), so observing it alone would miss content growth.
+            // Observe first child wrapper if present, otherwise the container. This catches streaming height changes.
+            const contentTarget = (el.firstElementChild as Element) || el;
+            const ro = new ResizeObserver(schedule);
+            ro.observe(contentTarget);
+            if (contentTarget !== el) {
+                // Also watch container resize (window/viewport changes)
+                ro.observe(el);
+            }
+
+            // MutationObserver: catches added/removed message nodes (childList) and subtree changes from streaming.
+            // CharacterData alone is noisy, but coalesced via rAF it is cheap and ensures no missed frames.
+            const mo = new MutationObserver(schedule);
+            mo.observe(el, { childList: true, subtree: true, characterData: true });
 
             return () => {
-                observer.disconnect();
-                mutationObserver.disconnect();
+                if (rafIdRef.current !== null) {
+                    cancelAnimationFrame(rafIdRef.current);
+                    rafIdRef.current = null;
+                }
+                scheduledRef.current = false;
+                ro.disconnect();
+                mo.disconnect();
             };
-        }, [active]); // Only observe while active
+        }, [active]);
 
         return { containerRef, scrollToBottom, handleScroll, isStickyRef };
     };
@@ -603,9 +586,14 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
+    // Centralized AI loading lifecycle — single source via AIRequestStore (chat operation)
+    // Keep current user-facing operation for contextual status (Adding comments… vs Preparing response…)
+    const aiLoading = useAILoading('chat');
+    const isLoading = aiLoading.isLoading;
+    const [currentOperation, setCurrentOperation] = useState<import('../../core/ai/aiRequestStore').AIOperationType>('chat');
+
     // UI State
     const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
     const [showSidebar, setShowSidebar] = useState(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [streamingText, setStreamingText] = useState('');
@@ -622,8 +610,9 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         return () => { mounted = false; };
     }, []);
 
-    // Deferred value for streaming performance
+    // Deferred value for streaming performance (kept for future use; loading now uses streamingText directly for immediate transition)
     const deferredStreamingText = useDeferredValue(streamingText);
+    void deferredStreamingText;
 
     // Time-based greeting
     const getGreeting = () => {
@@ -658,11 +647,11 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         }
     }, [settings.general.restoreSession]);
 
-    // Project Context
-    const { createFile, updateFileContent, createFolder, deleteNode, getActiveFile, getFileTree } = useProjectActions();
+    // Project Context — single source for file operations via centralized executor
+    const { createFile, updateFileContent, createFolder, deleteNode, renameNode, getActiveFile, getFileTree } = useProjectActions();
     const { activeFileMeta } = useProjectUI();
 
-    // Action Execution
+    // Action Execution (legacy — kept for verification, not used in semantic pipeline)
     const executeAction = async (actionString: string) => {
         try {
             const action = JSON.parse(actionString);
@@ -694,6 +683,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             return `Failed to execute action: ${e}`;
         }
     };
+    void executeAction;
 
     // Refs
     // const messagesContainerRef = useRef<HTMLDivElement>(null); // Replaced by hook
@@ -706,6 +696,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const handleSendRef = useRef<((arg?: string) => void) | null>(null);
     const pendingStreamFrameRef = useRef<number | null>(null);
     const latestStreamTextRef = useRef('');
+    const lastSentRef = useRef<{ text: string; at: number } | null>(null);
 
     // Derived state: Current Session
     const currentSession = sessions.find(s => s.id === currentSessionId);
@@ -716,29 +707,38 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const { containerRef: messagesContainerRef, scrollToBottom, handleScroll: hookHandleScroll, isStickyRef } = useAutoScroll(isVisible && settings.ai.autoScroll);
 
     const handleStop = useCallback(() => {
+        aiLoading.cancel();
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
-            setIsLoading(false);
+            setStreamingText('');
+            currentRequestIdRef.current = null;
+            isSendingRef.current = false;
+        } else {
             setStreamingText('');
         }
-    }, []);
+    }, [aiLoading]);
 
-    // Combine hook scroll handler with button visibility logic
+    // Combine hook scroll handler with button visibility — single rAF, no duplicated layout reads
+    const showScrollTickRef = useRef(false);
     const handleScroll = useCallback(() => {
         hookHandleScroll();
-
-        if (messagesContainerRef.current) {
-            const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-            const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-            setShowScrollButton(distanceFromBottom > 200);
-        }
+        if (showScrollTickRef.current) return;
+        showScrollTickRef.current = true;
+        requestAnimationFrame(() => {
+            showScrollTickRef.current = false;
+            const el = messagesContainerRef.current;
+            if (!el) return;
+            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            const shouldShow = distanceFromBottom > 200;
+            setShowScrollButton(prev => (prev === shouldShow ? prev : shouldShow));
+        });
     }, [hookHandleScroll]);
 
-    // Scroll to bottom wrapper for UI button
+    // Scroll to bottom for UI button — re-engage sticky, single smooth call (no queue)
     const handleScrollToBottom = useCallback(() => {
+        isStickyRef.current = true;
         scrollToBottom('smooth');
-        isStickyRef.current = true; // Re-engage sticky when manually clicked
     }, [scrollToBottom]);
 
     // Reaction handler
@@ -746,41 +746,37 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         setReactions(prev => {
             const current = prev[msgId];
             if (current === type) {
-                // Toggle off
-                const { [msgId]: _, ...rest } = prev;
-                return rest;
+                // Toggle off - remove entry
+                const newPrev = { ...prev };
+                delete newPrev[msgId];
+                return newPrev;
             }
             return { ...prev, [msgId]: type };
         });
     }, []);
 
-    // Track previous messages length to detect new messages
+    // New-message smooth pin — only when a message node is added, not on every streamingText char.
+    // Streaming is handled by ResizeObserver/MutationObserver inside useAutoScroll (instant 'auto', not 'smooth').
     const prevMessagesLengthRef = useRef(messages.length);
-    // Track if user is at bottom (for non-hook logic backup if needed, though hook handles mostly)
-    const isAtBottomRef = useRef(true);
-
-    // Auto-scroll effect starts here...
     useEffect(() => {
-        const container = messagesContainerRef.current;
-        if (!container) return;
-
-        // 1. New Message: Always scroll to bottom and re-enable sticky
-        if (messages.length > prevMessagesLengthRef.current) {
+        const el = messagesContainerRef.current;
+        if (!el) return;
+        if (messages.length === prevMessagesLengthRef.current) return;
+        // Handle shrink (e.g., /clear) — reset
+        if (messages.length < prevMessagesLengthRef.current) {
             prevMessagesLengthRef.current = messages.length;
-            const lastMsg = messages[messages.length - 1];
-
-            // If user sent it, or we were already sticky/at-bottom -> Force scroll
-            if (lastMsg?.role === 'user' || isStickyRef.current || isAtBottomRef.current) {
-                isStickyRef.current = true;
-                // Use smooth scroll for new messages
-                setTimeout(() => scrollToBottom('smooth'), 50);
-            }
+            return;
         }
-
-        // 2. Streaming: If sticky, keep scrolling to bottom INSTANTLY (terminal style)
-        // This is now handled by MutationObserver in useAutoScroll hook
-        // No need to run this effect on every streamingText change
-
+        prevMessagesLengthRef.current = messages.length;
+        const lastMsg = messages[messages.length - 1];
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const nearBottom = distanceFromBottom < 150;
+        // Always pin for user messages; for AI messages only if sticky/near bottom (respects user scroll-up)
+        if (lastMsg?.role === 'user' || isStickyRef.current || nearBottom) {
+            isStickyRef.current = true;
+            // Smooth only for discrete new messages — streaming uses 'auto' in the observer
+            requestAnimationFrame(() => scrollToBottom('smooth'));
+        }
     }, [messages, scrollToBottom]);
 
     const handleNewChat = useCallback(() => {
@@ -819,21 +815,39 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const handleCopyCode = useCallback((code: string, id: string) => {
         navigator.clipboard.writeText(code);
         setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000);
+        setTimeout(() => setCopiedId(null), 1000);
     }, []);
 
     const handleCopyMessage = useCallback((text: string, id: string) => {
         navigator.clipboard.writeText(text);
         setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000);
+        setTimeout(() => setCopiedId(null), 1000);
     }, []);
 
-    const handleApplyCode = useCallback((code: string) => {
+    const handleApplyCode = useCallback(async (code: string) => {
         const activeFile = getActiveFile();
-        if (activeFile) {
-            updateFileContent(activeFile.id, code);
+        const editorCtx = getActiveEditorContext();
+        if (!activeFile || !code) return;
+        const fileName = editorCtx?.fileName ?? activeFile.name;
+        // Single shared executor deps — explicit user action, so full-file apply is allowed
+        const { createExecutorDeps } = await import('../../core/editor/workspaceBridge');
+        const deps = createExecutorDeps(
+            { getFileTree, createFile, deleteNode, renameNode, updateFileContent },
+            fileName,
+            activeFile.id,
+        );
+        const freshContent = editorCtx?.code ?? activeFile.content ?? '';
+        const snapshot = freshContent ? { filePath: fileName, content: freshContent, lines: freshContent.split('\n'), timestamp: Date.now() } as any : null;
+        const snapshotMap = new Map<string, any>();
+        if (snapshot) snapshotMap.set(fileName, snapshot);
+        const language = editorCtx?.language ?? 'plaintext';
+        const action = { action: 'update_file', path: fileName, content: code } as any;
+        const { executeActionPlan: depsExecute } = await import('../../core/ai/aiToolExecutor');
+        const result = await depsExecute([action], deps as any, { language, snapshot, snapshotMap } as any);
+        if (!result.success) {
+            console.warn('[Apply] Safe edit rejected (file untouched):', result.message);
         }
-    }, [getActiveFile, updateFileContent]);
+    }, [getActiveFile, getFileTree, createFile, deleteNode, renameNode, updateFileContent]);
 
     const handleQuickAction = (prompt: string) => {
         if (isSendingRef.current || isLoading) return; // Prevent double submission
@@ -867,12 +881,13 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             return s;
         }));
 
+        const toSend = editText;
         setEditingMessageId(null);
-        setInput(editText);
+        setInput(toSend);
         setEditText('');
 
-        // Trigger send
-        setTimeout(() => handleSendRef.current?.(), 100);
+        // Pass the edited text explicitly — handleSend reads `input` state which is async
+        handleSendRef.current?.(toSend);
     }, [messages, currentSessionId, editText]);
 
     const handleRegenerate = useCallback(async (msgIndex: number) => {
@@ -900,9 +915,9 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             return s;
         }));
 
-        // Resend the user message
+        // Resend the user message immediately (no artificial delay)
         setInput(userMessage);
-        setTimeout(() => handleSendRef.current?.(userMessage), 100);
+        handleSendRef.current?.(userMessage);
     }, [messages, currentSessionId]);
 
     const handleSend = useCallback(async (arg?: string | React.MouseEvent | unknown) => {
@@ -910,7 +925,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
 
         if (!settings.ai.enabled) return;
         if (!textToSend.trim() || isLoading || isSendingRef.current) return;
-        isSendingRef.current = true; // Block duplicate calls
+        isSendingRef.current = true;
 
         if (!currentSessionId) handleNewChat();
 
@@ -923,190 +938,200 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             );
             setInput('');
             setStreamingText('');
-            isSendingRef.current = false; // Reset sending flag
+            isSendingRef.current = false;
             return;
         }
 
         setInput('');
-        setIsLoading(true);
+        // Debounce rapid duplicate sends (e.g., double-clicked quick-action)
+        if (lastSentRef.current && lastSentRef.current.text === userMessageText && Date.now() - lastSentRef.current.at < 1500) {
+            isSendingRef.current = false;
+            aiLoading.stop();
+            return;
+        }
+        lastSentRef.current = { text: userMessageText, at: Date.now() };
+
+        // Centralized loading: thinking immediately — single requestId for concurrent protection
+        const requestId = aiLoading.start('thinking');
+        currentRequestIdRef.current = requestId;
         setStreamingText('');
 
         // Update UI immediately with User Message
         const tempUserMsg: Message = {
-            id: Date.now().toString() + Math.random().toString(36).slice(2), // Ensure unique ID
+            id: Date.now().toString() + Math.random().toString(36).slice(2),
             role: 'user',
             text: userMessageText,
             timestamp: Date.now()
         };
 
-        // Update Session State
-        setSessions(prev => {
-            return prev.map(s => {
-                if (s.id === currentSessionId) {
-                    const updatedMessages = [...s.messages, tempUserMsg];
-                    const newTitle = s.messages.length === 0 ? userMessageText.slice(0, 30) : s.title;
-                    return { ...s, messages: updatedMessages, title: newTitle, updatedAt: Date.now() };
-                }
-                return s;
-            });
-        });
+        setSessions(prev => prev.map(s => {
+            if (s.id === currentSessionId) {
+                const updatedMessages = [...s.messages, tempUserMsg];
+                const newTitle = s.messages.length === 0 ? userMessageText.slice(0, 30) : s.title;
+                return { ...s, messages: updatedMessages, title: newTitle, updatedAt: Date.now() };
+            }
+            return s;
+        }));
 
-        // Initialize AbortController and Request ID
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
 
-        // Generate unique request ID to prevent duplicates
-        const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        currentRequestIdRef.current = requestId;
-
-        // Build Project Context
+        // Build fresh context at request time (Monaco-first, never cached)
         const activeFile = getActiveFile();
         const fileTree = getFileTree();
-        const projectContext: ProjectContext = {
-            // Limit file tree depth to 3 levels to save context window
-            fileStructure: flattenFileTree(fileTree, 0, 3),
-            activeFile: activeFile ? { name: activeFile.name, content: activeFile.content || '' } : undefined,
-            // Only send active file as "open file" to avoid duplication and excessive context
-            openFiles: activeFile ? [{ name: activeFile.name, content: activeFile.content || '' }] : []
-        };
+        const editorCtx = getActiveEditorContext();
+        const fileContent = editorCtx?.code ?? activeFile?.content ?? '';
+        const fileName = editorCtx?.fileName ?? activeFile?.name ?? '';
+        const language = editorCtx?.language ?? 'plaintext';
 
-        // --- AI Logic ---
+        // Convert chat history to ChatMessage[] for the pipeline
+        const historyForPipeline: ChatMessage[] = messages
+            .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
+
         try {
-            const createMatch = userMessageText.match(/create (?:a )?file (?:named )?['"]?([\w./-]+)['"]?/i);
+            // Determine operation type via semantic planner first (for loading status)
+            const { generateSemanticPlan, semanticPlanToAIOperationType } = await import('../../core/ai/semanticPlanner');
+            let operationForStatus: import('../../core/ai/aiRequestStore').AIOperationType = 'chat';
+            let wantsModification = false;
+            let isExplain = false;
+            let plannerResponseMessage = '';
+
+            try {
+                const semanticPlan = await generateSemanticPlan(
+                    userMessageText,
+                    editorCtx,
+                    buildWorkspaceSnapshot(editorCtx, fileTree).fileTreeString,
+                    historyForPipeline,
+                    abortController.signal
+                );
+                if (semanticPlan) {
+                    operationForStatus = semanticPlanToAIOperationType(semanticPlan);
+                    wantsModification = semanticPlan.analysis.wantsModification;
+                    isExplain = semanticPlan.analysis.operation === 'explain';
+                    plannerResponseMessage = semanticPlan.responseMessage || '';
+                    if (import.meta.env.DEV) console.log('[SemanticPlanner] plan:', semanticPlan);
+                }
+            } catch (e: any) {
+                if (e.name === 'AbortError') throw e;
+                if (import.meta.env.DEV) console.warn('[SemanticPlanner] failed:', e);
+            }
+
+            setCurrentOperation(operationForStatus);
+
             let responseText = '';
 
-            const runRequest = async (prompt: string, history: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<string> => {
-                if (settings.ai.streaming) {
-                    let fullResponse = '';
-                    let lastUpdateTime = 0;
-                    const THROTTLE_MS = 50; // Tuned for better responsiveness
+            if (wantsModification) {
+                // EDIT PATH — use unified edit pipeline (plan → actions → execute → verify)
+                aiLoading.setGenerating();
+                const { runEditPipeline } = await import('../../core/ai/editPipeline');
+                const result = await runEditPipeline({
+                    userMessage: userMessageText,
+                    workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent },
+                    fileName: fileName || null,
+                    fileId: activeFile?.id ?? null,
+                    history: historyForPipeline,
+                    signal: abortController.signal,
+                });
 
-                    for await (const chunk of streamChatWithAI(
-                        prompt,
-                        history,
-                        abortController.signal,
-                        projectContext,
-                        undefined,
-                        settings
-                    )) {
-                        fullResponse += chunk;
-                        const now = Date.now();
-                        if (now - lastUpdateTime > THROTTLE_MS) {
+                if (import.meta.env.DEV) console.log('[EditPipeline] result:', result);
+                responseText = result.message || (result.success ? 'Changes applied.' : 'No changes were made.');
+
+            } else if (isExplain || plannerResponseMessage.trim().length > 20) {
+                // EXPLAIN PATH — use planner's response or stream explanation
+                aiLoading.setGenerating();
+                aiLoading.setStreaming();
+                if (plannerResponseMessage.trim().length > 20) {
+                    responseText = plannerResponseMessage;
+                    scheduleStreamUpdate(requestId, responseText);
+                    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+                } else {
+                    // Stream explanation via centralized AIClient
+                    const explainPrompt = `You are a friendly, concise coding tutor.
+
+File: ${fileName} (${language})
+${fileContent ? 'Code:\n```' + language + '\n' + fileContent.slice(0, 12000) + '\n```' : '(no file content)'}
+User wants explanation: "${userMessageText}"
+
+Provide a warm, concise explanation. Keep to 2-4 bullets or short paragraphs. Do NOT modify code.`;
+                    const messagesForChat: ChatMessage[] = [
+                        { role: 'system', content: explainPrompt },
+                        ...historyForPipeline.slice(-4),
+                        { role: 'user', content: userMessageText },
+                    ];
+                    let fullResponse = '';
+                    let hasSetStreaming = false;
+                    for await (const event of streamChat(messagesForChat, { signal: abortController.signal, task: 'explanation', temperature: 0.3, maxTokens: 2048 })) {
+                        if (event.type === 'delta' && event.content) {
+                            if (!hasSetStreaming) { hasSetStreaming = true; aiLoading.setStreaming(); }
+                            fullResponse += event.content;
                             scheduleStreamUpdate(requestId, fullResponse);
-                            lastUpdateTime = now;
+                        } else if (event.type === 'error') {
+                            throw new Error(event.message || 'Explanation failed');
                         }
                     }
-                    return fullResponse;
-                }
-                return chatWithAI(prompt, history, abortController.signal, projectContext, undefined, settings);
-            };
-
-            if (createMatch) {
-                const fileName = createMatch[1];
-                const contentPrompt = `Generate code for a file named "${fileName}" based on this context: "${userMessageText}". Output ONLY the code, no markdown fences if possible, or minimally wrapped.`;
-                const codeContent = await generateCode(contentPrompt, 'typescript', '', abortController.signal, settings);
-                let cleanContent = codeContent;
-                const match = codeContent.match(/```(?:\w+)?\n([\s\S]*?)```/);
-                if (match) {
-                    cleanContent = match[1];
-                } else {
-                    cleanContent = codeContent.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '');
-                }
-                createFile(fileName, cleanContent.trim());
-                responseText = `I've created the file **${fileName}** with some initial code. Check the explorer!`;
-            } else if (activeFile) {
-                const prompt = `
-Current Active File: ${activeFile.name} (Language: ${activeFile.type})
-File Content:
-\`\`\`${activeFile.name.split('.').pop()}
-${activeFile.content}
-\`\`\`
-
-User Request: "${userMessageText}"
-
-INSTRUCTIONS:
-1. If the user's request is a greeting, question, or general conversation UNRELATED to the code, simply answer it naturally. DO NOT explain why you are not modifying the code. IGNORE the file context if it is not relevant.
-2. If the user wants to WRITE, CREATE, IMPLEMENT, MODIFY, REFACTOR, or UPDATE the code, return the COMPLETE updated file content inside a single markdown code block.
-3. If providing updated code, do NOT truncate it. Return the full file.
-`;
-                // Try streaming or non-streaming based on settings
-                try {
-                    const history = messages.map(m => ({
-                        role: m.role === 'ai' ? 'assistant' : 'user' as 'user' | 'assistant' | 'system',
-                        content: m.text
-                    })).filter(m => m.role !== 'system') as any[];
-
-                    responseText = await runRequest(prompt, history);
-                } catch (e: any) {
-                    if (e.name === 'AbortError') {
-                        responseText = streamingText;
-                    } else {
-                        throw e;
-                    }
-                }
-
-                const codeBlockMatch = responseText.match(/```(?:\w+)?\n([\s\S]*?)```/);
-
-                if (codeBlockMatch && (userMessageText.match(/(write|create|implement|update|change|add|refactor|fix|modify)/i))) {
-                    const newContent = codeBlockMatch[1].trim();
-                    updateFileContent(activeFile.id, newContent);
-                    
-                    // Strip the code block from the chat response
-                    const strippedResponse = responseText.replace(/```(?:\w+)?\n([\s\S]*?)```/, '').trim();
-                    
-                    if (strippedResponse === '') {
-                        responseText = `✅ **I have updated \`${activeFile.name}\` directly in the editor with your changes.**`;
-                    } else {
-                        responseText = `${strippedResponse}\n\n✅ **I have updated \`${activeFile.name}\` directly in the editor.**`;
-                    }
+                    responseText = fullResponse;
                 }
             } else {
-                try {
-                    const history = messages.map(m => ({
-                        role: m.role === 'ai' ? 'assistant' : 'user' as 'user' | 'assistant' | 'system',
-                        content: m.text
-                    })).filter(m => m.role !== 'system') as any[];
+                // CHAT PATH — stream natural response (context-aware, super fast via Groq, fallback to DeepSeek)
+                aiLoading.setGenerating();
+                const trimmedLower = userMessageText.trim().toLowerCase();
+                const isGreetingOnly = /^(hello|hi|hey|hello ai|hi there|hey there|greetings)[\s!?.]*$/i.test(userMessageText.trim()) && trimmedLower.length <= 20;
+                const isFileQuery = /what file|which file|current file|active file|file is this|file name/i.test(userMessageText);
+                const isFastChat = isGreetingOnly && !isFileQuery;
+                const isCodeRelated = /code|function|bug|error|fix|refactor|explain|comment|file|project|hello\.py|javascript|python/i.test(userMessageText);
+                const systemPrompt = isFastChat
+                    ? 'You are DeepContext — a warm, natural coding buddy. Greet briefly and offer help. 1-2 sentences, friendly, no file talk.'
+                    : `You are DeepContext — minimax-m3, warm and efficient. Be conversational, concise, and genuinely helpful.
+Natural: Talk like a friendly teammate, not a formal doc. Use contractions, a little warmth, an emoji when fitting.
+Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Code only when needed.`;
+                const fileContext = isCodeRelated && fileContent && fileContent.length > 10
+                    ? `File: ${fileName} (${language}, ${fileContent.split('\n').length} lines)\n\`\`\`${language}\n${fileContent.slice(0, 6000)}\n\`\`\`\nTree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}\n\nQ: "${userMessageText}"`
+                    : isCodeRelated && fileName
+                        ? `File: ${fileName} (${language}) | Q: "${userMessageText}" | Tree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}`
+                        : userMessageText;
 
-                    responseText = await runRequest(userMessageText, history);
-                } catch (e: any) {
-                    if (e.name === 'AbortError') {
-                        responseText = streamingText;
-                    } else {
-                        throw e;
+                // Super-fast local handling for file identity queries — instant, no network, fully context-aware
+                if (isFileQuery && fileName) {
+                    const lineCount = fileContent ? fileContent.split('\n').length : 0;
+                    const preview = fileContent ? fileContent.slice(0, 200).trim() : '(empty)';
+                    responseText = `The current file is **${fileName}** (${language}, ${lineCount} line${lineCount===1?'':'s'}).` + (fileContent && fileContent.trim() ? `\n\nPreview:\n\`\`\`${language}\n${preview}\n\`\`\`` : ' It is currently empty — ask me to generate code like “write a greeting function” and I’ll create it with DeepSeek.');
+                    // Simulate streaming for smooth UI
+                    aiLoading.setStreaming();
+                    for (let i = 0; i < responseText.length; i += 8) {
+                        scheduleStreamUpdate(requestId, responseText.slice(0, i + 8));
+                        await new Promise(r => setTimeout(r, 12));
                     }
+                } else {
+                    const messagesForChat: ChatMessage[] = [
+                        { role: 'system', content: systemPrompt },
+                        ...historyForPipeline.slice(-4),
+                        { role: 'user', content: fileContext },
+                    ];
+
+                    let fullResponse = '';
+                    let hasSetStreaming = false;
+                    for await (const event of streamChat(messagesForChat, { signal: abortController.signal, task: isFastChat ? 'fast_chat' : 'chat', temperature: isFastChat ? 0.4 : 0.7, maxTokens: isFastChat ? 512 : 2048 })) {
+                        if (event.type === 'delta' && event.content) {
+                            if (!hasSetStreaming) { hasSetStreaming = true; aiLoading.setStreaming(); }
+                            fullResponse += event.content;
+                            scheduleStreamUpdate(requestId, fullResponse);
+                        } else if (event.type === 'error') {
+                            throw new Error(event.message || 'Chat failed');
+                        }
+                    }
+                    responseText = cleanResponse(fullResponse);
                 }
-            }
+                }
 
-            // --- Action Parsing & Execution (Post-Stream) ---
-            const actionRegex = /```action\n([\s\S]*?)```/g;
-            let match;
-            const actionResults: string[] = [];
-
-            while ((match = actionRegex.exec(responseText)) !== null) {
-                const actionJson = match[1];
-                const result = await executeAction(actionJson);
-                actionResults.push(result);
-            }
-
-            if (actionResults.length > 0) {
-                responseText += `\n\n**Executed Actions:**\n${actionResults.map(r => `- ${r}`).join('\n')}`;
-            }
-
-            // Remove the action blocks from the displayed text to keep UI clean
-            responseText = responseText.replace(/```action\s*[\s\S]*?```/gi, '').trim();
-
-            // CRITICAL FIX: Clear streaming text and current request id FIRST, before adding the AI message.
-            // Nulling currentRequestIdRef ensures any late requestAnimationFrame from the stream won't re-apply streaming text (no duplicate).
+            // Cleanup streaming
+            const stillCurrent = currentRequestIdRef.current === requestId;
             setStreamingText('');
             abortControllerRef.current = null;
             currentRequestIdRef.current = null;
 
-            // Append AI Response (only if we have something and this request hasn't been processed)
-            if (responseText && !processedRequestsRef.current.has(requestId)) {
-                // Mark this request as processed
+            // Append AI Response (single write, requestId-guarded)
+            if (stillCurrent && responseText && !processedRequestsRef.current.has(requestId)) {
                 processedRequestsRef.current.add(requestId);
-
-                // Clean up old processed requests (keep last 10 to prevent memory leak)
                 if (processedRequestsRef.current.size > 10) {
                     const entries = Array.from(processedRequestsRef.current);
                     processedRequestsRef.current = new Set(entries.slice(-10));
@@ -1120,46 +1145,56 @@ INSTRUCTIONS:
                     timestamp: Date.now()
                 };
 
-                setSessions(prev => {
-                    const newSessions = prev.map(s => {
-                        if (s.id === currentSessionId) {
-                            // Additional safety check - verify message ID doesn't already exist
-                            const alreadyExists = s.messages.some(m => m.id === aiMsgId);
-                            if (alreadyExists) {
-                                console.log('[AIAssistant] Skipping duplicate AI message by ID');
-                                return s;
-                            }
-
-                            return { ...s, messages: [...s.messages, aiMsg], updatedAt: Date.now() };
-                        }
-                        return s;
-                    });
-                    return newSessions;
-                });
+                setSessions(prev => prev.map(s => {
+                    if (s.id === currentSessionId) {
+                        if (s.messages.some(m => m.id === aiMsgId)) return s;
+                        return { ...s, messages: [...s.messages, aiMsg], updatedAt: Date.now() };
+                    }
+                    return s;
+                }));
+                if (stillCurrent) aiLoading.setSuccess();
+                else aiLoading.stop();
             }
 
         } catch (error: any) {
             if (error.name !== 'AbortError') {
                 console.error('AI Error:', error);
+                const code = error?.code as string | undefined;
+                let friendlyError: string;
+                if (code === AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR || error?.message?.includes('No AI providers are configured')) {
+                    friendlyError = 'No AI providers are configured. Add NVIDIA_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY or HF_TOKEN to .env and restart the server. Deterministic tasks like “Remove comments” and “/// hello world” work offline.';
+                } else if (code === AI_ERROR_CODES.AI_PROVIDER_AUTH_ERROR || error?.message?.includes('API key') || error?.message?.includes('auth')) {
+                    friendlyError = 'AI provider authentication failed. Please check your API keys in .env / settings.';
+                } else if (code === AI_ERROR_CODES.AI_PROVIDER_RATE_LIMITED) {
+                    friendlyError = 'AI is rate-limited. Please wait a moment and try again.';
+                } else if (code === AI_ERROR_CODES.AI_PROVIDER_TIMEOUT) {
+                    friendlyError = 'AI request timed out. The provider was slow — please try again.';
+                } else if (code === AI_ERROR_CODES.AI_ALL_PROVIDERS_FAILED || error?.message?.includes('unavailable')) {
+                    friendlyError = 'AI is temporarily unavailable. Please try again in a moment.';
+                } else {
+                    friendlyError = error?.message ? String(error.message).slice(0, 300) : "I'm sorry, I encountered an error. Please try again.";
+                }
+                aiLoading.setError(friendlyError);
                 const errorMsg: Message = {
                     id: Date.now().toString(),
                     role: 'ai',
-                    text: "I'm sorry, I encountered an error. Please try again.",
+                    text: friendlyError,
                     timestamp: Date.now()
                 };
                 setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, messages: [...s.messages, errorMsg], updatedAt: Date.now() } : s));
+            } else {
+                aiLoading.stop();
             }
         } finally {
-            setIsLoading(false);
+            isSendingRef.current = false;
+            if (aiLoading.status !== 'success' && aiLoading.status !== 'error' && aiLoading.status !== 'idle') {
+                aiLoading.stop();
+            }
             setStreamingText('');
             abortControllerRef.current = null;
             currentRequestIdRef.current = null;
-            // Add a small delay before allowing next send to prevent double-clicks
-            setTimeout(() => {
-                isSendingRef.current = false;
-            }, 300);
         }
-    }, [input, sessions, currentSessionId, isLoading, handleNewChat, settings, getActiveFile, getFileTree]);
+    }, [input, sessions, currentSessionId, aiLoading, handleNewChat, settings, getActiveFile, getFileTree]);
 
     handleSendRef.current = handleSend;
 
@@ -1195,6 +1230,26 @@ INSTRUCTIONS:
             handleSend();
         }
     }, [handleSend]);
+
+    // Powerful EVERYWHERE: Listen for editor context-menu / shortcut prefill
+    useEffect(() => {
+        const onPrefill = (e: Event) => {
+            const ce = e as CustomEvent<{ prompt?: string }>;
+            const prompt = ce.detail?.prompt;
+            if (prompt) {
+                setInput(prompt);
+                // Focus the input and allow the user to press Enter, or auto-send for powerful one-click
+                // We prefill and also immediately trigger send for a true "one-click" powerful experience
+                // Use rAF to ensure input state is set before send
+                requestAnimationFrame(() => {
+                    handleSendRef.current?.(prompt);
+                });
+                inputRef.current?.focus();
+            }
+        };
+        window.addEventListener('ai-chat-prefill', onPrefill as EventListener);
+        return () => window.removeEventListener('ai-chat-prefill', onPrefill as EventListener);
+    }, []);
 
     // Global keyboard shortcuts
     useEffect(() => {
@@ -1506,7 +1561,7 @@ INSTRUCTIONS:
                 <div
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
-                    className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pt-14 pb-10 space-y-6 custom-scrollbar w-full scroll-smooth ${messages.length > 0 || streamingText ? 'pb-40' : ''}`}
+                    className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pt-14 pb-10 space-y-6 custom-scrollbar w-full ${messages.length > 0 || streamingText ? 'pb-40' : ''}`}
                     style={{ overflowAnchor: 'auto' }}
                 >
                     {messages.length === 0 && !streamingText && settings.general.showWelcomeScreen ? (
@@ -1598,39 +1653,38 @@ INSTRUCTIONS:
                                 />
                             ))}
 
-                            {/* Streaming Response */}
+                            {/* Streaming Response — same bubble transitions from thinking → streaming → completed */}
                             {streamingText && (
-                                <MessageItem
-                                    msg={{ text: streamingText, role: 'ai', id: 'streaming' }}
-                                    index="streaming"
-                                    isEditing={false}
-                                    editText=""
-                                    setEditText={() => { }}
-                                    onSaveEdit={() => { }}
-                                    onCancelEdit={() => { }}
-                                    onEditStart={() => { }}
-                                    onCopy={handleCopyCode}
-                                    onRegenerate={undefined}
-                                    onApplyCode={handleApplyCode}
-                                    copiedId={copiedId}
-                                    prismReady={prismReady}
-                                />
+                                <div className="ai-response-container">
+                                    <MessageItem
+                                        msg={{ text: streamingText, role: 'ai', id: 'streaming', timestamp: Date.now() }}
+                                        index="streaming"
+                                        isEditing={false}
+                                        editText=""
+                                        setEditText={() => { }}
+                                        onSaveEdit={() => { }}
+                                        onCancelEdit={() => { }}
+                                        onEditStart={() => { }}
+                                        onCopy={handleCopyCode}
+                                        onRegenerate={undefined}
+                                        onApplyCode={handleApplyCode}
+                                        copiedId={copiedId}
+                                        prismReady={prismReady}
+                                    />
+                                    {aiLoading.status === 'streaming' || aiLoading.status === 'generating' ? (
+                                        <div className="pl-2 pt-1">
+                                            <AIStreamingIndicator active />
+                                        </div>
+                                    ) : null}
+                                </div>
                             )}
                         </>
                     )}
 
-                    {isLoading && !deferredStreamingText && (
-                        <div className="flex items-center gap-4 pl-2 py-2 message-appear">
-                            <div className="relative shrink-0">
-                                <div className="w-8 h-8 rounded-2xl bg-[#1a1a2e] border border-white/10 flex items-center justify-center shadow-lg shadow-violet-500/10">
-                                    <GeminiLogo size={16} className="text-white/80 animate-pulse" />
-                                </div>
-                            </div>
-                            <div className="typing-indicator">
-                                <div className="typing-dot" />
-                                <div className="typing-dot" />
-                                <div className="typing-dot" />
-                            </div>
+                    {/* Premium centralized AI loading — contextual operation (not internal thinking/generating) */}
+                    {(aiLoading.status === 'thinking' || aiLoading.status === 'preparing' || aiLoading.status === 'generating') && (
+                        <div className="pl-2 py-2 message-appear ai-response-container">
+                            <AILoadingIndicator status={aiLoading.status} operation={currentOperation} variant="chat" />
                         </div>
                     )}
                     <div ref={messagesEndRef} />

@@ -133,7 +133,7 @@ export const TerminalPanel: React.FC = () => {
                             key={term.id}
                             onClick={() => setActiveTerminalId(term.id)}
                             className={`
-                                relative group/tab flex items-center gap-2 px-3.5 py-1.5 rounded-md cursor-pointer select-none transition-all duration-300 border min-w-[120px] max-w-[200px] text-[12px]
+                                relative group/tab flex items-center gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-md cursor-pointer select-none transition-all duration-300 border min-w-[96px] sm:min-w-[120px] max-w-[200px] text-[12px]
                                 ${activeTerminalId === term.id
                                     ? 'bg-blue-500/10 text-blue-100 border-blue-500/20 shadow-[0_0_15px_-3px_rgba(59,130,246,0.15)]'
                                     : 'text-white/40 border-transparent hover:text-white/80 hover:bg-white/[0.03]'}
@@ -141,7 +141,7 @@ export const TerminalPanel: React.FC = () => {
                         >
                             {/* Status Icon */}
                             {activeTerminalId === term.id && isRunning ? (
-                                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
+                                <div className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
                             ) : (
                                 <Terminal size={13} className={activeTerminalId === term.id ? "text-primary" : ""} />
                             )}
@@ -182,7 +182,7 @@ export const TerminalPanel: React.FC = () => {
                 </div>
 
                 {/* Right Actions Toolbar */}
-                <div className="flex items-center gap-2 pl-4 border-l border-white/5 shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-4 border-l border-white/5 shrink-0">
 
                     {/* Clear */}
                     <button
@@ -209,7 +209,7 @@ export const TerminalPanel: React.FC = () => {
                         onClick={isRunning ? () => activeTerminalId && stopProcess(activeTerminalId) : handleRun}
                         disabled={!isRunning && !activeFileMeta}
                         className={`
-                            flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all
+                            flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all
                             ${isRunning
                                 ? 'bg-gradient-to-r from-red-500/80 to-rose-600/80 hover:from-red-500 hover:to-rose-600 text-white shadow-[0_0_20px_-5px_rgba(244,63,94,0.4)] border border-red-500/30 hover:scale-105 active:scale-95'
                                 : 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/40 hover:scale-105 active:scale-95'}
@@ -217,7 +217,7 @@ export const TerminalPanel: React.FC = () => {
                         `}
                     >
                         {isRunning ? <Square size={10} fill="currentColor" /> : <Play size={10} fill="currentColor" />}
-                        <span>{isRunning ? 'Stop Running' : 'Run Context'}</span>
+                        <span className="hidden sm:inline">{isRunning ? 'Stop Running' : 'Run Context'}</span>
                     </button>
                 </div>
             </div>

@@ -1,19 +1,24 @@
 {
-  "name": "temp_setup",
+  "name": "deepcontext-ide",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "predev": "node scripts/ensure-backend.cjs",
     "dev": "concurrently -k -n server,client -c blue,green \"npm run server\" \"npm run client\"",
-    "client": "wait-on -t 60000 http-get://127.0.0.1:3001/api/health && vite",
+    "client": "wait-on -t 10000 http-get://127.0.0.1:3001/api/health && vite",
     "server": "node --watch server/index.cjs",
     "build": "tsc -b && vite build",
+    "build:analyze": "ANALYZE=1 tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "lint:server": "eslint server --ext .cjs,.js",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@openrouter/sdk": "^1.2.80",
     "@types/jszip": "^3.4.0",
     "@types/prismjs": "^1.26.5",
     "@xterm/addon-fit": "^0.11.0",

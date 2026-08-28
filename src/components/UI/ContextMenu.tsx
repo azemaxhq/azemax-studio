@@ -79,7 +79,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, items }
                 left: position.x,
                 opacity: isVisible ? 1 : 0
             }}
-            className="fixed z-[9999] min-w-[220px] max-w-[320px] w-auto glass-card-dark border border-white/20 shadow-xl rounded-lg py-1.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-0.5 bg-[#1e2329]/95 backdrop-blur-xl transition-opacity"
+            className="fixed z-[9999] min-w-[220px] max-w-[320px] w-auto max-h-[min(70vh,480px)] overflow-y-auto glass-card-dark border border-white/20 shadow-xl rounded-lg py-1.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-0.5 bg-[#1e2329]/95 backdrop-blur-xl transition-opacity"
         >
             {items.map((item, index) => {
                 if (item.type === 'separator') {

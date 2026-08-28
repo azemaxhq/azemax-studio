@@ -51,7 +51,22 @@ class TerminalManager {
         if (this._gcTimer.unref) this._gcTimer.unref();
     }
 
+    static MAX_SESSIONS = 50;
+
     createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 120, rows = 30, stdinInput = '', preStdin = null }) {
+        if (this.sessions.size >= TerminalManager.MAX_SESSIONS) {
+            throw new Error(`Session limit reached (${TerminalManager.MAX_SESSIONS}). Close a terminal first.`);
+        }
+        // cwd containment: must resolve to an existing directory under homedir/tmp or cwd is ignored
+        let safeCwd = cwd || os.homedir() || process.cwd();
+        try {
+            const resolved = path.resolve(String(safeCwd));
+            if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+                safeCwd = os.tmpdir();
+            } else {
+                safeCwd = resolved;
+            }
+        } catch { safeCwd = os.tmpdir(); }
         id = id || crypto.randomBytes(8).toString('hex');
         const session = {
             id,
@@ -60,7 +75,7 @@ class TerminalManager {
             state: STATES.CONNECTED,
             language: language || null,
             code: code || null,
-            cwd: cwd || os.homedir() || process.cwd(),
+            cwd: safeCwd,
             cols,
             rows,
             pid: null,
@@ -298,6 +313,12 @@ class TerminalManager {
         if (session.pendingWandboxStdin) {
             session.pendingWandboxStdin = null;
         }
+        // A compile subprocess must never outlive its session (killing the main
+        // proc does NOT touch the compiler, so it would otherwise be orphaned).
+        if (session.compileProc) {
+            try { session.compileProc.kill('SIGKILL'); } catch { /* ignore */ }
+            session.compileProc = null;
+        }
         if (session.checkPty && session.proc && session.proc.stdio && session.proc.stdio[3] && session.proc.stdio[3].writable) {
             // Ask the relay to SIGKILL the full descendant tree (background
             // jobs live in their own process groups, so a plain group kill
@@ -394,7 +415,16 @@ class TerminalManager {
         session.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coderun-ses-'));
 
         const fileName = resolveFileName(lang, code, initialConfig.ext);
+        // Path-traversal guard: fileName must be a plain filename, no dirs
+        if (!/^[a-zA-Z0-9_.-]+$/.test(fileName) || fileName.includes('..')) {
+            throw Object.assign(new Error('Invalid filename'), { failCompile: true });
+        }
         const filePath = path.join(session.tmpDir, fileName);
+        const resolved = path.resolve(filePath);
+        const tmpResolved = path.resolve(session.tmpDir);
+        if (!resolved.startsWith(tmpResolved + path.sep) && resolved !== tmpResolved) {
+            throw Object.assign(new Error('Path traversal detected'), { failCompile: true });
+        }
         fs.writeFileSync(filePath, code);
         const config = getLanguageConfig(lang, filePath, session.tmpDir);
 
@@ -476,28 +506,41 @@ class TerminalManager {
                 cwd: session.tmpDir,
                 env: this._buildEnv(session),
             });
+            // Track the compiler on the session so kill()/dispose() terminate it
+            // too — an untracked compiler would be orphaned on stop/dispose.
+            session.compileProc = compProc;
+            const owner = () => this.sessions.get(session.id) === session;
             const timer = setTimeout(() => {
                 if (!compProc.killed) compProc.kill('SIGKILL');
+                if (session.compileProc === compProc) session.compileProc = null;
                 const e = new Error('Compilation timed out');
                 e.failCompile = true;
                 reject(e);
             }, COMPILE_TIMEOUT_MS);
-            compProc.stdout.on('data', (d) => this.send(session.id, { type: 'terminal.output', data: d.toString() }));
-            compProc.stderr.on('data', (d) => this.send(session.id, { type: 'terminal.output', data: d.toString() }));
-            compProc.on('error', (err) => {
+            const finishCompile = (exitCode, sig) => {
                 clearTimeout(timer);
-                err.failCompile = true;
-                reject(err);
-            });
-            compProc.on('close', (exitCode, sig) => {
-                clearTimeout(timer);
+                if (session.compileProc === compProc) session.compileProc = null;
+                // Safety: if the proc ended via 'error' or is still alive, never
+                // leave it running after the promise settles.
+                if (!compProc.killed && compProc.exitCode === null && compProc.signalCode === null) {
+                    try { compProc.kill('SIGKILL'); } catch { /* ignore */ }
+                }
                 if (exitCode === 0 && !sig) resolve();
                 else {
                     const e = new Error(`Compilation failed (${sig || exitCode})`);
                     e.failCompile = true;
                     reject(e);
                 }
+            };
+            compProc.stdout.on('data', (d) => { if (owner()) this.send(session.id, { type: 'terminal.output', data: d.toString() }); });
+            compProc.stderr.on('data', (d) => { if (owner()) this.send(session.id, { type: 'terminal.output', data: d.toString() }); });
+            compProc.on('error', (err) => {
+                clearTimeout(timer);
+                if (session.compileProc === compProc) session.compileProc = null;
+                err.failCompile = true;
+                reject(err);
             });
+            compProc.on('close', (exitCode, sig) => finishCompile(exitCode, sig));
         });
     }
 
@@ -508,6 +551,10 @@ class TerminalManager {
     _cleanupSession(session) {
         if (session.execTimer) { clearTimeout(session.execTimer); session.execTimer = null; }
         if (session.pendingWandboxStdin) { session.pendingWandboxStdin = null; }
+        if (session.compileProc) {
+            try { session.compileProc.kill('SIGKILL'); } catch { /* ignore */ }
+            session.compileProc = null;
+        }
         if (session.tmpDir) {
             try { fs.rmSync(session.tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
             session.tmpDir = null;

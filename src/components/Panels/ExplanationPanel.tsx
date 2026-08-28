@@ -2,8 +2,11 @@ import React, { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { BookOpen, Lightbulb, Code2, Copy, Trash2, RefreshCw, AlertCircle, Download, Share2, Clock, Star, TrendingUp, FileText, Zap, Target, Layers, MessageSquare } from 'lucide-react';
+import { BookOpen, Lightbulb, Code2, Copy, Trash2, RefreshCw, AlertCircle, Download, Share2, Star, Zap, Target, Layers, MessageSquare } from 'lucide-react';
 import { ModernAILogo } from '../Icons/ModernAILogo';
+import { AILoadingIndicator } from '../AI/AILoadingIndicator';
+import { useAILoading } from '../../hooks/useAILoading';
+import '../AI/ai-loading.css';
 
 interface ExplanationPanelProps {
     explanation?: string | null;
@@ -23,7 +26,7 @@ interface ExplanationPanelProps {
 
 export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
     explanation,
-    isLoading,
+    isLoading: isLoadingProp,
     error,
     onClear,
     onRetry,
@@ -31,6 +34,19 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
     onShare,
     explanationStats
 }) => {
+    // Single source of truth for explanation loading — independent from chat
+    // Supports 'explanation' (legacy) + 'explain-file'/'explain-selection' for contextual status
+    const explanationLoading = useAILoading('explanation');
+    const explainFileLoading = useAILoading('explain-file');
+    const explainSelectionLoading = useAILoading('explain-selection');
+    const isLoadingFromStore = explanationLoading.isLoading || explainFileLoading.isLoading || explainSelectionLoading.isLoading;
+    const isLoading = isLoadingFromStore || !!isLoadingProp;
+    const activeStatus = explanationLoading.status !== 'idle' ? explanationLoading.status :
+                         explainFileLoading.status !== 'idle' ? explainFileLoading.status :
+                         explainSelectionLoading.status !== 'idle' ? explainSelectionLoading.status : 'idle';
+    const activeOperation = explanationLoading.operation || explainFileLoading.operation || explainSelectionLoading.operation || 'explanation';
+    const explanationStatus = activeStatus !== 'idle' ? activeStatus : (isLoading ? 'thinking' : 'idle');
+    const explanationOperation = activeStatus !== 'idle' ? activeOperation : (isLoading ? 'explanation' : 'explanation');
     const [copied, setCopied] = useState(false);
 
     const handleCopy = useCallback(() => {
@@ -40,7 +56,6 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
         setTimeout(() => setCopied(false), 2000);
     }, [explanation]);
 
-    const hasContent = explanation || error;
     const showEmpty = !isLoading && !explanation && !error;
 
     const handleExport = useCallback(() => {
@@ -74,8 +89,8 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                         <div className="glass-explanation-icon shrink-0">
                             <BookOpen size={16} />
                         </div>
-                        <div>
-                            <span className="font-semibold text-white text-sm block leading-tight">Code Explanation</span>
+                        <div className="min-w-0">
+                            <span className="font-semibold text-white text-sm block leading-tight truncate">Code Explanation</span>
                             {explanationStats && (
                                 <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                                     <span className="text-xs text-gray-400">{explanationStats.wordCount} words</span>
@@ -107,40 +122,11 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                 </div>
             </div>
 
-            {/* Content Area */}
+            {/* Content Area — compact explanation-specific loader (independent from chat; real lifecycle via useAILoading('explanation')) */}
             <div className="flex-1 p-4 overflow-y-auto custom-scrollbar min-h-0">
                 {isLoading ? (
-                    <div className="flex flex-col items-center justify-center min-h-[300px] gap-6 animate-in fade-in duration-500">
-                        {/* Premium Glowing Core */}
-                        <div className="relative flex items-center justify-center w-24 h-24">
-                            {/* Outer pulsing rings */}
-                            <div className="absolute inset-0 rounded-full border border-[#a371f7]/20 border-t-[#a371f7]/60 animate-[spin_3s_linear_infinite]" />
-                            <div className="absolute inset-1 rounded-full border border-dashed border-[#58a6ff]/30 animate-[spin_4s_linear_infinite_reverse]" />
-                            <div className="absolute inset-2 rounded-full border border-[#a371f7]/10 border-b-[#a371f7]/40 animate-[spin_2s_linear_infinite]" />
-                            
-                            {/* Inner ambient glow */}
-                            <div className="absolute inset-6 rounded-full bg-gradient-to-tr from-[#a371f7]/30 to-[#58a6ff]/30 blur-xl animate-pulse" style={{ animationDuration: '2s' }} />
-                            
-                            {/* Center Logo */}
-                            <div className="relative w-12 h-12 rounded-2xl bg-[#0d1117] border border-[#a371f7]/40 flex items-center justify-center shadow-[0_0_20px_rgba(163,113,247,0.3)] z-10 transition-transform hover:scale-105">
-                                <ModernAILogo className="w-6 h-6 text-[#e6edf3] drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] animate-pulse" />
-                            </div>
-                        </div>
-                        
-                        {/* Status Text */}
-                        <div className="text-center space-y-2">
-                            <h3 className="text-[#e6edf3] font-medium text-sm tracking-wide flex items-center justify-center gap-2">
-                                Decoding Logic
-                                <div className="flex gap-0.5 mt-0.5">
-                                    <div className="w-1 h-1 rounded-full bg-[#a371f7] animate-bounce" style={{ animationDelay: '0ms' }} />
-                                    <div className="w-1 h-1 rounded-full bg-[#58a6ff] animate-bounce" style={{ animationDelay: '150ms' }} />
-                                    <div className="w-1 h-1 rounded-full bg-[#a371f7] animate-bounce" style={{ animationDelay: '300ms' }} />
-                                </div>
-                            </h3>
-                            <p className="text-[#8b949e] text-xs max-w-[200px] mx-auto leading-relaxed">
-                                Analyzing architecture, patterns, and structure...
-                            </p>
-                        </div>
+                    <div className="flex flex-col items-center justify-center py-10 gap-3 ai-response-container">
+                        <AILoadingIndicator status={explanationStatus as any} operation={explanationOperation} variant="compact" size="sm" />
                     </div>
                 ) : error ? (
                     <div className="glass-analysis-card animate-fade-in-up rounded-xl border border-[#f85149]/30 bg-[#f85149]/5 p-4">
@@ -251,7 +237,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                         ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1">{children}</ul>,
                                         ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1">{children}</ol>,
                                         li: ({ children }) => <li className="pl-1 break-words">{children}</li>,
-                                        code: ({ node, inline, className, children, ...props }: any) => {
+                                        code: ({ inline, children, ...props }: any) => {
                                             const content = String(children).replace(/\n$/, '');
                                             if (inline) {
                                                 return <code className="px-1.5 py-0.5 rounded bg-white/10 text-[#e6edf3] font-mono text-xs break-all" {...props}>{content}</code>;

@@ -4,6 +4,7 @@ const { createApp } = require('./app.cjs');
 const { PORT } = require('./config/index.cjs');
 const { attachExecutionWebSocket } = require('./websocket/executionHandler.cjs');
 const { listDetectedRuntimes } = require('./services/execution/runtimeDetection.cjs');
+const { aiRequestManager } = require('./services/ai/aiRequestManager.cjs');
 const lifecycle = require('./lifecycle.cjs');
 
 // ---- Construction (no I/O yet) ----
@@ -18,7 +19,13 @@ const terminalManager = attachExecutionWebSocket(wss);
 // Single-instance + shutdown lifecycle. Installed before the async bind so a
 // signal received during startup is handled correctly.
 const onComplete = () => lifecycle.releaseLock(PORT);
-lifecycle.installGracefulShutdown({ server, wss, terminalManager, onComplete });
+lifecycle.installGracefulShutdown({
+    server,
+    wss,
+    terminalManager,
+    onComplete,
+    beforeClose: () => aiRequestManager.abortAll(),
+});
 
 // ---- Startup (entrypoint owns it; exactly one listen per process) ----
 const { siblingPid } = lifecycle.acquireLock(PORT);

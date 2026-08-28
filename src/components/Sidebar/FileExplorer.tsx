@@ -1,6 +1,18 @@
 import { useRef, useEffect, useState, useCallback, useMemo, memo } from 'react';
 import type { FileNode } from '../../utils/mockFileSystem';
+import { ROOT_NODE_ID } from '../../utils/mockFileSystem';
 import { useProjectFile, useProjectUI, useProjectActions } from '../../context/ProjectContext';
+import {
+    flattenTree as flattenTreeSafe,
+    filterTree,
+    findNodeById,
+    collectIds,
+    collectFiles,
+    isDescendantOf,
+    childrenOf,
+    sortTree,
+    pathOf,
+} from '../../utils/safeTree';
 import {
     Folder, FolderOpen, ChevronRight,
     Search, X, Settings, FileCode,
@@ -11,6 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ContextMenu } from '../UI/ContextMenu';
 import { useSettingsSelector } from '../../context/SettingsContext';
 import { getSettings } from '../../settings/settingsStore';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 // Programming language icons
 import {
@@ -22,15 +35,22 @@ import {
 import { FaJava, FaDatabase, FaImage, FaLock } from 'react-icons/fa';
 import { VscJson } from 'react-icons/vsc';
 
+// Render recursion is bounded so a pathologically deep (but still valid) tree
+// can never render an unbounded component chain. Beyond this depth the node is
+// shown without descending into children.
+const MAX_RENDER_DEPTH = 128;
+
 interface InputNodeProps {
     type: 'file' | 'folder';
     depth: number;
     initialValue?: string;
+    indentStep: number;
+    indentBase: number;
     onCommit: (name: string) => void;
     onCancel: () => void;
 }
 
-const InputNode = ({ type, depth, initialValue = '', onCommit, onCancel }: InputNodeProps) => {
+const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onCommit, onCancel }: InputNodeProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
     const [value, setValue] = useState(initialValue);
     const [isFocused, setIsFocused] = useState(false);
@@ -88,7 +108,7 @@ const InputNode = ({ type, depth, initialValue = '', onCommit, onCancel }: Input
             animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
             exit={{ opacity: 0, x: -8, scale: 0.95, filter: 'blur(4px)' }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            style={{ paddingLeft: `${depth * 16 + 12}px` }}
+            style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
             className={cn(
                 "flex items-center gap-2 py-2 px-2.5 mx-2 mt-1.5 rounded-xl backdrop-blur-md creation-shimmer-border",
                 isFolder
@@ -140,7 +160,6 @@ const InputNode = ({ type, depth, initialValue = '', onCommit, onCancel }: Input
                             "absolute right-2 w-1.5 h-1.5 rounded-full",
                             isFolder ? "bg-purple-400" : "bg-cyan-400"
                         )}
-                        style={{ animation: 'creation-typing-dot 1.2s ease-in-out infinite' }}
                     />
                 )}
             </div>
@@ -240,15 +259,20 @@ const FileIcon = ({ name, isOpen, isFolder }: { name: string; isOpen?: boolean; 
 interface FileTreeNodeProps {
     node: FileNode;
     depth: number;
+    indentStep: number;
+    indentBase: number;
     renamingNodeId: string | null;
     focusedNodeId: string | null;
     searchQuery: string;
     activeFileId: string | null;
-    selectedFolderId: string | null;
+    selectedNodeId: string | null;
     creationState: { type: 'file' | 'folder' | null; parentId: string | null; isActive: boolean };
+    expandedFolderIds: ReadonlySet<string>;
     onSetActiveFile: (node: FileNode) => void;
     onToggleFolder: (id: string) => void;
     onSetSelectedFolder: (id: string) => void;
+    onSetSelectedNode: (id: string) => void;
+    onStartCreating?: (type: 'file' | 'folder') => void;
     onCommitCreation: (name: string) => void;
     onCancelCreation: () => void;
     onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
@@ -268,9 +292,13 @@ interface FileTreeNodeProps {
 }
 
 // Highlight matching text in search
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const HighlightText = ({ text, query }: { text: string; query: string }) => {
-    if (!query) return <span>{text}</span>;
-    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    if (!query || !query.trim()) return <span>{text}</span>;
+    // The query is a literal search string; escape it so special characters
+    // (e.g. `[`, `(`, `.`) never crash the regex or match unintended text.
+    const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, 'gi'));
     return (
         <span>
             {parts.map((part, i) =>
@@ -285,6 +313,8 @@ const HighlightText = ({ text, query }: { text: string; query: string }) => {
 const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     node,
     depth,
+    indentStep,
+    indentBase,
     renamingNodeId,
     focusedNodeId,
     searchQuery,
@@ -303,18 +333,24 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     isBookmarked = false,
     newlyCreatedNodes,
     activeFileId,
-    selectedFolderId,
+    selectedNodeId,
     creationState,
+    expandedFolderIds,
     onSetActiveFile,
     onToggleFolder,
     onSetSelectedFolder,
+    onSetSelectedNode,
+    onStartCreating,
     onCommitCreation,
     onCancelCreation
 }) => {
     const isFolder = node.type === 'folder';
+    // A folder is open when the UI expansion set includes it, or when search
+    // mode force-opened it on the filtered clone (node.isOpen === true).
+    const isOpen = isFolder && (expandedFolderIds.has(node.id) || node.isOpen === true);
     const isActive = activeFileId === node.id;
     const isFocused = focusedNodeId === node.id;
-    const isFolderSelected = isFolder && selectedFolderId === node.id;
+    const isSelected = selectedNodeId === node.id;
     const isRenaming = renamingNodeId === node.id;
     const isDragOver = dragOverNodeId === node.id && isFolder;
     const isNewlyCreated = newlyCreatedNodes?.has(node.id) ?? false;
@@ -327,13 +363,13 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     const handleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         onFocus(node.id);
+        onSetSelectedNode(node.id);
         if (isFolder) {
             onToggleFolder(node.id);
             onSetSelectedFolder(node.id);
         } else {
             onSetActiveFile(node);
-            const lastSlash = node.id.lastIndexOf('/');
-            onSetSelectedFolder(lastSlash !== -1 ? node.id.substring(0, lastSlash) : 'root');
+            onSetSelectedFolder(node.parentId ?? ROOT_NODE_ID);
         }
     };
 
@@ -373,6 +409,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
             <InputNode
                 type={node.type}
                 depth={depth}
+                indentStep={indentStep}
+                indentBase={indentBase}
                 initialValue={node.name}
                 onCommit={onRenameCommit}
                 onCancel={onRenameCancel}
@@ -389,12 +427,12 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                         ? "bg-gradient-to-r from-blue-500/15 to-blue-500/5 text-blue-100 border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.08)]"
                         : isFocused
                             ? "bg-white/8 text-white border-white/15 ring-1 ring-blue-500/40 shadow-sm"
-                            : isFolderSelected
+                            : isSelected
                                 ? "bg-white/[0.04] text-white/90 border-white/[0.06]"
                                 : "text-zinc-400 hover:text-white hover:bg-white/[0.06] border-transparent hover:translate-x-0.5",
                     isDragOver && "bg-blue-500/20 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)]"
                 )}
-                style={{ paddingLeft: `${depth * 16 + 12}px` }}
+                style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
                 onClick={handleClick}
                 onContextMenu={(e) => onContextMenu(e, node)}
                 draggable
@@ -408,7 +446,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 <span
                     className={cn(
                         "opacity-60 shrink-0 w-4 flex justify-center transition-transform duration-150",
-                        node.isOpen && "rotate-90"
+                        isOpen && "rotate-90"
                     )}
                 >
                     {isFolder ? (
@@ -420,7 +458,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
 
                 {/* File/Folder Icon */}
                 <div className="shrink-0 transition-transform duration-200 group-hover:scale-110">
-                    <FileIcon name={node.name} isOpen={node.isOpen} isFolder={isFolder} />
+                    <FileIcon name={node.name} isOpen={isOpen} isFolder={isFolder} />
                 </div>
 
                 {/* File/Folder Name */}
@@ -429,7 +467,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 </span>
 
                 {/* File Count Badge for Folders */}
-                {isFolder && node.children && node.children.length > 0 && !node.isOpen && (
+                {isFolder && Array.isArray(node.children) && node.children.length > 0 && !isOpen && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/50 font-semibold tabular-nums border border-white/[0.05]">
                         {node.children.length}
                     </span>
@@ -483,7 +521,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
             </div>
 
             <AnimatePresence initial={false}>
-                {isFolder && node.isOpen && node.children && (
+                {isFolder && isOpen && depth < MAX_RENDER_DEPTH && Array.isArray(node.children) && (
                     <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
@@ -495,25 +533,30 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                         {depth >= 0 && (
                             <div
                                 className="absolute top-0 bottom-0 w-px bg-gradient-to-b from-white/[0.03] via-white/[0.06] to-white/[0.03] group-hover:via-white/10 transition-colors"
-                                style={{ left: `${(depth * 16) + 18}px` }}
+                                style={{ left: `${(depth * indentStep) + indentBase + 6}px` }}
                             />
                         )}
 
-                        {node.children && node.children.length > 0 ? (
-                            node.children.map((child) => (
+                        {node.children.length > 0 ? (
+                            node.children.filter((c): c is FileNode => Boolean(c)).map((child, i) => (
                                 <FileTreeNode
-                                    key={child.id}
+                                    key={child.id ?? `child-${depth}-${i}`}
                                     node={child}
                                     depth={depth + 1}
+                                    indentStep={indentStep}
+                                    indentBase={indentBase}
                                     renamingNodeId={renamingNodeId}
                                     focusedNodeId={focusedNodeId}
                                     searchQuery={searchQuery}
                                     activeFileId={activeFileId}
-                                    selectedFolderId={selectedFolderId}
+                                    selectedNodeId={selectedNodeId}
                                     creationState={creationState}
+                                    expandedFolderIds={expandedFolderIds}
                                     onSetActiveFile={onSetActiveFile}
                                     onToggleFolder={onToggleFolder}
                                     onSetSelectedFolder={onSetSelectedFolder}
+                                    onSetSelectedNode={onSetSelectedNode}
+                                    onStartCreating={onStartCreating}
                                     onCommitCreation={onCommitCreation}
                                     onCancelCreation={onCancelCreation}
                                     onContextMenu={onContextMenu}
@@ -531,19 +574,45 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                 />
                             ))
                         ) : !isCreatingHere && (
-                            <div
-                                style={{ paddingLeft: `${(depth + 1) * 16 + 28}px` }}
-                                className="py-2 text-[11px] text-white/25 italic select-none flex items-center gap-1.5"
-                            >
-                                <span className="w-1 h-1 rounded-full bg-white/20"></span>
-                                Empty folder
-                            </div>
+                            node.id === ROOT_NODE_ID && !searchQuery ? (
+                                <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] flex items-center justify-center mb-3 border border-white/[0.06]">
+                                        <Folder size={20} className="text-white/20" />
+                                    </div>
+                                    <p className="text-white/50 text-sm font-medium mb-1">Empty workspace</p>
+                                    <p className="text-white/25 text-xs mb-3">Create a new file or folder to get started</p>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onStartCreating?.('file'); }}
+                                            className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-300 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
+                                        >
+                                            New File
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onStartCreating?.('folder'); }}
+                                            className="text-xs bg-white/10 border border-white/20 text-white/60 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors"
+                                        >
+                                            New Folder
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div
+                                    style={{ paddingLeft: `${(depth + 1) * indentStep + 28}px` }}
+                                    className="py-2 text-[11px] text-white/25 italic select-none flex items-center gap-1.5"
+                                >
+                                    <span className="w-1 h-1 rounded-full bg-white/20"></span>
+                                    Empty folder
+                                </div>
+                            )
                         )}
                         <AnimatePresence>
                             {isCreatingHere && (
                                 <InputNode
                                     type={creationState.type!}
                                     depth={depth + 1}
+                                    indentStep={indentStep}
+                                    indentBase={indentBase}
                                     onCommit={onCommitCreation}
                                     onCancel={onCancelCreation}
                                 />
@@ -556,22 +625,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     );
 });
 
-// Flatten tree for keyboard navigation
-const flattenTree = (nodes: FileNode[]): FileNode[] => {
-    const result: FileNode[] = [];
-    const traverse = (nodeList: FileNode[]) => {
-        for (const node of nodeList) {
-            result.push(node);
-            if (node.type === 'folder' && node.isOpen && node.children) {
-                traverse(node.children);
-            }
-        }
-    };
-    traverse(nodes);
-    return result;
-};
-
-// Enhanced search with multiple filters
+// Flatten tree for keyboard navigation — see safeTree.flattenTree (iterative,
+// cycle-safe, only descends into open folders).
 interface SearchFilters {
     query: string;
     fileType: string;
@@ -580,87 +635,74 @@ interface SearchFilters {
     showHidden: boolean;
 }
 
-// Advanced search with multiple criteria
+// Pure, filter-local predicates (kept outside the component so they never
+// capture stale state; the tree filter itself lives in safeTree).
+const getDateFilter = (node: FileNode, dateRange: SearchFilters['dateRange'], now: number): boolean => {
+    if (dateRange === 'all') return true;
+    // Mock timestamp - in real app, track creation/modification time
+    const nodeTime = node.id.split('_')[0] ? now : now - Math.random() * 30 * 24 * 60 * 60 * 1000;
+    const daysDiff = (now - nodeTime) / (24 * 60 * 60 * 1000);
+
+    switch (dateRange) {
+        case 'today': return daysDiff < 1;
+        case 'week': return daysDiff < 7;
+        case 'month': return daysDiff < 30;
+        default: return true;
+    }
+};
+
+const getSizeFilter = (node: FileNode, sizeRange: SearchFilters['sizeRange']): boolean => {
+    if (sizeRange === 'all' || node.type === 'folder') return true;
+    const content = node.content || '';
+    const sizeKB = content.length / 1024;
+
+    switch (sizeRange) {
+        case 'small': return sizeKB < 10;
+        case 'medium': return sizeKB >= 10 && sizeKB < 100;
+        case 'large': return sizeKB >= 100;
+        default: return true;
+    }
+};
+
+const getFileTypeFilter = (node: FileNode, fileType: string): boolean => {
+    if (fileType === 'all') return true;
+    if (node.type === 'folder') return fileType === 'folder';
+
+    const ext = node.name.split('.').pop()?.toLowerCase() || '';
+    const typeMap: Record<string, string[]> = {
+        'code': ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'go', 'rs', 'rb', 'php', 'swift', 'kt'],
+        'web': ['html', 'htm', 'css', 'scss', 'sass', 'vue', 'svelte'],
+        'data': ['json', 'xml', 'csv', 'yaml', 'yml', 'toml', 'sql'],
+        'docs': ['md', 'mdx', 'txt', 'pdf'],
+        'config': ['env', 'gitignore', 'dockerfile', 'package.json', 'tsconfig.json'],
+        'media': ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'mp3', 'mp4']
+    };
+
+    return typeMap[fileType]?.includes(ext) || false;
+};
+
+// Advanced search with multiple criteria — delegates to the cycle-safe filterTree.
 const filterTreeAdvanced = (nodes: FileNode[], filters: SearchFilters): FileNode[] => {
     const { query, fileType, dateRange, sizeRange, showHidden } = filters;
-    
+
     if (!query && fileType === 'all' && dateRange === 'all' && sizeRange === 'all' && showHidden) {
         return nodes;
     }
 
     const lowerQuery = query.toLowerCase();
     const now = Date.now();
-    
-    const getDateFilter = (node: FileNode) => {
-        if (dateRange === 'all') return true;
-        // Mock timestamp - in real app, track creation/modification time
-        const nodeTime = node.id.split('_')[0] ? now : now - Math.random() * 30 * 24 * 60 * 60 * 1000;
-        const daysDiff = (now - nodeTime) / (24 * 60 * 60 * 1000);
-        
-        switch (dateRange) {
-            case 'today': return daysDiff < 1;
-            case 'week': return daysDiff < 7;
-            case 'month': return daysDiff < 30;
-            default: return true;
-        }
-    };
-    
-    const getSizeFilter = (node: FileNode) => {
-        if (sizeRange === 'all' || node.type === 'folder') return true;
-        const content = node.content || '';
-        const sizeKB = content.length / 1024;
-        
-        switch (sizeRange) {
-            case 'small': return sizeKB < 10;
-            case 'medium': return sizeKB >= 10 && sizeKB < 100;
-            case 'large': return sizeKB >= 100;
-            default: return true;
-        }
-    };
-    
-    const getFileTypeFilter = (node: FileNode) => {
-        if (fileType === 'all') return true;
-        if (node.type === 'folder') return fileType === 'folder';
-        
-        const ext = node.name.split('.').pop()?.toLowerCase() || '';
-        const typeMap: Record<string, string[]> = {
-            'code': ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'go', 'rs', 'rb', 'php', 'swift', 'kt'],
-            'web': ['html', 'htm', 'css', 'scss', 'sass', 'vue', 'svelte'],
-            'data': ['json', 'xml', 'csv', 'yaml', 'yml', 'toml', 'sql'],
-            'docs': ['md', 'mdx', 'txt', 'pdf'],
-            'config': ['env', 'gitignore', 'dockerfile', 'package.json', 'tsconfig.json'],
-            'media': ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'mp3', 'mp4']
-        };
-        
-        return typeMap[fileType]?.includes(ext) || false;
-    };
 
-    const filterRecursive = (nodeList: FileNode[]): FileNode[] => {
-        return nodeList.reduce<FileNode[]>((acc, node) => {
-            // Check if node should be hidden
-            if (!showHidden && node.name.startsWith('.')) return acc;
-            
-            // Apply all filters
+    return filterTree(nodes, {
+        forceOpen: Boolean(query),
+        skip: (node) => !showHidden && node.name.startsWith('.'),
+        predicate: (node) => {
             const nameMatches = !query || node.name.toLowerCase().includes(lowerQuery);
-            const dateMatches = getDateFilter(node);
-            const sizeMatches = getSizeFilter(node);
-            const typeMatches = getFileTypeFilter(node);
-            
-            const filteredChildren = node.children ? filterRecursive(node.children) : [];
-            
-            // Include node if it matches or has matching children
-            if ((nameMatches && dateMatches && sizeMatches && typeMatches) || filteredChildren.length > 0) {
-                acc.push({
-                    ...node,
-                    isOpen: query ? true : node.isOpen, // Auto-expand when searching
-                    children: node.children ? filteredChildren : undefined
-                });
-            }
-            return acc;
-        }, []);
-    };
-
-    return filterRecursive(nodes);
+            const dateMatches = getDateFilter(node, dateRange, now);
+            const sizeMatches = getSizeFilter(node, sizeRange);
+            const typeMatches = getFileTypeFilter(node, fileType);
+            return nameMatches && dateMatches && sizeMatches && typeMatches;
+        },
+    });
 };
 
 interface FileExplorerProps {
@@ -670,8 +712,15 @@ interface FileExplorerProps {
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSearchClose }) => {
     const { fileTree, activeFile } = useProjectFile();
-    const { selectedFolder, creationState } = useProjectUI();
-    const { renameNode, deleteNode, commitCreation, cancelCreation, startCreating, moveNode, toggleFolder, setActiveFile, setSelectedFolder } = useProjectActions();
+    const { selectedNodeId, creationState, expandedFolderIds } = useProjectUI();
+    const { renameNode, deleteNode, commitCreation, cancelCreation, startCreating, moveNode, toggleFolder, setActiveFile, setSelectedFolder, setSelectedNode, getFileTree } = useProjectActions();
+
+    // Below 1024px the tree indentation tightens so deep nesting can never push
+    // filenames/actions past the drawer edge. Desktop indentation is unchanged.
+    const isDesktop = useMediaQuery('(min-width: 1024px)');
+    const indentStep = isDesktop ? 16 : 10;
+    const indentBase = isDesktop ? 12 : 8;
+
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
     const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -679,30 +728,21 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null);
     const [draggedNode, setDraggedNode] = useState<FileNode | null>(null);
     const [newlyCreatedNodes, setNewlyCreatedNodes] = useState<Set<string>>(new Set());
-    const prevFileTreeRef = useRef<FileNode[]>([]);
+    const prevTreeIdsRef = useRef<Set<string>>(new Set());
     const containerRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Track newly created nodes for entrance animation
+    // Track newly created nodes for entrance animation. Uses cycle-safe
+    // traversal (collectIds), a single O(N) walk per tree change (the previous
+    // id set is cached in a ref), and clears its timeout on unmount/change so no
+    // state is written after the component is gone.
     useEffect(() => {
-        if (prevFileTreeRef.current.length > 0) {
-            const prevIds = new Set<string>();
-            const collectIds = (nodes: FileNode[]) => {
-                for (const n of nodes) {
-                    prevIds.add(n.id);
-                    if (n.children) collectIds(n.children);
-                }
-            };
-            collectIds(prevFileTreeRef.current);
-
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        if (prevTreeIdsRef.current.size > 0) {
             const newIds = new Set<string>();
-            const findNew = (nodes: FileNode[]) => {
-                for (const n of nodes) {
-                    if (!prevIds.has(n.id)) newIds.add(n.id);
-                    if (n.children) findNew(n.children);
-                }
-            };
-            findNew(fileTree);
+            for (const id of collectIds(fileTree)) {
+                if (!prevTreeIdsRef.current.has(id)) newIds.add(id);
+            }
 
             if (newIds.size > 0) {
                 setNewlyCreatedNodes(prev => {
@@ -711,7 +751,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                     return merged;
                 });
                 // Clear after animation completes
-                setTimeout(() => {
+                timer = setTimeout(() => {
                     setNewlyCreatedNodes(prev => {
                         const next = new Set(prev);
                         newIds.forEach(id => next.delete(id));
@@ -720,7 +760,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 }, 900);
             }
         }
-        prevFileTreeRef.current = fileTree;
+        prevTreeIdsRef.current = new Set(collectIds(fileTree));
+        return () => { if (timer) clearTimeout(timer); };
     }, [fileTree]);
     
     // Advanced search filters state
@@ -740,16 +781,39 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         setSearchFilters(prev => ({ ...prev, showHidden: showHiddenFilesSetting }));
     }, [showHiddenFilesSetting]);
 
-    // Filter tree based on search
-    const filteredTree = useMemo(() => filterTreeAdvanced(fileTree, searchFilters), [fileTree, searchFilters]);
+    // Filter tree based on search. The live `searchQuery` is merged in directly
+    // so the filtered tree and the HighlightText render from the SAME query in
+    // one render pass (previously a sync effect copied query→filters one render
+    // late, causing a double render and a flash of stale matches).
+    const filteredTree = useMemo(
+        () => filterTreeAdvanced(fileTree, { ...searchFilters, query: searchQuery }),
+        [fileTree, searchFilters, searchQuery]
+    );
 
-    // Flatten for keyboard navigation
-    const flatNodes = useMemo(() => flattenTree(filteredTree), [filteredTree]);
+    // Render shape: the canonical model stores the project root as a top-level
+    // sibling of the root-level items (parentId === 'root'). For rendering, the
+    // root is presented as the container of those items, exactly like the
+    // legacy root.children model users saw before. This is a pure projection —
+    // the real tree is never mutated. Rows are rendered from an IDE-sorted
+    // (folders-first, natural-alpha) view derived from the filtered tree.
+    const sortedTree = useMemo(() => sortTree(filteredTree), [filteredTree]);
 
-    // Update search filters when query changes
-    useEffect(() => {
-        setSearchFilters(prev => ({ ...prev, query: searchQuery }));
-    }, [searchQuery]);
+    const treeForRender = useMemo(() => {
+        const root = sortedTree.find(n => n.id === ROOT_NODE_ID);
+        if (!root) return sortedTree;
+        if (sortedTree.length === 1) return sortedTree;
+        return [{ ...root, children: sortedTree.filter(n => n.id !== ROOT_NODE_ID) }];
+    }, [sortedTree]);
+
+    const isSearching = Boolean(searchQuery);
+
+    // Flatten for keyboard navigation (iterative, cycle-safe). During search the
+    // filtered clones are force-opened, so descending is unconstrained; otherwise
+    // navigation only enters folders present in the expansion set.
+    const flatNodes = useMemo(
+        () => flattenTreeSafe(treeForRender, isSearching ? undefined : expandedFolderIds),
+        [treeForRender, isSearching, expandedFolderIds]
+    );
 
     // Handle filter changes
     const handleFilterChange = (filterType: keyof SearchFilters, value: any) => {
@@ -788,6 +852,24 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         }
     }, [bookmarkedFiles]);
 
+    // Bookmark ids are path-derived, so rename/move re-id a file and delete
+    // removes it. Prune any bookmark that no longer resolves to a live file so
+    // the Favorites list never shows a stale/dangling entry.
+    useEffect(() => {
+        setBookmarkedFiles(prev => {
+            if (prev.size === 0) return prev;
+            const fileIds = collectFiles(fileTree);
+            const valid = new Set(fileIds.map(f => f.id));
+            let changed = false;
+            const next = new Set<string>();
+            for (const id of prev) {
+                if (valid.has(id)) next.add(id);
+                else changed = true;
+            }
+            return changed ? next : prev;
+        });
+    }, [fileTree]);
+
     // Toggle bookmark
     const toggleBookmark = useCallback((fileId: string) => {
         setBookmarkedFiles(prev => {
@@ -801,21 +883,10 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         });
     }, []);
 
-    // Get bookmarked files
+    // Get bookmarked files (cycle-safe walk of the whole tree, regardless of
+    // open/closed folder state)
     const getBookmarkedFiles = useCallback(() => {
-        const bookmarked: FileNode[] = [];
-        const traverse = (nodes: FileNode[]) => {
-            for (const node of nodes) {
-                if (bookmarkedFiles.has(node.id)) {
-                    bookmarked.push(node);
-                }
-                if (node.children) {
-                    traverse(node.children);
-                }
-            }
-        };
-        traverse(fileTree);
-        return bookmarked;
+        return collectFiles(fileTree).filter(file => bookmarkedFiles.has(file.id));
     }, [fileTree, bookmarkedFiles]);
     const getActiveFilterCount = () => {
         let count = 0;
@@ -862,7 +933,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 e.preventDefault();
                 if (focusedNodeId) {
                     const node = flatNodes.find(n => n.id === focusedNodeId);
-                    if (node?.type === 'folder' && !node.isOpen) {
+                    if (node?.type === 'folder' && !expandedFolderIds.has(node.id) && node.isOpen !== true) {
                         toggleFolder(node.id);
                     }
                 }
@@ -871,7 +942,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 e.preventDefault();
                 if (focusedNodeId) {
                     const node = flatNodes.find(n => n.id === focusedNodeId);
-                    if (node?.type === 'folder' && node.isOpen) {
+                    if (node?.type === 'folder' && (expandedFolderIds.has(node.id) || node.isOpen === true)) {
                         toggleFolder(node.id);
                     }
                 }
@@ -881,12 +952,12 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 if (focusedNodeId) {
                     const node = flatNodes.find(n => n.id === focusedNodeId);
                     if (node) {
+                        setSelectedNode(node.id);
                         if (node.type === 'folder') {
                             toggleFolder(node.id);
                         } else {
                             setActiveFile(node);
-                            const lastSlash = node.id.lastIndexOf('/');
-                            setSelectedFolder(lastSlash !== -1 ? node.id.substring(0, lastSlash) : 'root');
+                            setSelectedFolder(node.parentId ?? ROOT_NODE_ID);
                         }
                     }
                 }
@@ -915,7 +986,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 }
                 break;
         }
-    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder, creationState.isActive, renamingNodeId, confirmDeleteSetting]);
+    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder, setSelectedNode, creationState.isActive, renamingNodeId, confirmDeleteSetting, expandedFolderIds]);
 
     useEffect(() => {
         document.addEventListener('keydown', handleKeyDown);
@@ -945,20 +1016,16 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
 
     const handleDrop = useCallback((_e: React.DragEvent, targetNode: FileNode) => {
         if (draggedNode && targetNode.type === 'folder' && draggedNode.id !== targetNode.id) {
-            // Prevent dropping a folder into its own children
-            const isDescendant = (ancestor: FileNode, descendant: FileNode): boolean => {
-                if (ancestor.id === descendant.id) return true;
-                if (!ancestor.children) return false;
-                return ancestor.children.some(child => isDescendant(child, descendant));
-            };
-            
-            if (!isDescendant(draggedNode, targetNode)) {
+            // Prevent dropping a folder into its own children (cycle-safe).
+            // getFileTree() reads the latest tree without a state dependency,
+            // so this callback stays referentially stable.
+            if (!isDescendantOf(getFileTree(), draggedNode.id, targetNode.id)) {
                 moveNode(draggedNode.id, targetNode.id);
             }
         }
         setDraggedNode(null);
         setDragOverNodeId(null);
-    }, [draggedNode, moveNode]);
+    }, [draggedNode, moveNode, getFileTree]);
 
     const handleDragEnd = useCallback(() => {
         setDraggedNode(null);
@@ -1024,18 +1091,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     };
     const handleDownload = useCallback((nodeId: string) => {
         downloadHandlerRef.current(nodeId);
-    }, []);
-
-    // Find a node by ID recursively
-    const findNodeById = useCallback((nodes: FileNode[], id: string): FileNode | null => {
-        for (const node of nodes) {
-            if (node.id === id) return node;
-            if (node.children) {
-                const found = findNodeById(node.children, id);
-                if (found) return found;
-            }
-        }
-        return null;
     }, []);
 
     // Download file functionality
@@ -1106,9 +1161,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             // Add all files to the ZIP with proper folder structure
             for (const file of files) {
                 // Get relative path from the folder being downloaded
-                const relativePath = file.id.includes('/') 
-                    ? file.id.substring(file.id.indexOf('/') + 1)
-                    : file.name;
+                const relativePath = pathOf(fileTree, file.id) || file.name;
                     
                 zip.file(relativePath, file.content || '');
             }
@@ -1140,9 +1193,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             let content = `Files in folder "${folderName}":\n\n`;
             
             for (const file of files) {
-                const relativePath = file.id.includes('/') 
-                    ? file.id.substring(file.id.indexOf('/') + 1)
-                    : file.name;
+                const relativePath = pathOf(fileTree, file.id) || file.name;
                     
                 content += `\n=== ${relativePath} ===\n`;
                 content += file.content || '';
@@ -1230,23 +1281,9 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         return mimeTypes[ext || ''] || 'text/plain';
     };
 
-    // Helper function to collect all files in a folder
+    // Helper function to collect all files in a folder (cycle-safe)
     const collectFilesInFolder = (folder: FileNode): FileNode[] => {
-        const files: FileNode[] = [];
-        
-        const traverse = (node: FileNode) => {
-            if (node.type === 'file') {
-                files.push(node);
-            } else if (node.children) {
-                node.children.forEach(traverse);
-            }
-        };
-        
-        if (folder.children) {
-            folder.children.forEach(traverse);
-        }
-        
-        return files;
+        return collectFiles(childrenOf(folder));
     };
 
     const isCreatingAtRoot = creationState.isActive &&
@@ -1292,8 +1329,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             { label: 'Reveal in Finder', onClick: () => console.log('Reveal:', contextMenu?.nodeId), shortcut: '⌥⌘R' },
             { label: 'Open in Terminal', onClick: () => console.log('Terminal:', contextMenu?.nodeId) },
             { type: 'separator' as const },
-            { label: 'Copy Path', onClick: () => navigator.clipboard.writeText(contextMenu?.nodeId || ''), shortcut: '⌥⌘C' },
-            { label: 'Copy Relative Path', onClick: () => { const rel = contextMenu?.nodeId.replace(/^\/?root\/?/, '') || ''; navigator.clipboard.writeText(rel); }, shortcut: '⇧⌥⌘C' },
+            { label: 'Copy Path', onClick: () => { const p = pathOf(fileTree, contextMenu?.nodeId ?? ''); navigator.clipboard.writeText(p ? `/${p}` : '/'); }, shortcut: '⌥⌘C' },
+            { label: 'Copy Relative Path', onClick: () => { navigator.clipboard.writeText(pathOf(fileTree, contextMenu?.nodeId ?? '')); }, shortcut: '⇧⌥⌘C' },
             { type: 'separator' as const },
             { label: 'Rename', onClick: handleRenameStart, shortcut: 'F2' },
             { label: 'Delete', onClick: () => handleDelete(), danger: true, shortcut: '⌫' }
@@ -1523,20 +1560,25 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                         </div>
                     </div>
                 ) : (
-                    filteredTree.map((node) => (
+                    treeForRender.map((node) => (
                         <FileTreeNode
                             key={node.id}
                             node={node}
                             depth={0}
+                            indentStep={indentStep}
+                            indentBase={indentBase}
                             renamingNodeId={renamingNodeId}
                             focusedNodeId={focusedNodeId}
                             searchQuery={searchQuery}
                             activeFileId={activeFile?.id ?? null}
-                            selectedFolderId={selectedFolder}
+                            selectedNodeId={selectedNodeId}
                             creationState={creationState}
+                            expandedFolderIds={expandedFolderIds}
                             onSetActiveFile={setActiveFile}
                             onToggleFolder={toggleFolder}
                             onSetSelectedFolder={setSelectedFolder}
+                            onSetSelectedNode={setSelectedNode}
+                            onStartCreating={(type) => startCreating(type, ROOT_NODE_ID)}
                             onCommitCreation={commitCreation}
                             onCancelCreation={cancelCreation}
                             onContextMenu={handleContextMenu}
@@ -1562,6 +1604,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                         <InputNode
                             type={creationState.type!}
                             depth={0}
+                            indentStep={indentStep}
+                            indentBase={indentBase}
                             onCommit={commitCreation}
                             onCancel={cancelCreation}
                         />
@@ -1579,7 +1623,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             </div>
 
             {/* Keyboard Shortcuts Help */}
-            <div className="px-3 py-2.5 border-t border-white/[0.04] text-[10px] text-white/30 flex items-center justify-center gap-3 bg-gradient-to-t from-white/[0.01] to-transparent">
+            <div className="px-3 py-2.5 border-t border-white/[0.04] text-[10px] text-white/30 flex items-center justify-center gap-3 flex-wrap bg-gradient-to-t from-white/[0.01] to-transparent">
                 <span className="flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-white/40 font-mono">↑↓</kbd> Navigate</span>
                 <span className="text-white/10">•</span>
                 <span className="flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-white/40 font-mono">↵</kbd> Open</span>

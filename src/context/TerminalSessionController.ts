@@ -49,6 +49,9 @@ export interface SessionListeners {
 
 const CONNECT_TIMEOUT_MS = 8000;
 const EXEC_TIMEOUT_MS = 60000;
+// Cap execution capture so a chatty program can never grow these buffers
+// without limit in the performance panel.
+const CAPTURE_CAP = 200 * 1024;
 
 export class TerminalSessionController {
     readonly id: string;
@@ -71,6 +74,8 @@ export class TerminalSessionController {
     private execStart = 0;
     private execStdout = '';
     private execStderr = '';
+    /** Set when the user stops before the socket finished connecting. */
+    private stopRequested = false;
 
     readonly createdAt = Date.now();
 
@@ -95,6 +100,17 @@ export class TerminalSessionController {
         this.listeners.onState(state);
     }
 
+    /** Append to the bounded capture buffer (stdout or stderr). */
+    private appendCapture(slot: 'stdout' | 'stderr', data: string) {
+        if (slot === 'stdout') {
+            if (this.execStdout.length >= CAPTURE_CAP) return;
+            this.execStdout = (this.execStdout + data).slice(0, CAPTURE_CAP);
+        } else {
+            if (this.execStderr.length >= CAPTURE_CAP) return;
+            this.execStderr = (this.execStderr + data).slice(0, CAPTURE_CAP);
+        }
+    }
+
     // --- Program execution ----------------------------------------------------
 
     startCode(code: string, language: string, preStdin: string, cols: number, rows: number, cwd?: string) {
@@ -110,6 +126,7 @@ export class TerminalSessionController {
         this.localPty = true;
         this.dexStdinBuffering = false;
         this.dexStdinBuf = '';
+        this.stopRequested = false;
 
         const generation = ++this.generation;
         let ws: WebSocket;
@@ -147,6 +164,12 @@ export class TerminalSessionController {
                 cols,
                 rows,
             }));
+            // If the user stopped while the socket was still connecting, the
+            // kill frame we could not send yet must be delivered now so the
+            // program never starts on the backend.
+            if (this.stopRequested) {
+                this.send({ type: 'session.kill', sessionId: this.id });
+            }
             // Backstop: if no exit arrives, kill + report instead of hanging.
             this.execTimer = setTimeout(() => {
                 if (!current()) return;
@@ -183,17 +206,17 @@ export class TerminalSessionController {
         switch (res.type) {
             case 'terminal.output':
                 if (!res.data) return;
-                this.execStdout += res.data;
+                this.appendCapture('stdout', res.data);
                 this.listeners.onOutput(res.data);
                 break;
             case 'terminal.stdout':
-                if (res.data) { this.execStdout += res.data; this.listeners.onOutput(res.data); }
+                if (res.data) { this.appendCapture('stdout', res.data); this.listeners.onOutput(res.data); }
                 break;
             case 'terminal.stderr':
-                if (res.data) { this.execStderr += res.data; this.listeners.onOutput(res.data); }
+                if (res.data) { this.appendCapture('stderr', res.data); this.listeners.onOutput(res.data); }
                 break;
             case 'terminal.error':
-                if (res.message) { this.execStderr += res.message; this.listeners.onError(res.message); }
+                if (res.message) { this.appendCapture('stderr', res.message); this.listeners.onError(res.message); }
                 break;
             case 'terminal.state':
                 if (res.state) this.setState(res.state);
@@ -299,7 +322,15 @@ export class TerminalSessionController {
     stop() {
         if (!this.isActive) return;
         this.setState('STOPPING');
-        this.send({ type: 'session.kill', sessionId: this.id });
+        this.stopRequested = true;
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.send({ type: 'session.kill', sessionId: this.id });
+        } else if (this.ws) {
+            // Socket still connecting: the kill frame can't be sent yet. Closing
+            // the socket aborts the pending run (onopen would otherwise start
+            // the program despite the stop).
+            try { this.ws.close(); } catch { /* ignore */ }
+        }
     }
 
     dispose() {

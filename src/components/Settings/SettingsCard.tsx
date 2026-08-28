@@ -37,7 +37,7 @@ export const SettingsCard: React.FC<SettingsCardProps> = memo(({ def, highlighte
     resetSetting(def.id);
   }, [def.id]);
 
-  const cardClass = `rounded-xl border px-4 py-3 flex items-center justify-between gap-4 transition-colors ${
+  const cardClass = `rounded-xl border px-4 py-3 flex items-center justify-between gap-4 flex-wrap transition-colors ${
     highlighted
       ? 'border-blue-400/50 bg-blue-500/[0.07]'
       : 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.05] hover:border-white/[0.13]'

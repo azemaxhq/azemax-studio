@@ -1,125 +1,96 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, memo, type ReactNode } from 'react';
 import { initialFileTree, type FileNode } from '../utils/mockFileSystem';
+import { ROOT_NODE_ID } from '../utils/mockFileSystem';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
 import { getSettings } from '../settings/settingsStore';
+import {
+    createFile as opCreateFile,
+    createFolder as opCreateFolder,
+    ensureFolderPath,
+    renameNode as opRenameNode,
+    moveNode as opMoveNode,
+    copyNode as opCopyNode,
+    duplicateNode as opDuplicateNode,
+    deleteNode as opDeleteNode,
+    updateFileContent as opUpdateFileContent,
+    collectFolderIds,
+    repairFileTree,
+    validateFileTree,
+} from '../core/filesystem';
+import type { RepairResult, TreeOperationResult } from '../core/filesystem';
+import { noopResult } from '../core/filesystem';
+import { findNodeById, resolvePath, isDescendantOf, findChildByName } from '../utils/safeTree';
 
 const STORAGE_KEY = 'deepcontext-file-tree';
 const ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
 
-// Load file tree from localStorage
-const loadFileTree = (): FileNode[] => {
+// AI error sentinels must never be persisted as file content — if a previous
+// bug wrote an error string into a file, treat it as corruption and reset.
+const CORRUPT_CONTENT_RE = /^\s*AI is temporarily unavailable\. Please try again.*$/;
+const EMPTY_RESPONSE_RE = /^\s*The AI returned an empty response\. Please try again\.?\s*$/;
+
+function isCorruptFileContent(content: unknown): boolean {
+    return typeof content === 'string' && (CORRUPT_CONTENT_RE.test(content) || EMPTY_RESPONSE_RE.test(content));
+}
+
+function sanitizeCorruptTree(tree: FileNode[]): { tree: FileNode[]; hadCorruption: boolean } {
+    let hadCorruption = false;
+    const clean = (nodes: FileNode[]): FileNode[] =>
+        nodes.map(n => {
+            if (n.type === 'file' && isCorruptFileContent(n.content)) {
+                hadCorruption = true;
+                return { ...n, content: '' };
+            }
+            if (n.children) return { ...n, children: clean(n.children) };
+            return n;
+        });
+    return { tree: clean(tree), hadCorruption };
+}
+
+// Load file tree from localStorage. The saved data is untrusted (it may be
+// hand-edited, stale, or corrupt), so it goes through a strict pipeline:
+//   raw stored data → repair → validate → sanitize error sentinels → runtime tree
+// Corruption is repaired deterministically ONCE at this boundary; a repaired
+// tree is immediately persisted so the bad copy never re-enters the runtime.
+const loadFileTree = (): RepairResult => {
     try {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
-            return JSON.parse(saved);
+            const repaired = repairFileTree(JSON.parse(saved));
+            const sanitized = sanitizeCorruptTree(repaired.tree);
+            const finalTree = sanitized.hadCorruption || repaired.repaired ? sanitized.tree : repaired.tree;
+            if (sanitized.hadCorruption || repaired.repaired) {
+                saveFileTree(finalTree, true);
+            }
+            return { tree: finalTree, repaired: repaired.repaired || sanitized.hadCorruption, expansion: repaired.expansion } as RepairResult;
         }
     } catch (e) {
         console.warn('Failed to load file tree from localStorage:', e);
     }
-    return initialFileTree;
+    const base = repairFileTree(initialFileTree);
+    const sanitized = sanitizeCorruptTree(base.tree);
+    return sanitized.hadCorruption ? { ...base, tree: sanitized.tree, repaired: true } : base;
 };
 
-// Save file tree to localStorage (coalesced writes to avoid main-thread blocking)
-const saveFileTree = (tree: FileNode[]) => {
+// Save file tree to localStorage (coalesced writes to avoid main-thread
+// blocking). `immediate` forces a synchronous write — used exactly once when a
+// corrupted tree has been repaired at the load boundary.
+const saveFileTree = (tree: FileNode[], immediate = false) => {
     try {
-        debouncedLocalStorageSet(STORAGE_KEY, JSON.stringify(tree), 300);
+        const serialized = JSON.stringify(tree);
+        if (immediate) {
+            localStorage.setItem(STORAGE_KEY, serialized);
+        } else {
+            debouncedLocalStorageSet(STORAGE_KEY, serialized, 0);
+        }
     } catch (e) {
         console.warn('Failed to save file tree to localStorage:', e);
     }
 };
 
-// Find a node by ID recursively
-const findNodeById = (nodes: FileNode[], id: string): FileNode | null => {
-    for (const node of nodes) {
-        if (node.id === id) return node;
-        if (node.children) {
-            const found = findNodeById(node.children, id);
-            if (found) return found;
-        }
-    }
-    return null;
-};
-
-// Toggle folder open/close state recursively
-const toggleFolderRecursive = (nodes: FileNode[], folderId: string): FileNode[] => {
-    // Structural sharing: only clone the ancestor chain of the toggled folder.
-    for (const node of nodes) {
-        if (node.id === folderId) {
-            return nodes.map(n => (n.id === folderId ? { ...n, isOpen: !n.isOpen } : n));
-        }
-        if (node.children && containsNode(node.children, folderId)) {
-            return nodes.map(n =>
-                n.id === node.id ? { ...n, children: toggleFolderRecursive(n.children!, folderId) } : n
-            );
-        }
-    }
-    return nodes;
-};
-
-// Open a folder (and only that folder) recursively
-const openFolderRecursive = (nodes: FileNode[], folderId: string): FileNode[] => {
-    for (const node of nodes) {
-        if (node.id === folderId) {
-            return nodes.map(n => (n.id === folderId ? { ...n, isOpen: true } : n));
-        }
-        if (node.children && containsNode(node.children, folderId)) {
-            return nodes.map(n =>
-                n.id === node.id ? { ...n, children: openFolderRecursive(n.children!, folderId) } : n
-            );
-        }
-    }
-    return nodes;
-};
-
-// True if `id` exists anywhere under `nodes` (used to detect the branch to clone)
-const containsNode = (nodes: FileNode[], id: string): boolean => {
-    for (const node of nodes) {
-        if (node.id === id) return true;
-        if (node.children && containsNode(node.children, id)) return true;
-    }
-    return false;
-};
-
-// Remove a node by ID recursively
-const deleteNodeRecursive = (nodes: FileNode[], id: string): FileNode[] => {
-    // Structural sharing: only clone nodes on the path to (and including) the
-    // deleted node; untouched subtrees keep their identity so React can bail out.
-    let changed = false;
-    const result: FileNode[] = [];
-    for (const node of nodes) {
-        if (node.id === id) {
-            changed = true;
-            continue;
-        }
-        if (node.children) {
-            const newChildren = deleteNodeRecursive(node.children, id);
-            if (newChildren !== node.children) {
-                result.push({ ...node, children: newChildren });
-                changed = true;
-                continue;
-            }
-        }
-        result.push(node);
-    }
-    return changed ? result : nodes;
-};
-
-// Deep clone a node with new IDs based on new parent path
-const cloneNode = (node: FileNode, newParentPath: string): FileNode => {
-    const newId = newParentPath === 'root' ? node.name : `${newParentPath}/${node.name}`;
-    const cloned: FileNode = {
-        ...node,
-        id: newId,
-        name: node.name,
-        children: node.children?.map(child => cloneNode(child, newId))
-    };
-    return cloned;
-};
-
 // File templates for different languages and frameworks
 const FILE_TEMPLATES: Record<string, { content: string; description: string }> = {
-    // JavaScript/TypeScript
     'javascript': {
         content: `// JavaScript File\n\nconsole.log('Hello, World!');\n`,
         description: 'Basic JavaScript file'
@@ -140,7 +111,6 @@ const FILE_TEMPLATES: Record<string, { content: string; description: string }> =
         content: `// Node.js Module\n\nconst express = require('express');\nconst router = express.Router();\n\n// GET /api/endpoint\nrouter.get('/', (req, res) => {\n  res.json({ message: 'Hello, World!' });\n});\n\nmodule.exports = router;\n`,
         description: 'Node.js Express module'
     },
-    // Python
     'python': {
         content: `#!/usr/bin/env python3\n\ndef main():\n    print("Hello, Python!")\n\nif __name__ == "__main__":\n    main()\n`,
         description: 'Basic Python script'
@@ -149,7 +119,6 @@ const FILE_TEMPLATES: Record<string, { content: string; description: string }> =
         content: `#!/usr/bin/env python3\n\nclass ClassName:\n    def __init__(self, param1, param2):\n        self.param1 = param1\n        self.param2 = param2\n\n    def method(self):\n        return f"Hello from {self.param1}"\n\nif __name__ == "__main__":\n    obj = ClassName("value1", "value2")\n    print(obj.method())\n`,
         description: 'Python class'
     },
-    // Web
     'html': {
         content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>Document</title>\n    <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n    <h1>Hello, World!</h1>\n    <script src="script.js"></script>\n</body>\n</html>\n`,
         description: 'HTML5 document'
@@ -158,7 +127,6 @@ const FILE_TEMPLATES: Record<string, { content: string; description: string }> =
         content: `/* CSS Styles */\n\n* {\n    margin: 0;\n    padding: 0;\n    box-sizing: border-box;\n}\n\nbody {\n    font-family: Arial, sans-serif;\n    line-height: 1.6;\n}\n\n.container {\n    max-width: 1200px;\n    margin: 0 auto;\n    padding: 20px;\n}\n`,
         description: 'CSS stylesheet'
     },
-    // Configuration
     'package.json': {
         content: `{\n  "name": "my-project",\n  "version": "1.0.0",\n  "description": "A new project",\n  "main": "index.js",\n  "scripts": {\n    "start": "node index.js",\n    "dev": "nodemon index.js",\n    "test": "jest"\n  },\n  "keywords": [],\n  "author": "",\n  "license": "ISC",\n  "dependencies": {},\n  "devDependencies": {}\n}\n`,
         description: 'Node.js package.json'
@@ -167,7 +135,6 @@ const FILE_TEMPLATES: Record<string, { content: string; description: string }> =
         content: `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "lib": ["ES2020"],\n    "outDir": "./dist",\n    "rootDir": "./src",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true,\n    "forceConsistentCasingInFileNames": true\n  },\n  "include": ["src/**/*"],\n  "exclude": ["node_modules", "dist"]\n}\n`,
         description: 'TypeScript configuration'
     },
-    // Other
     'markdown': {
         content: `# Project Title\n\n## Description\n\nA brief description of the project.\n\n## Installation\n\n\`\`\`bash\nnpm install\n\`\`\`\n\n## Usage\n\n\`\`\`bash\nnpm start\n\`\`\`\n\n## License\n\nMIT\n`,
         description: 'Markdown documentation'
@@ -182,88 +149,36 @@ const FILE_TEMPLATES: Record<string, { content: string; description: string }> =
 const getFileTemplate = (fileName: string, parentPath?: string): { content: string; description: string } => {
     const ext = fileName.split('.').pop()?.toLowerCase();
     const name = fileName.toLowerCase();
-    
-    // Special named files
+
     if (name === 'package.json') return FILE_TEMPLATES['package.json'];
     if (name === 'tsconfig.json') return FILE_TEMPLATES['tsconfig.json'];
     if (name === '.gitignore') return FILE_TEMPLATES['gitignore'];
-    
-    // React components
+
     if (name.endsWith('.tsx') || name.endsWith('.jsx')) {
         if (name.includes('hook') || name.includes('use')) {
             return FILE_TEMPLATES['react-hook'];
         }
         return FILE_TEMPLATES['react-component'];
     }
-    
-    // TypeScript/JavaScript
+
     if (ext === 'ts') return FILE_TEMPLATES['typescript'];
     if (ext === 'js') return FILE_TEMPLATES['javascript'];
-    
-    // Web files
+
     if (ext === 'html') return FILE_TEMPLATES['html'];
     if (ext === 'css') return FILE_TEMPLATES['css'];
-    
-    // Python
+
     if (ext === 'py') {
         if (name.includes('class') || parentPath?.includes('classes')) {
             return FILE_TEMPLATES['python-class'];
         }
         return FILE_TEMPLATES['python'];
     }
-    
-    // Markdown
+
     if (ext === 'md') return FILE_TEMPLATES['markdown'];
-    
-    // Default empty template
+
     return { content: '', description: 'Empty file' };
 };
 
-// Enhanced file validation
-const validateFileName = (name: string, type: 'file' | 'folder'): { valid: boolean; error?: string } => {
-    // Check for invalid characters
-    const invalidChars = /[<>:"|?*\\]/;
-    if (invalidChars.test(name)) {
-        return { valid: false, error: 'Name contains invalid characters' };
-    }
-    
-    // Check for reserved names (Windows)
-    const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
-    if (reservedNames.includes(name.toUpperCase())) {
-        return { valid: false, error: 'Name is reserved by the system' };
-    }
-    
-    // Check for empty name
-    if (!name.trim()) {
-        return { valid: false, error: 'Name cannot be empty' };
-    }
-    
-    // Check for trailing/leading spaces and dots
-    if (name.startsWith(' ') || name.endsWith(' ') || name.startsWith('.') || name.endsWith('.')) {
-        return { valid: false, error: 'Name cannot start or end with spaces or dots' };
-    }
-    
-    // File-specific validation
-    if (type === 'file') {
-        // Check for file name length
-        if (name.length > 255) {
-            return { valid: false, error: 'File name too long' };
-        }
-        
-        // Check if file has extension (optional)
-        if (!name.includes('.') && name !== 'README' && name !== 'LICENSE' && name !== 'Dockerfile') {
-            // Don't require extension for common files
-            console.warn('File may be missing an extension');
-        }
-    } else {
-        // Folder-specific validation
-        if (name.length > 248) {
-            return { valid: false, error: 'Folder name too long' };
-        }
-    }
-    
-    return { valid: true };
-};
 // Project templates for scaffolding
 const PROJECT_TEMPLATES: Record<string, { files: { name: string; content: string }[]; description: string }> = {
     'react-app': {
@@ -299,39 +214,6 @@ const PROJECT_TEMPLATES: Record<string, { files: { name: string; content: string
         ]
     }
 };
-const getUniqueName = (name: string, siblings: FileNode[], type: 'file' | 'folder'): string => {
-    const existingNames = new Set(siblings.map((s: FileNode) => s.name.toLowerCase()));
-
-    if (!existingNames.has(name.toLowerCase())) {
-        return name;
-    }
-
-    // Split name into base and extension for files
-    let baseName: string;
-    let extension: string;
-
-    if (type === 'file') {
-        const lastDot = name.lastIndexOf('.');
-        if (lastDot > 0) {
-            baseName = name.substring(0, lastDot);
-            extension = name.substring(lastDot); // includes the dot
-        } else {
-            baseName = name;
-            extension = '';
-        }
-    } else {
-        baseName = name;
-        extension = '';
-    }
-
-    // Find the next available number
-    let counter = 1;
-    while (existingNames.has(`${baseName} (${counter})${extension}`.toLowerCase())) {
-        counter++;
-    }
-
-    return `${baseName} (${counter})${extension}`;
-};
 
 interface ProjectFileState {
     fileTree: FileNode[];
@@ -341,29 +223,35 @@ interface ProjectFileState {
 
 interface ProjectUIState {
     selectedFolder: string | null;
+    selectedNodeId: string | null;
     creationState: { type: 'file' | 'folder' | null; parentId: string | null; isActive: boolean };
     selectedNodes: Set<string>;
     clipboard: { nodeIds: string[]; mode: 'cut' | 'copy' } | null;
     activeFileMeta: { id: string; name: string } | null;
+    expandedFolderIds: Set<string>;
 }
 
 interface ProjectActions {
     setActiveFile: (file: FileNode) => void;
     setSelectedFolder: (folderId: string | null) => void;
+    setSelectedNode: (nodeId: string | null) => void;
     toggleFolder: (folderId: string) => void;
-    createFile: (path: string, content?: string) => void;
-    createFolder: (path: string) => void;
-    createNestedFolders: (path: string) => void;
+    createFile: (path: string, content?: string) => TreeOperationResult;
+    createFolder: (path: string) => TreeOperationResult;
+    createNestedFolders: (path: string) => TreeOperationResult;
+    createFileInFolder: (parentId: string, name: string, content?: string) => TreeOperationResult;
+    createFolderInFolder: (parentId: string, name: string) => TreeOperationResult;
+    ensureFolderUnder: (parentId: string, path: string) => TreeOperationResult;
     createProjectTemplate: (template: string, name: string) => void;
     deleteNode: (id: string) => void;
-    updateFileContent: (fileId: string, content: string) => void;
+    updateFileContent: (fileId: string, content: string) => TreeOperationResult;
     startCreating: (type: 'file' | 'folder', parentId?: string) => void;
     cancelCreation: () => void;
     commitCreation: (name: string) => void;
-    renameNode: (id: string, newName: string) => void;
+    renameNode: (id: string, newName: string) => TreeOperationResult;
     collapseAll: () => void;
     expandAll: () => void;
-    moveNode: (sourceId: string, targetFolderId: string) => void;
+    moveNode: (sourceId: string, targetFolderId: string) => TreeOperationResult;
     toggleSelection: (id: string, multi: boolean) => void;
     selectRange: (startId: string, endId: string, allVisibleNodes: string[]) => void;
     selectAll: (allVisibleNodes: string[]) => void;
@@ -372,40 +260,64 @@ interface ProjectActions {
     cutNodes: (ids: string[]) => void;
     copyNodes: (ids: string[]) => void;
     pasteNodes: (targetFolderId: string) => void;
-    duplicateNode: (id: string) => void;
+    duplicateNode: (id: string) => TreeOperationResult;
     expandRecursively: (folderId: string) => void;
     getFileTree: () => FileNode[];
     getActiveFile: () => FileNode | null;
 }
 
-// Three independent rendering domains:
-//  - FILE context   (per-keystroke): fileTree / activeFile / modifiedFiles
-//  - UI context     (discrete): selection, creation, clipboard, active-file meta
-//  - ACTIONS context (stable): every mutation action is referentially stable so
-//    subscribers never re-render from typing or selection churn.
 const ProjectFileContext = createContext<ProjectFileState | undefined>(undefined);
 const ProjectUIContext = createContext<ProjectUIState | undefined>(undefined);
 const ProjectActionsContext = createContext<ProjectActions | undefined>(undefined);
 
+// The initial load is computed once and shared across the (possibly twice-run)
+// StrictMode initializers, so the repair + immediate-persist boundary is hit
+// exactly once per app boot.
+let initialLoadCache: RepairResult | null = null;
+const getInitialLoad = (): RepairResult => {
+    if (!initialLoadCache) initialLoadCache = loadFileTree();
+    return initialLoadCache;
+};
+
+/** Apply an operation against the latest committed tree (same-tick accurate). */
+const useTreeMutation = (
+    latestTreeRef: React.MutableRefObject<FileNode[]>,
+    setFileTree: React.Dispatch<React.SetStateAction<FileNode[]>>,
+) =>
+    useCallback((op: (tree: FileNode[]) => TreeOperationResult): TreeOperationResult => {
+        const result = op(latestTreeRef.current);
+        if (result.changed && !result.error) {
+            latestTreeRef.current = result.tree;
+            setFileTree(result.tree);
+        } else if (result.error && import.meta.env.DEV) {
+            console.warn(
+                `[FileTree] Rejected mutation (${result.error.code}): ${result.error.message}`,
+            );
+        }
+        return result;
+    }, [latestTreeRef, setFileTree]);
+
 export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
-    const [fileTree, setFileTree] = useState<FileNode[]>(loadFileTree);
+    const initial = getInitialLoad();
+    const [fileTree, setFileTree] = useState<FileNode[]>(initial.tree);
+    const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
+        const set = new Set<string>(initial.expansion);
+        set.add(ROOT_NODE_ID);
+        return set;
+    });
     const [activeFile, setActiveFileState] = useState<FileNode | null>(() => {
         const savedActiveId = localStorage.getItem(ACTIVE_FILE_KEY);
         if (savedActiveId) {
-            // We reload the tree here to find the node. 
-            // Since loadFileTree is deterministic (reads from LS), this matches the tree state.
-            const tree = loadFileTree();
-            const node = findNodeById(tree, savedActiveId);
-            if (node && node.type === 'file') {
-                return node;
-            }
+            const node = findNodeById(initial.tree, savedActiveId);
+            if (node && node.type === 'file') return node;
         }
         return null;
     });
     const [activeFileMeta, setActiveFileMeta] = useState<{ id: string; name: string } | null>(() =>
         activeFile ? { id: activeFile.id, name: activeFile.name } : null
     );
-    const [selectedFolder, setSelectedFolderState] = useState<string | null>('root');
+    const [selectedFolder, setSelectedFolderState] = useState<string | null>(ROOT_NODE_ID);
+    const [selectedNodeId, setSelectedNodeState] = useState<string | null>(null);
     const [creationState, setCreationState] = useState<{ type: 'file' | 'folder' | null; parentId: string | null; isActive: boolean }>({
         type: null,
         parentId: null,
@@ -416,15 +328,20 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
 
     // Latest-state ref so every action stays referentially stable while still
-    // reading the freshest tree/active file/selection. Event handlers run after
-    // effects, so the ref is always current when an action is invoked.
-    const stateRef = useRef({ fileTree, activeFile, selectedFolder, creationState, clipboard });
+    // reading the freshest tree/active file/selection. `latestTreeRef` is the
+    // ONLY authoritative mutable tree handle: it is advanced synchronously by
+    // applyTreeMutation, so batched operations in one tick never collide.
+    const latestTreeRef = useRef<FileNode[]>(fileTree);
+    const stateRef = useRef({ fileTree, activeFile, selectedFolder, selectedNodeId, creationState, clipboard, expandedFolderIds });
     useEffect(() => {
-        stateRef.current = { fileTree, activeFile, selectedFolder, creationState, clipboard };
+        stateRef.current = { fileTree, activeFile, selectedFolder, selectedNodeId, creationState, clipboard, expandedFolderIds };
     });
 
+    const applyTreeMutation = useTreeMutation(latestTreeRef, setFileTree);
+
     // Save fileTree to localStorage whenever it changes (unless workspace
-    // persistence is disabled in Privacy settings).
+    // persistence is disabled in Privacy settings). fileTree only ever contains
+    // validated, structurally sound data — expansion/selection never touch it.
     useEffect(() => {
         if (getSettings().privacy.saveWorkspaceState) {
             saveFileTree(fileTree);
@@ -440,306 +357,276 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         }
     }, []);
 
+    /**
+     * Refresh the active-file node + meta from the latest committed tree. Ids
+     * are stable across rename/move, but the node object (and its name) can
+     * change, so re-fetch by id to keep CodeEditor / panels on fresh data.
+     */
+    const refreshActiveFileFromTree = useCallback(() => {
+        const current = stateRef.current.activeFile;
+        if (!current) return;
+        const node = findNodeById(latestTreeRef.current, current.id);
+        if (!node) return;
+        if (node !== current) setActiveFileState(node);
+        setActiveFileMeta(prev =>
+            prev && prev.id === node.id ? { id: node.id, name: node.name } : prev,
+        );
+    }, []);
+
+    // ============================================================================
+    // Expansion — pure UI state, NEVER a filesystem mutation.
+    // ============================================================================
+
     const toggleFolder = useCallback((folderId: string) => {
-        setFileTree(prev => toggleFolderRecursive(prev, folderId));
-    }, []);
-
-    const createFile = useCallback((path: string, content?: string) => {
-        const parts = path.split('/');
-        const fileName = parts.pop()!;
-        
-        // Validate file name
-        const validation = validateFileName(fileName, 'file');
-        if (!validation.valid) {
-            console.error('Invalid file name:', validation.error);
-            return;
-        }
-        
-        // Get parent folder to check for existing files
-        const parentId = path.lastIndexOf('/') !== -1 ? path.substring(0, path.lastIndexOf('/')) : 'root';
-        const { fileTree } = stateRef.current;
-        let siblings: FileNode[] = [];
-        
-        if (parentId === 'root') {
-            siblings = fileTree;
-        } else {
-            const parentNode = findNodeById(fileTree, parentId);
-            siblings = parentNode?.children || [];
-        }
-        
-        // Get unique name if needed
-        const uniqueName = getUniqueName(fileName, siblings, 'file');
-        const finalPath = parentId === 'root' ? uniqueName : `${parentId}/${uniqueName}`;
-        
-        // Get template content if none provided
-        const templateContent = content !== undefined ? content : getFileTemplate(uniqueName, parentId).content;
-
-        const newFile: FileNode = {
-            id: finalPath,
-            name: uniqueName,
-            type: 'file',
-            content: templateContent
-        };
-
-        setFileTree(prev => {
-            // If adding to root, just append to the list
-            if (parentId === 'root') {
-                return [...prev, newFile];
-            }
-
-            const updateRecursive = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(node => {
-                    if (node.id === parentId) {
-                        return { ...node, children: [...(node.children || []), newFile], isOpen: true };
-                    }
-                    if (node.children) {
-                        return { ...node, children: updateRecursive(node.children) };
-                    }
-                    return node;
-                });
-            };
-
-            return updateRecursive(prev);
-        });
-
-        setActiveFile(newFile);
-    }, [setActiveFile]);
-
-    const createFolder = useCallback((path: string) => {
-        const parts = path.split('/');
-        const folderName = parts.pop()!;
-        
-        // Validate folder name
-        const validation = validateFileName(folderName, 'folder');
-        if (!validation.valid) {
-            console.error('Invalid folder name:', validation.error);
-            return;
-        }
-        
-        // Get parent folder to check for existing folders
-        const parentId = path.lastIndexOf('/') !== -1 ? path.substring(0, path.lastIndexOf('/')) : 'root';
-        const { fileTree } = stateRef.current;
-        let siblings: FileNode[] = [];
-        
-        if (parentId === 'root') {
-            siblings = fileTree;
-        } else {
-            const parentNode = findNodeById(fileTree, parentId);
-            siblings = parentNode?.children || [];
-        }
-        
-        // Get unique name if needed
-        const uniqueName = getUniqueName(folderName, siblings, 'folder');
-        const finalPath = parentId === 'root' ? uniqueName : `${parentId}/${uniqueName}`;
-
-        const newFolder: FileNode = {
-            id: finalPath,
-            name: uniqueName,
-            type: 'folder',
-            isOpen: true,
-            children: []
-        };
-
-        setFileTree(prev => {
-            // If adding to root, just append to the list
-            if (parentId === 'root') {
-                return [...prev, newFolder];
-            }
-
-            const updateRecursive = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(node => {
-                    if (node.id === parentId) {
-                        return { ...node, children: [...(node.children || []), newFolder], isOpen: true };
-                    }
-                    if (node.children) {
-                        return { ...node, children: updateRecursive(node.children) };
-                    }
-                    return node;
-                });
-            };
-
-            return updateRecursive(prev);
+        setExpandedFolderIds(prev => {
+            const next = new Set(prev);
+            if (next.has(folderId)) next.delete(folderId);
+            else next.add(folderId);
+            return next;
         });
     }, []);
 
-    // Create nested folder structure
-    const createNestedFolders = useCallback((path: string) => {
-        const parts = path.split('/').filter(part => part.trim());
-        let currentPath = '';
-        
-        parts.forEach((folderName, index) => {
-            currentPath = index === 0 ? folderName : `${currentPath}/${folderName}`;
-            
-            // Check if folder already exists
-            const existingFolder = findNodeById(stateRef.current.fileTree, currentPath);
-            if (!existingFolder) {
-                createFolder(currentPath);
-            }
-        });
-    }, [createFolder]);
+    const collapseAll = useCallback(() => {
+        setExpandedFolderIds(new Set([ROOT_NODE_ID]));
+    }, []);
 
-    const deleteNode = useCallback((id: string) => {
+    const expandAll = useCallback(() => {
+        setExpandedFolderIds(new Set(collectFolderIds(latestTreeRef.current)));
+    }, []);
+
+    const expandRecursively = useCallback((folderId: string) => {
+        setExpandedFolderIds(prev => {
+            const target = findNodeById(latestTreeRef.current, folderId);
+            if (!target || target.type !== 'folder') return prev;
+            const subtreeIds = new Set<string>([folderId]);
+            const stack: FileNode[] = [];
+            const kids = target.children ?? [];
+            for (const k of kids) stack.push(k);
+            const visited = new WeakSet<object>();
+            while (stack.length > 0) {
+                const n = stack.pop()!;
+                if (!n || visited.has(n)) continue;
+                visited.add(n);
+                if (n.type === 'folder') subtreeIds.add(n.id);
+                const childKids = n.children ?? [];
+                for (const k of childKids) stack.push(k);
+            }
+            const next = new Set(prev);
+            for (const id of subtreeIds) next.add(id);
+            return next;
+        });
+    }, []);
+
+    // ============================================================================
+    // Create
+    // ============================================================================
+
+    const splitPath = (path: string): { dirs: string; name: string; parentId: string } => {
+        const idx = path.lastIndexOf('/');
+        if (idx === -1) return { dirs: '', name: path, parentId: ROOT_NODE_ID };
+        const dirs = path.substring(0, idx);
+        return { dirs, name: path.substring(idx + 1), parentId: dirs };
+    };
+
+    const createFile = useCallback((path: string, content?: string): TreeOperationResult => {
+        const { dirs, name, parentId } = splitPath(path);
+        const templateContent = content !== undefined ? content : getFileTemplate(name, dirs).content;
+        return applyTreeMutation(tree => {
+            let t = tree;
+            let actualParentId = parentId;
+            if (dirs) {
+                const ensured = ensureFolderPath(t, dirs);
+                if (ensured.error) return ensured;
+                if (ensured.changed) t = ensured.tree;
+                // `dirs` is a NAME path; the created/existing folders have
+                // opaque ids, so re-parent by the resolved deepest folder id.
+                actualParentId = ensured.node?.id ?? parentId;
+            }
+            const result = opCreateFile(t, { name, parentId: actualParentId, content: templateContent });
+            if (result.changed && result.node) {
+                setActiveFile(result.node);
+            }
+            return result;
+        });
+    }, [applyTreeMutation, setActiveFile]);
+
+    const createFolder = useCallback((path: string): TreeOperationResult => {
+        const { dirs, name, parentId } = splitPath(path);
+        return applyTreeMutation(tree => {
+            let t = tree;
+            let actualParentId = parentId;
+            if (dirs) {
+                const ensured = ensureFolderPath(t, dirs);
+                if (ensured.error) return ensured;
+                if (ensured.changed) t = ensured.tree;
+                actualParentId = ensured.node?.id ?? parentId;
+            }
+            return opCreateFolder(t, { name, parentId: actualParentId });
+        });
+    }, [applyTreeMutation]);
+
+    const createNestedFolders = useCallback((path: string): TreeOperationResult => {
+        return applyTreeMutation(tree => ensureFolderPath(tree, path));
+    }, [applyTreeMutation]);
+
+    /** Create a file directly under a resolved parent id (Explorer/terminal UI). */
+    const createFileInFolder = useCallback((parentId: string, name: string, content?: string): TreeOperationResult => {
+        const templateContent = content !== undefined ? content : getFileTemplate(name, parentId).content;
+        return applyTreeMutation(tree => {
+            const result = opCreateFile(tree, { name, parentId, content: templateContent });
+            if (result.changed && result.node) {
+                setActiveFile(result.node);
+            }
+            return result;
+        });
+    }, [applyTreeMutation, setActiveFile]);
+
+    /** Create a folder directly under a resolved parent id (Explorer/terminal UI). */
+    const createFolderInFolder = useCallback((parentId: string, name: string): TreeOperationResult => {
+        return applyTreeMutation(tree => opCreateFolder(tree, { name, parentId }));
+    }, [applyTreeMutation]);
+
+    /** mkdir -p under a resolved parent id, resolving segments by name. */
+    const ensureFolderUnder = useCallback((parentId: string, path: string): TreeOperationResult => {
+        const parts = path.split('/').filter((p) => p.trim().length > 0);
+        if (parts.length === 0) return applyTreeMutation(tree => noopResult(tree));
+        return applyTreeMutation(tree => {
+            let t = tree;
+            let pid = parentId;
+            for (const part of parts) {
+                const existing = findChildByName(t, pid, part);
+                if (existing && existing.type === 'folder') {
+                    pid = existing.id;
+                    continue;
+                }
+                const res = opCreateFolder(t, { name: part, parentId: pid });
+                if (!res.changed || !res.node) return { ...res, tree: t };
+                t = res.tree;
+                pid = res.node.id;
+            }
+            return { tree: t, changed: t !== tree };
+        });
+    }, [applyTreeMutation]);
+
+    // ============================================================================
+    // Delete
+    // ============================================================================
+
+    /** Resolve an id OR a name-path (AI `delete_file` passes action.path) to a node id. */
+    const resolveNodeId = useCallback((input: string): string | null => {
+        if (findNodeById(latestTreeRef.current, input)) return input;
+        const node = resolvePath(latestTreeRef.current, input);
+        return node && node.id !== ROOT_NODE_ID ? node.id : null;
+    }, []);
+
+    const deleteNode = useCallback((idOrPath: string) => {
+        const id = resolveNodeId(idOrPath);
+        if (!id) return;
         const { activeFile, selectedFolder } = stateRef.current;
-        // Check if we are deleting the currently selected folder or one of its parents
-        const isDeletingSelected = selectedFolder === id || selectedFolder?.startsWith(id + '/');
-        if (isDeletingSelected) {
-            setSelectedFolderState('root');
-        }
+        const tree = latestTreeRef.current;
 
-        // Check if active file is being deleted or inside a deleted folder
-        const isActiveFileDeleted = activeFile?.id === id || activeFile?.id.startsWith(id + '/');
+        if (isDescendantOf(tree, id, selectedFolder)) setSelectedFolderState(ROOT_NODE_ID);
+        if (isDescendantOf(tree, id, stateRef.current.selectedNodeId)) setSelectedNodeState(null);
+
+        const isActiveFileDeleted = isDescendantOf(tree, id, activeFile?.id ?? null);
         if (isActiveFileDeleted) {
             setActiveFileState(null);
             setActiveFileMeta(null);
             localStorage.removeItem(ACTIVE_FILE_KEY);
         }
-
-        setFileTree(prev => deleteNodeRecursive(prev, id));
-    }, []);
-
-    // Bulk delete multiple nodes
-    const deleteMultipleNodes = useCallback((ids: string[]) => {
-        const { activeFile, selectedFolder } = stateRef.current;
-        // Check if selected folder or active file is among the deleted
-        for (const id of ids) {
-            const isDeletingSelected = selectedFolder === id || selectedFolder?.startsWith(id + '/');
-            if (isDeletingSelected) {
-                setSelectedFolderState('root');
+        setModifiedFiles(prev => {
+            if (prev.size === 0) return prev;
+            const next = new Set<string>();
+            for (const fid of prev) {
+                if (!isDescendantOf(tree, id, fid)) next.add(fid);
             }
-            const isActiveFileDeleted = activeFile?.id === id || activeFile?.id.startsWith(id + '/');
+            return next.size === prev.size ? prev : next;
+        });
+        setExpandedFolderIds(prev => {
+            let changed = false;
+            const next = new Set<string>();
+            for (const eid of prev) {
+                if (isDescendantOf(tree, id, eid)) changed = true;
+                else next.add(eid);
+            }
+            return changed ? next : prev;
+        });
+
+        applyTreeMutation(tree => opDeleteNode(tree, id));
+    }, [applyTreeMutation, resolveNodeId]);
+
+    const deleteMultipleNodes = useCallback((ids: string[]) => {
+        const { activeFile } = stateRef.current;
+        for (const id of ids) {
+            const resolved = resolveNodeId(id);
+            if (!resolved) continue;
+            const tree = latestTreeRef.current;
+            const isDeletingSelected = isDescendantOf(tree, resolved, stateRef.current.selectedFolder);
+            if (isDeletingSelected) setSelectedFolderState(ROOT_NODE_ID);
+            const isActiveFileDeleted = isDescendantOf(tree, resolved, activeFile?.id ?? null);
             if (isActiveFileDeleted) {
                 setActiveFileState(null);
                 setActiveFileMeta(null);
                 localStorage.removeItem(ACTIVE_FILE_KEY);
             }
         }
-
-        setFileTree(prev => {
-            let tree = prev;
-            for (const id of ids) {
-                tree = deleteNodeRecursive(tree, id);
-            }
-            return tree;
-        });
-
+        for (const id of ids) {
+            const resolved = resolveNodeId(id);
+            if (resolved) applyTreeMutation(tree => opDeleteNode(tree, resolved));
+        }
         setSelectedNodes(new Set());
-    }, []);
+        setSelectedNodeState(null);
+    }, [applyTreeMutation, resolveNodeId]);
 
     const clearSelection = useCallback(() => {
         setSelectedNodes(new Set());
     }, []);
 
-    // Clipboard: cut nodes (mark for moving)
+    // ============================================================================
+    // Clipboard
+    // ============================================================================
+
     const cutNodes = useCallback((ids: string[]) => {
         setClipboard({ nodeIds: ids, mode: 'cut' });
     }, []);
 
-    // Clipboard: copy nodes (mark for duplicating)
     const copyNodes = useCallback((ids: string[]) => {
         setClipboard({ nodeIds: ids, mode: 'copy' });
     }, []);
 
-    // Clipboard: paste nodes into target folder
     const pasteNodes = useCallback((targetFolderId: string) => {
-        const { clipboard, fileTree } = stateRef.current;
+        const { clipboard } = stateRef.current;
         if (!clipboard || clipboard.nodeIds.length === 0) return;
 
-        // Collect the actual nodes
-        const nodesToPaste: FileNode[] = [];
-        for (const id of clipboard.nodeIds) {
-            const node = findNodeById(fileTree, id);
-            if (node) nodesToPaste.push(node);
-        }
-        if (nodesToPaste.length === 0) return;
-
-        // Get siblings in the target folder for unique naming
-        let targetChildren: FileNode[] = [];
-        if (targetFolderId === 'root') {
-            targetChildren = fileTree;
-        } else {
-            const targetNode = findNodeById(fileTree, targetFolderId);
-            targetChildren = targetNode?.children || [];
-        }
-
         if (clipboard.mode === 'cut') {
-            // Move: remove from source, add to target
-            setFileTree(prev => {
-                // First remove all cut nodes
-                let tree = prev;
-                for (const id of clipboard.nodeIds) {
-                    tree = deleteNodeRecursive(tree, id);
-                }
-
-                // Then add them to the target
-                for (const node of nodesToPaste) {
-                    if (targetFolderId === 'root') {
-                        tree = [...tree, node];
-                    } else {
-                        const addToFolder = (nodes: FileNode[]): FileNode[] => {
-                            return nodes.map(n => {
-                                if (n.id === targetFolderId) {
-                                    return { ...n, children: [...(n.children || []), node], isOpen: true };
-                                }
-                                if (n.children) {
-                                    return { ...n, children: addToFolder(n.children) };
-                                }
-                                return n;
-                            });
-                        };
-                        tree = addToFolder(tree);
-                    }
-                }
-                return tree;
-            });
-            setClipboard(null); // Clear clipboard after cut-paste
+            for (const id of clipboard.nodeIds) {
+                applyTreeMutation(tree => opMoveNode(tree, id, targetFolderId));
+            }
         } else {
-            // Copy: clone nodes and add to target with unique names
-            setFileTree(prev => {
-                let tree = prev;
-                for (const node of nodesToPaste) {
-                    const uniqueName = getUniqueName(node.name, targetChildren, node.type);
-                    const cloned = cloneNode({ ...node, name: uniqueName }, targetFolderId);
-
-                    if (targetFolderId === 'root') {
-                        tree = [...tree, cloned];
-                    } else {
-                        const addToFolder = (nodes: FileNode[]): FileNode[] => {
-                            return nodes.map(n => {
-                                if (n.id === targetFolderId) {
-                                    return { ...n, children: [...(n.children || []), cloned], isOpen: true };
-                                }
-                                if (n.children) {
-                                    return { ...n, children: addToFolder(n.children) };
-                                }
-                                return n;
-                            });
-                        };
-                        tree = addToFolder(tree);
-                    }
-                    // Update targetChildren for next iteration to avoid duplicate names
-                    targetChildren = [...targetChildren, cloned];
-                }
-                return tree;
-            });
-        }
-
-        setSelectedNodes(new Set());
-    }, []);
-
-    const startCreating = useCallback((type: 'file' | 'folder', parentId: string = 'root') => {
-        // Validation: Ensure parentId exists in the tree (unless it's root)
-        let actualParentId = parentId;
-        if (parentId !== 'root') {
-            const parentNode = findNodeById(stateRef.current.fileTree, parentId);
-            if (!parentNode) {
-                // Fallback to root or handle error. 
-                // For now, let's fallback to root to ensure UI shows up.
-                actualParentId = 'root';
+            for (const id of clipboard.nodeIds) {
+                applyTreeMutation(tree => opCopyNode(tree, id, targetFolderId));
             }
         }
 
-        // Always expand the parent folder to show the input
-        setFileTree(prev => openFolderRecursive(prev, actualParentId));
+        setClipboard(null);
+        setSelectedNodes(new Set());
+    }, [applyTreeMutation]);
+
+    // ============================================================================
+    // Creation UI flow
+    // ============================================================================
+
+    const startCreating = useCallback((type: 'file' | 'folder', parentId: string = ROOT_NODE_ID) => {
+        let actualParentId = parentId;
+        if (parentId !== ROOT_NODE_ID) {
+            const parentNode = findNodeById(latestTreeRef.current, parentId);
+            if (!parentNode) actualParentId = ROOT_NODE_ID;
+        }
+        setExpandedFolderIds(prev => {
+            const next = new Set(prev);
+            next.add(actualParentId);
+            return next;
+        });
         setCreationState({ type, parentId: actualParentId, isActive: true });
     }, []);
 
@@ -748,298 +635,103 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     }, []);
 
     const commitCreation = useCallback((name: string) => {
-        const { creationState, fileTree } = stateRef.current;
+        const { creationState } = stateRef.current;
         if (!creationState.isActive || !creationState.type) return;
 
-        const parentId = creationState.parentId || 'root';
-
-        // Get sibling names in the target folder
-        let siblings: FileNode[] = [];
-        if (parentId === 'root') {
-            siblings = fileTree;
-        } else {
-            const parentNode = findNodeById(fileTree, parentId);
-            siblings = parentNode?.children || [];
-        }
-
-        // Generate a unique name if duplicate exists
-        const uniqueName = getUniqueName(name, siblings, creationState.type);
-
-        const path = parentId === 'root' ? uniqueName : `${parentId}/${uniqueName}`;
-
+        const parentId = creationState.parentId || ROOT_NODE_ID;
         if (creationState.type === 'file') {
-            createFile(path, '');
+            createFileInFolder(parentId, name, '');
         } else {
-            createFolder(path);
+            createFolderInFolder(parentId, name);
         }
-
         cancelCreation();
-    }, [createFile, createFolder, cancelCreation]);
+    }, [createFileInFolder, createFolderInFolder, cancelCreation]);
 
-    // Update file content in the tree (for persistence)
-    // Preserves object identity for every node whose subtree did not change,
-    // so memoized explorer rows skip re-rendering on unrelated keystrokes.
-    const updateFileContent = useCallback((fileId: string, content: string) => {
-        setFileTree(prev => {
-            const updateRecursive = (nodes: FileNode[]): FileNode[] => {
-                let changed = false;
-                const next = nodes.map(node => {
-                    if (node.id === fileId) {
-                        if (node.content === content) return node;
-                        changed = true;
-                        return { ...node, content };
-                    }
-                    if (node.children) {
-                        const children = updateRecursive(node.children);
-                        if (children !== node.children) {
-                            changed = true;
-                            return { ...node, children };
-                        }
-                    }
-                    return node;
-                });
-                return changed ? next : prev;
-            };
-            return updateRecursive(prev);
-        });
+    // ============================================================================
+    // Update / rename / move / duplicate
+    // ============================================================================
 
-        // Track modified files
-        setModifiedFiles(prev => {
-            const next = new Set(prev);
-            next.add(fileId);
-            return next;
-        });
+    const updateFileContent = useCallback((fileId: string, content: string): TreeOperationResult => {
+        if (isCorruptFileContent(content)) {
+            console.warn('[FileTree] Rejected corrupt AI error sentinel as file content');
+            return { tree: latestTreeRef.current, changed: false, error: { code: 'invalid-content' as any, message: 'Rejected AI error sentinel' } } as TreeOperationResult;
+        }
+        const result = applyTreeMutation(tree => opUpdateFileContent(tree, fileId, content));
 
-        // Also update activeFile if it's the same file (functional update:
-        // no dependency on activeFile state keeps this callback stable)
-        setActiveFileState(prev => {
-            if (prev?.id === fileId && prev.content === content) return prev;
-            if (prev?.id === fileId) return { ...prev, content };
-            return prev;
-        });
-    }, []);
+        if (result.changed) {
+            setModifiedFiles(prev => {
+                const next = new Set(prev);
+                next.add(fileId);
+                return next;
+            });
+            setActiveFileState(prev => {
+                if (prev?.id !== fileId || prev.content === content) return prev;
+                return { ...prev, content };
+            });
+        }
+        return result;
+    }, [applyTreeMutation]);
 
-    const renameNode = useCallback((id: string, newName: string) => {
-        setFileTree(prev => {
-            // Structural sharing: clone only the ancestor chain of the renamed
-            // node; identical-name renames return the same tree reference.
-            const updateRecursive = (nodes: FileNode[]): FileNode[] => {
-                let changed = false;
-                const next = nodes.map(node => {
-                    if (node.id === id) {
-                        if (node.name === newName) return node;
-                        changed = true;
-                        return { ...node, name: newName };
-                    }
-                    if (node.children) {
-                        const children = updateRecursive(node.children);
-                        if (children !== node.children) {
-                            changed = true;
-                            return { ...node, children };
-                        }
-                    }
-                    return node;
-                });
-                return changed ? next : prev;
-            };
-            return updateRecursive(prev);
-        });
-    }, []);
+    const renameNode = useCallback((id: string, newName: string): TreeOperationResult => {
+        const result = applyTreeMutation(tree => opRenameNode(tree, id, newName));
+        if (result.changed) refreshActiveFileFromTree();
+        return result;
+    }, [applyTreeMutation, refreshActiveFileFromTree]);
 
     const setSelectedFolder = useCallback((folderId: string | null) => {
         setSelectedFolderState(folderId);
     }, []);
 
-    // Create project from template
+    const setSelectedNode = useCallback((nodeId: string | null) => {
+        setSelectedNodeState(nodeId);
+    }, []);
+
+    const moveNode = useCallback((sourceId: string, targetFolderId: string): TreeOperationResult => {
+        const result = applyTreeMutation(tree => opMoveNode(tree, sourceId, targetFolderId));
+        if (result.changed) refreshActiveFileFromTree();
+        return result;
+    }, [applyTreeMutation, refreshActiveFileFromTree]);
+
+    const duplicateNode = useCallback((id: string): TreeOperationResult => {
+        return applyTreeMutation(tree => opDuplicateNode(tree, id));
+    }, [applyTreeMutation]);
+
+    // ============================================================================
+    // Project templates
+    // ============================================================================
+
     const createProjectTemplate = useCallback((template: string, name: string) => {
         const projectTemplate = PROJECT_TEMPLATES[template];
         if (!projectTemplate) {
             console.error('Template not found:', template);
             return;
         }
-        
-        // Validate project name
-        const validation = validateFileName(name, 'folder');
-        if (!validation.valid) {
-            console.error('Invalid project name:', validation.error);
-            return;
-        }
-        
-        // Get unique name for project
-        const uniqueName = getUniqueName(name, stateRef.current.fileTree, 'folder');
-        
-        // Create main project folder
-        createFolder(uniqueName);
-        
-        // Create all files and folders from template
+
+        const created = createFolder(name);
+        const uniqueName = created.node?.name ?? name;
+        const folderId = created.node?.id ?? uniqueName;
+
         projectTemplate.files.forEach(file => {
-            const filePath = file.name.includes('/') 
-                ? `${uniqueName}/${file.name}` 
+            const filePath = file.name.includes('/')
+                ? `${uniqueName}/${file.name}`
                 : `${uniqueName}/${file.name}`;
-            
-            // Create nested folders if needed
+
             if (file.name.includes('/')) {
                 const folderPath = file.name.substring(0, file.name.lastIndexOf('/'));
                 createNestedFolders(`${uniqueName}/${folderPath}`);
             }
-            
+
             createFile(filePath, file.content);
         });
-        
+
         // Expand the project folder
-        toggleFolder(uniqueName);
-        setSelectedFolder(uniqueName);
-    }, [createFolder, createFile, createNestedFolders, toggleFolder, setSelectedFolder]);
-
-    // Collapse all folders
-    const collapseAll = useCallback(() => {
-        const collapseRecursive = (nodes: FileNode[]): FileNode[] => {
-            return nodes.map(node => ({
-                ...node,
-                isOpen: false,
-                children: node.children ? collapseRecursive(node.children) : undefined
-            }));
-        };
-        setFileTree(prev => collapseRecursive(prev));
-    }, []);
-
-    // Expand all folders
-    const expandAll = useCallback(() => {
-        const expandRecursive = (nodes: FileNode[]): FileNode[] => {
-            return nodes.map(node => ({
-                ...node,
-                isOpen: node.type === 'folder' ? true : node.isOpen,
-                children: node.children ? expandRecursive(node.children) : undefined
-            }));
-        };
-        setFileTree(prev => expandRecursive(prev));
-    }, []);
-
-    // Expand a specific folder and all its subfolders recursively
-    const expandRecursively = useCallback((folderId: string) => {
-        const expandAllChildren = (nodes: FileNode[]): FileNode[] => {
-            return nodes.map(node => ({
-                ...node,
-                isOpen: node.type === 'folder' ? true : node.isOpen,
-                children: node.children ? expandAllChildren(node.children) : undefined
-            }));
-        };
-
-        setFileTree(prev => {
-            const expandTarget = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(node => {
-                    if (node.id === folderId) {
-                        return {
-                            ...node,
-                            isOpen: true,
-                            children: node.children ? expandAllChildren(node.children) : undefined
-                        };
-                    }
-                    if (node.children) {
-                        return { ...node, children: expandTarget(node.children) };
-                    }
-                    return node;
-                });
-            };
-            return expandTarget(prev);
+        setExpandedFolderIds(prev => {
+            const next = new Set(prev);
+            next.add(folderId);
+            return next;
         });
-    }, []);
-
-    // Duplicate a node (file or folder)
-    const duplicateNode = useCallback((id: string) => {
-        const node = findNodeById(stateRef.current.fileTree, id);
-        if (!node) return;
-
-        // Determine parent
-        const lastSlash = id.lastIndexOf('/');
-        const parentId = lastSlash !== -1 ? id.substring(0, lastSlash) : 'root';
-
-        // Get siblings
-        const { fileTree } = stateRef.current;
-        let siblings: FileNode[] = [];
-        if (parentId === 'root') {
-            siblings = fileTree;
-        } else {
-            const parentNode = findNodeById(fileTree, parentId);
-            siblings = parentNode?.children || [];
-        }
-
-        const uniqueName = getUniqueName(node.name, siblings, node.type);
-        const cloneNodeFn = (n: FileNode, newParentPath: string): FileNode => {
-            const newId = newParentPath === 'root' ? uniqueName : `${newParentPath}/${n === node ? uniqueName : n.name}`;
-            return {
-                ...n,
-                id: newId,
-                name: n === node ? uniqueName : n.name,
-                children: n.children?.map(child => cloneNodeFn(child, newId))
-            };
-        };
-
-        const cloned = cloneNodeFn(node, parentId);
-
-        setFileTree(prev => {
-            if (parentId === 'root') {
-                return [...prev, cloned];
-            }
-            const addToFolder = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(n => {
-                    if (n.id === parentId) {
-                        return { ...n, children: [...(n.children || []), cloned] };
-                    }
-                    if (n.children) {
-                        return { ...n, children: addToFolder(n.children) };
-                    }
-                    return n;
-                });
-            };
-            return addToFolder(prev);
-        });
-    }, []);
-
-    // Select all visible nodes
-    const selectAll = useCallback((allVisibleNodes: string[]) => {
-        setSelectedNodes(new Set(allVisibleNodes));
-    }, []);
-
-    // Move a node to a different folder
-    const moveNode = useCallback((sourceId: string, targetFolderId: string) => {
-        const sourceNode = findNodeById(stateRef.current.fileTree, sourceId);
-        if (!sourceNode) return;
-        if (sourceId === targetFolderId) return;
-        // Prevent moving a folder into itself or its children
-        if (targetFolderId.startsWith(sourceId + '/')) return;
-
-        setFileTree(prev => {
-            // First, remove the node from its current location
-            const removeNode = (nodes: FileNode[]): FileNode[] => {
-                return nodes.filter(n => n.id !== sourceId).map(n => ({
-                    ...n,
-                    children: n.children ? removeNode(n.children) : undefined
-                }));
-            };
-
-            // Then, add it to the target folder
-            const addToTarget = (nodes: FileNode[]): FileNode[] => {
-                return nodes.map(n => {
-                    if (n.id === targetFolderId) {
-                        return { ...n, children: [...(n.children || []), sourceNode], isOpen: true };
-                    }
-                    if (n.children) {
-                        return { ...n, children: addToTarget(n.children) };
-                    }
-                    return n;
-                });
-            };
-
-            let newTree = removeNode(prev);
-            if (targetFolderId === 'root') {
-                newTree = [...newTree, sourceNode];
-            } else {
-                newTree = addToTarget(newTree);
-            }
-            return newTree;
-        });
-    }, []);
+        setSelectedFolder(folderId);
+    }, [createFolder, createFile, createNestedFolders, setSelectedFolder]);
 
     const toggleSelection = useCallback((id: string, multi: boolean) => {
         setSelectedNodes(prev => {
@@ -1063,19 +755,24 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         setSelectedNodes(new Set(range));
     }, []);
 
-    // Imperative getters for components that need current state only inside
-    // event handlers (AI context, terminal mock shell, dev tools) — they can
-    // stay off the high-frequency FILE context entirely.
-    const getFileTree = useCallback(() => stateRef.current.fileTree, []);
+    const selectAll = useCallback((allVisibleNodes: string[]) => {
+        setSelectedNodes(new Set(allVisibleNodes));
+    }, []);
+
+    const getFileTree = useCallback(() => latestTreeRef.current, []);
     const getActiveFile = useCallback(() => stateRef.current.activeFile, []);
 
     const actionsValue = React.useMemo<ProjectActions>(() => ({
         setActiveFile,
         setSelectedFolder,
+        setSelectedNode,
         toggleFolder,
         createFile,
         createFolder,
         createNestedFolders,
+        createFileInFolder,
+        createFolderInFolder,
+        ensureFolderUnder,
         createProjectTemplate,
         deleteNode,
         updateFileContent,
@@ -1099,7 +796,8 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         getFileTree,
         getActiveFile,
     }), [
-        setActiveFile, setSelectedFolder, toggleFolder, createFile, createFolder, createNestedFolders,
+        setActiveFile, setSelectedFolder, setSelectedNode, toggleFolder, createFile, createFolder, createNestedFolders,
+        createFileInFolder, createFolderInFolder, ensureFolderUnder,
         createProjectTemplate, deleteNode, updateFileContent, startCreating, cancelCreation, commitCreation,
         renameNode, collapseAll, expandAll, moveNode, toggleSelection, selectRange, selectAll,
         deleteMultipleNodes, clearSelection, cutNodes, copyNodes, pasteNodes, duplicateNode,
@@ -1114,11 +812,13 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
 
     const uiValue = React.useMemo<ProjectUIState>(() => ({
         selectedFolder,
+        selectedNodeId,
         creationState,
         selectedNodes,
         clipboard,
         activeFileMeta,
-    }), [selectedFolder, creationState, selectedNodes, clipboard, activeFileMeta]);
+        expandedFolderIds,
+    }), [selectedFolder, selectedNodeId, creationState, selectedNodes, clipboard, activeFileMeta, expandedFolderIds]);
 
     return (
         <ProjectActionsContext.Provider value={actionsValue}>
@@ -1164,3 +864,6 @@ export const useProjectActions = () => {
     }
     return context;
 };
+
+// Export for diagnostics / dev tools.
+export const getProjectTreeValidation = (tree: FileNode[]) => validateFileTree(tree);

@@ -1,11 +1,12 @@
 import React, { Suspense, lazy } from 'react';
-import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lock, TrendingDown, ChevronRight, Zap, RefreshCw, Wand2, Loader2, CheckCircle, TrendingUp, Calendar, BarChart3 } from 'lucide-react';
+import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lock, TrendingDown, ChevronRight, ChevronDown, Zap, RefreshCw, Wand2, Loader2, CheckCircle, TrendingUp, Calendar, BarChart3 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useProjectFile, useProjectActions } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
 import { useSettingsSelector } from '../../context/SettingsContext';
 import { analyzeCode, type AnalysisResult, type AgeingSignal, type AgeingHotspot } from '../../utils/codeAnalysisEngine';
 import { analysisHistory } from '../../utils/analysisHistory';
+import { sanitizeEditorOutputWithPolicy, NO_AUTO_COMMENTS_INSTRUCTION, resolveLanguageFromFilename, aiRequestManager } from '../../core/ai';
 
 const PerformancePanel = lazy(() =>
     import('./PerformancePanel').then(m => ({ default: m.PerformancePanel }))
@@ -382,7 +383,7 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
 // ────────────────────────────────────────────
 // Main BottomPanel Component
 // ────────────────────────────────────────────
-export const BottomPanel: React.FC = () => {
+export const BottomPanel: React.FC<{ isOverlay?: boolean; isOpen?: boolean; onToggle?: () => void }> = ({ isOverlay, isOpen, onToggle }) => {
     // Persist Active Tab
     const [activeTab, setActiveTab] = useState<'performance' | 'ageing' | 'terminal'>(() => {
         const saved = localStorage.getItem('bottomPanel_activeTab');
@@ -394,7 +395,7 @@ export const BottomPanel: React.FC = () => {
     }, [activeTab]);
     
     const { activeFile } = useProjectFile();
-    const { updateFileContent } = useProjectActions();
+    const { updateFileContent, getActiveFile } = useProjectActions();
     const { lastExecutionData } = useTerminal();
     
     // Auto-switch to terminal tab when run button is clicked (before execution starts)
@@ -424,6 +425,19 @@ export const BottomPanel: React.FC = () => {
     const ageingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastAnalyzedFileIdRef = useRef<string | null>(null);
     const lastAnalyzedContentRef = useRef<string | null>(null);
+    // Guards so a stale AI fix (user switched files / panel unmounted while the
+    // request was in flight) can never overwrite newer content or touch state
+    // after unmount.
+    const fixRequestIdRef = useRef<string | null>(null);
+    const mountedRef = useRef(true);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            if (fixRequestIdRef.current) aiRequestManager.abort(fixRequestIdRef.current, 'unmount');
+        };
+    }, []);
 
     // Reset state when file changes
     useEffect(() => {
@@ -486,7 +500,7 @@ export const BottomPanel: React.FC = () => {
         ageingDebounceRef.current = setTimeout(() => {
             ageingDebounceRef.current = null;
             runNow();
-        }, 600);
+        }, 0);
 
         return () => {
             if (ageingDebounceRef.current) {
@@ -548,12 +562,54 @@ export const BottomPanel: React.FC = () => {
                         setApplyingIndex(null);
                         return;
                 }
-                updateFileContent(activeFile.id, newContent);
-                setAppliedIndices(prev => new Set(prev).add(index));
-                setTimeout(() => setAnalysis(analyzeCode(newContent, language)), 300);
+                // Centralized safe edit — validates and prevents duplication, uses fresh Monaco snapshot
+                const { executeActionPlan } = await import('../../core/ai/aiToolExecutor');
+                const { getActiveEditorContext: getCtx } = await import('../../core/editor/activeEditorStore');
+                const freshCtx = getCtx();
+                const snapshotContent = freshCtx?.code ?? activeFile.content;
+                const fileNameForSnap = freshCtx?.fileName ?? activeFile.name;
+                const snap = snapshotContent ? { filePath: fileNameForSnap, content: snapshotContent, lines: snapshotContent.split('\n'), timestamp: Date.now() } as any : null;
+                const snapMap = new Map<string, any>();
+                if (snap) snapMap.set(fileNameForSnap, snap);
+                const deps = {
+                    getFileContent: (p: string): string | null => {
+                        const ctx = getCtx();
+                        if (ctx && p === ctx.fileName) return ctx.code;
+                        if (p === fileNameForSnap) return snapshotContent;
+                        return null;
+                    },
+                    getFileIdByPath: (p: string) => p === fileNameForSnap ? activeFile.id : null,
+                    createFile: () => ({ success: false, error: 'Not supported' }),
+                    deleteNode: () => {},
+                    renameNode: () => ({ success: false, error: 'Not supported' }),
+                    updateFileContent: (id: string, c: string) => {
+                        const r = updateFileContent(id, c);
+                        return { success: !r.error, error: r.error };
+                    },
+                    getActiveFilePath: () => freshCtx?.fileName ?? fileNameForSnap,
+                    getActiveFileId: () => freshCtx?.fileId ?? activeFile.id,
+                } as any;
+                const resultSafe = await executeActionPlan([{ action: 'update_file', path: fileNameForSnap, content: newContent } as any], deps as any, { language, snapshot: snap, snapshotMap: snapMap } as any);
+                if (!resultSafe.success) {
+                    console.warn('[CodeAgeing] Safe edit rejected:', resultSafe.message);
+                    // Do not apply if validation fails
+                } else {
+                    setAppliedIndices(prev => new Set(prev).add(index));
+                    setTimeout(() => setAnalysis(analyzeCode(newContent, language)), 0);
+                }
             } else {
-                // Enhanced AI-powered fixes with context
-                const { sendChatRequest } = await import('../../utils/groqService');
+                // Enhanced AI-powered fixes with context. Register through the
+                // central request registry so the request is abortable (panel
+                // unmount / newer fix) and its controller.signal threads all the
+                // way to fetch. A stale result is discarded if the file changed
+                // or the panel unmounted mid-flight — never overwrite newer text.
+                const { sendChatRequest, getSmartModel } = await import('../../utils/groqService');
+
+                const record = aiRequestManager.begin({ owner: 'bottom-panel-fix', task: 'complex_code' });
+                fixRequestIdRef.current = record.requestId;
+                const fixController = record.controller;
+                const fileId = activeFile.id;
+                const fileContentAtRequest = activeFile.content;
 
                 const systemPrompt = `You are an expert code refactoring assistant. You will be given the FULL source code of a file and a specific improvement task.
 
@@ -563,7 +619,8 @@ RULES:
 3. Preserve all existing comments, formatting, and structure
 4. Ensure the code remains functional and syntactically correct
 5. Follow modern best practices for the given programming language
-6. Do not add new imports unless absolutely necessary for the fix`;
+6. Do not add new imports unless absolutely necessary for the fix
+7. ${NO_AUTO_COMMENTS_INSTRUCTION}`;
 
                 const contextPrompt = `File: ${activeFile.name}
 Language: ${language}
@@ -572,7 +629,7 @@ Severity: ${signal.severity}
 Category: ${signal.category}
 
 Current code:
-${activeFile.content}
+${fileContentAtRequest}
 
 Required fix: ${signal.recommendation}
 
@@ -583,13 +640,63 @@ Apply the fix while preserving all other code exactly as-is.`;
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: contextPrompt }
                     ],
-                    { temperature: 0.1 }
+                    { temperature: 0.1, model: getSmartModel('fix'), task: 'complex_code', signal: fixController.signal }
                 );
 
-                if (result && result.trim().length > 0 && result !== activeFile.content) {
-                    updateFileContent(activeFile.id, result);
-                    setAppliedIndices(prev => new Set(prev).add(index));
-                    setTimeout(() => setAnalysis(analyzeCode(result, language)), 300);
+                // Stale-guard: the fix must only apply to the same file, same
+                // content it was computed against, and only while mounted. A
+                // stale result is discarded silently (never overwrites newer
+                // user edits, never touches unmounted state).
+                const current = getActiveFile();
+                const stillCurrent =
+                    mountedRef.current &&
+                    fixRequestIdRef.current === record.requestId &&
+                    !fixController.signal.aborted &&
+                    current?.id === fileId &&
+                    current?.content === fileContentAtRequest;
+                if (!stillCurrent) {
+                    aiRequestManager.markStatus(record.requestId, 'aborted');
+                    return;
+                }
+
+                const fixedCode = sanitizeEditorOutputWithPolicy(result, {
+                    task: 'fix',
+                    language: language || resolveLanguageFromFilename(activeFile.name) || 'typescript',
+                    filename: activeFile.name,
+                    outputMode: 'fix',
+                    preserve: fileContentAtRequest,
+                });
+
+                if (fixedCode && fixedCode.length > 0 && fixedCode !== fileContentAtRequest) {
+                    const { executeActionPlan } = await import('../../core/ai/aiToolExecutor');
+                    const { getActiveEditorContext: getCtx2 } = await import('../../core/editor/activeEditorStore');
+                    const snap2 = { filePath: activeFile.name, content: fileContentAtRequest, lines: fileContentAtRequest.split('\n'), timestamp: Date.now() } as any;
+                    const snapMap2 = new Map<string, any>([[activeFile.name, snap2]]);
+                    const deps2 = {
+                        getFileContent: (p: string) => {
+                            const ctx = getCtx2();
+                            if (ctx && p === ctx.fileName) return ctx.code;
+                            if (p === activeFile.name) return fileContentAtRequest;
+                            return null;
+                        },
+                        getFileIdByPath: (p: string) => p === activeFile.name ? fileId : null,
+                        createFile: () => ({ success: false, error: 'Not supported' }),
+                        deleteNode: () => {},
+                        renameNode: () => ({ success: false, error: 'Not supported' }),
+                        updateFileContent: (id: string, c: string) => {
+                            const r = updateFileContent(id, c);
+                            return { success: !r.error, error: r.error };
+                        },
+                        getActiveFilePath: () => getCtx2()?.fileName ?? activeFile.name,
+                        getActiveFileId: () => getCtx2()?.fileId ?? fileId,
+                    } as any;
+                    const res2 = await executeActionPlan([{ action: 'update_file', path: activeFile.name, content: fixedCode } as any], deps2 as any, { language, snapshot: snap2, snapshotMap: snapMap2 } as any);
+                    if (!res2.success) {
+                        console.warn('[CodeAgeing] Safe edit rejected:', res2.message);
+                    } else {
+                        setAppliedIndices(prev => new Set(prev).add(index));
+                        if (mountedRef.current) setTimeout(() => setAnalysis(analyzeCode(fixedCode, language)), 0);
+                    }
                 } else {
                     console.warn('AI fix did not produce changes');
                 }
@@ -597,12 +704,16 @@ Apply the fix while preserving all other code exactly as-is.`;
         } catch (error) {
             console.error('[CodeAgeing] Failed to apply recommendation:', error);
         } finally {
+            if (fixRequestIdRef.current) {
+                aiRequestManager.markStatus(fixRequestIdRef.current, 'complete');
+                fixRequestIdRef.current = null;
+            }
             setApplyingIndex(null);
         }
-    }, [activeFile, applyingIndex, updateFileContent]);
+    }, [activeFile, applyingIndex, updateFileContent, getActiveFile]);
 
     return (
-        <div className="h-full flex flex-col bg-transparent">
+        <div className={`h-full flex flex-col bg-transparent ${isOverlay && !isOpen ? 'overflow-hidden' : ''}`}>
             {/* Glass Tab Bar */}
             <div className="flex items-center px-2 border-b border-white/5 bg-white/[0.02] shrink-0 h-8">
                 <button
@@ -626,6 +737,19 @@ Apply the fix while preserving all other code exactly as-is.`;
                     <Terminal size={14} />
                     <span className="hidden sm:inline">Terminal</span>
                 </button>
+                {isOverlay && (
+                    <>
+                        <div className="flex-1" />
+                        <button
+                            onClick={onToggle}
+                            className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                            title={isOpen ? 'Collapse panel' : 'Expand panel'}
+                            aria-label={isOpen ? 'Collapse panel' : 'Expand panel'}
+                        >
+                            <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? '' : 'rotate-180'}`} />
+                        </button>
+                    </>
+                )}
             </div>
             <div className="flex-1 overflow-auto p-0 custom-scrollbar">
                 <div className="h-full">
@@ -640,7 +764,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                 analysis ? (
                                     <div className="space-y-5 animate-fade-in-up">
                                         {/* ── Top Row: Grade + Score + Category ── */}
-                                        <div className="grid grid-cols-3 gap-4 animate-slide-in">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-slide-in">
                                             {/* Grade Badge & Summary */}
                                             <div className="glass-analysis-card col-span-1 hover-scale" style={{ '--card-accent': gradeColors[analysis.ageingDetails.grade]?.text || '#58a6ff' } as React.CSSProperties}>
                                                 <div className="flex flex-col items-center text-center gap-3">
@@ -720,7 +844,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                         </div>
 
                                         {/* ── Bottom Row: Trend + Hotspots + Recommendations ── */}
-                                        <div className="grid grid-cols-3 gap-4 animate-slide-in">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-slide-in">
                                             {/* Trend Chart */}
                                             <div className="hover-scale">
                                                 <TrendChart fileId={activeFile.id} />
@@ -814,7 +938,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                 <h5 className="text-[10px] text-[#8b949e] uppercase tracking-wider font-semibold mb-3 flex items-center gap-1.5">
                                                     <Activity size={10} /> Halstead Metrics
                                                 </h5>
-                                                <div className="grid grid-cols-4 gap-2">
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                                     {[
                                                         { label: 'Vocab', value: analysis.halstead.vocabulary },
                                                         { label: 'Volume', value: analysis.halstead.volume },

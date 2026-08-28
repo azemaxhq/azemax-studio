@@ -6,12 +6,15 @@ import { useProjectFile, useProjectActions } from '../../context/ProjectContext'
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme } from '../../hooks/useTheme';
 import { getCodeSuggestion, cancelPendingRequest, getInlineCompletion } from '../../utils/codeSuggestionService';
+import { sanitizeAiCodeOutputForLanguage } from '../../utils/aiSanitizer';
+import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
 import { checkCodeErrors } from '../../utils/diagnosticsService';
-import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map, WrapText, Code, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map as MapIcon, WrapText, Code, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
 import { ModernAILogo } from '../Icons/ModernAILogo';
 import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
 import { setCursorPosition, useCursorPosition } from '../../core/runtime/cursorPositionStore';
+import { setActiveEditor, clearActiveEditor } from '../../core/editor/activeEditorStore';
 import type { FileNode } from '../../utils/mockFileSystem';
 
 // Isolated status-bar readout. Subscribes to the external cursor store, so
@@ -32,9 +35,7 @@ const RunButton: React.FC<{ activeFile: FileNode | null; language: string }> = (
             onClick={() => {
                 if (activeFile) {
                     window.dispatchEvent(new CustomEvent('run-button-clicked'));
-                    setTimeout(() => {
-                        runCode(activeFile.content || '', language, activeFile.name);
-                    }, 100);
+                    runCode(activeFile.content || '', language, activeFile.name);
                 }
             }}
             disabled={isRunning || !activeFile}
@@ -72,6 +73,8 @@ const getLanguage = (fileName: string): string => {
     return langMap[ext || ''] || 'typescript';
 };
 
+
+
 interface CodeEditorProps {
     isAiOpen?: boolean;
     onToggleAi?: () => void;
@@ -83,7 +86,7 @@ let githubDarkThemeDefined = false;
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) => {
     const { activeFile } = useProjectFile();
-    const { updateFileContent } = useProjectActions();
+    const { updateFileContent, getFileTree, createFile, deleteNode, renameNode } = useProjectActions();
     const { settings, updateSettings } = useSettings();
     const { isDark } = useTheme();
     const monacoRef = useRef<typeof Monaco | null>(null);
@@ -118,9 +121,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const [hasErrors, setHasErrors] = useState(false);
     const [isCheckSuccess, setIsCheckSuccess] = useState(false);
     const [isFormatting, setIsFormatting] = useState(false);
-    const [_isAiProcessing, setIsAiProcessing] = useState(false);
+    const [, setIsAiProcessing] = useState(false);
     const [activeAiLine, setActiveAiLine] = useState<number | null>(null);
-    const [editorReady, setEditorReady] = useState(false);
+    // Tracks the LIVE editor instance. Unlike a boolean "ready" flag, this
+    // changes identity whenever the inner Monaco editor is (re)created (e.g.
+    // after the placeholder "no file" view), so effects that attach listeners
+    // to the editor re-run on the new instance instead of silently pointing at
+    // a disposed one.
+    const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
     // Responsive toolbar sizing
     const toolbarLeftRef = useRef<HTMLDivElement>(null);
@@ -143,12 +151,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
 
 
-    // Run diagnostics
+    // Run diagnostics — premium AI + local, version-guarded, with deep check
     const runDiagnostics = useCallback(async () => {
         if (!settings.code.diagnostics) return;
         const file = activeFileRef.current;
         if (!file || !monacoRef.current || !editorRef.current) return;
 
+        const model = editorRef.current.getModel();
+        const versionAtStart = model?.getVersionId() ?? -1;
         console.log('Starting diagnostics for file:', file.name);
         setIsChecking(true);
         setHasErrors(false);
@@ -156,27 +166,82 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         
         const code = file.content || '';
         const fileName = file.name;
-        const model = editorRef.current.getModel();
 
         try {
             // Clear existing markers first
-            if (model) {
+            if (model && !model.isDisposed()) {
                 monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', []);
             }
 
             // If code is empty, consider it valid
             if (!code.trim()) {
                 console.log('Empty code, considering valid');
+                if (diagnosticsDecorationsRef.current) {
+                    diagnosticsDecorationsRef.current.clear();
+                    diagnosticsDecorationsRef.current = null;
+                }
                 setIsCheckSuccess(true);
-                setTimeout(() => setIsCheckSuccess(false), 2000);
+                setTimeout(() => setIsCheckSuccess(false), 800);
                 return;
             }
 
-            const result = await checkCodeErrors(code, fileName, monacoRef.current || undefined);
+            // Premium: Use AI deep check (Minimax/DeepSeek via /api/ai/chat) + local Monaco diagnostics
+            // Falls back to local only if AI is unavailable — keeps Check fast and reliable
+            let result;
+            try {
+                const { checkCodeErrorsWithAI } = await import('../../utils/diagnosticsService');
+                // Use AI for files under 8k chars (efficient), local only for huge files
+                if (code.length < 8000) {
+                    result = await checkCodeErrorsWithAI(code, fileName, undefined, monacoRef.current || undefined);
+                } else {
+                    result = await checkCodeErrors(code, fileName, monacoRef.current || undefined);
+                }
+            } catch {
+                result = await checkCodeErrors(code, fileName, monacoRef.current || undefined);
+            }
+            // If user typed during diagnostics, discard stale result
+            if (!model || model.isDisposed() || model.getVersionId() !== versionAtStart) {
+                console.log('Diagnostics: discarding stale result (version changed)');
+                return;
+            }
             console.log('Diagnostics result:', result);
 
-            if (model) {
+            if (model && !model.isDisposed()) {
                 monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', result.markers);
+
+                // Premium smooth annotation: inline highlight + gutter + hover with "why"
+                if (diagnosticsDecorationsRef.current) {
+                    diagnosticsDecorationsRef.current.clear();
+                    diagnosticsDecorationsRef.current = null;
+                }
+                if (result.markers.length > 0) {
+                    const premiumDecorations: Monaco.editor.IModelDeltaDecoration[] = result.markers.slice(0, 15).map(m => {
+                        const isError = m.severity === 8;
+                        const lineContent = model.getLineContent(m.startLineNumber) || '';
+                        const why = m.message.includes('Unclosed') ? 'Mismatched bracket/brace — usually a missing `)` or `}` on this line or previous.'
+                            : m.message.toLowerCase().includes('python') && m.message.toLowerCase().includes('indent') ? 'Python is indentation-sensitive — this line is not aligned with its block.'
+                            : m.source === 'AI DeepCheck' ? 'AI detected a semantic issue — logic, security, or style.'
+                            : `Syntax error in ${lineContent.slice(0, 40).trim() || 'this line'}.`;
+                        const fix = isError ? 'Fix: close the bracket/brace or correct the syntax and press Check again.' : 'Tip: review the line and re-check.';
+                        return {
+                            range: new monacoRef.current!.Range(m.startLineNumber, m.startColumn, m.endLineNumber, m.endColumn),
+                            options: {
+                                isWholeLine: false,
+                                inlineClassName: isError ? 'premium-diag-error-inline' : 'premium-diag-warning-inline',
+                                className: isError ? 'premium-diag-error-line' : 'premium-diag-warning-line',
+                                glyphMarginClassName: isError ? 'premium-diag-glyph-error' : 'premium-diag-glyph-warning',
+                                overviewRuler: {
+                                    color: isError ? 'rgba(248,81,73,0.9)' : 'rgba(254,188,46,0.9)',
+                                    position: 4, // OverviewRulerLane.Right
+                                },
+                                minimap: { color: isError ? '#f85149' : '#febc2e', position: 2 },
+                                hoverMessage: { value: `**${isError ? 'Error' : 'Warning'} on line ${m.startLineNumber} — ${m.source}**\n\n${m.message}\n\n*Why:* ${why}\n\n*${fix}*` },
+                                stickiness: 1,
+                            }
+                        };
+                    });
+                    diagnosticsDecorationsRef.current = editorRef.current.createDecorationsCollection(premiumDecorations);
+                }
             }
 
             // Determine if there are actual errors (not warnings)
@@ -186,7 +251,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             if (!hasActualErrors) {
                 console.log('No errors detected, showing success');
                 setIsCheckSuccess(true);
-                setTimeout(() => setIsCheckSuccess(false), 3000); // Show success for 3 seconds
+                setTimeout(() => setIsCheckSuccess(false), 800);
             } else {
                 console.log('Errors detected:', result.markers.length);
                 setIsCheckSuccess(false);
@@ -211,9 +276,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
     }, [settings.code.diagnostics]);
 
-    // Debounced save to project state with auto-save setting
+    // Debounced save to project state with auto-save setting — race-safe vs AI atomic apply
     const debouncedSave = useDebounceCallback((id: string, content: string) => {
         if (!settings.editor.autoSave) return;
+        // If an AI edit is in-flight for THIS file, skip — AI holds a snapshot. For other files, save normally.
+        if (isProcessingAiCommandRef.current && activeFileRef.current?.id === id) return;
+        // If user switched files, latestEditorValue is for the new file — don't use it to discard save for old file
+        if (activeFileRef.current?.id !== id) {
+            let finalContentForOtherFile = content;
+            if (settings.code.formatOnSave) {
+                // Don't run formatter for non-active file (no editor model) — save raw
+            }
+            updateFileContent(id, finalContentForOtherFile);
+            return;
+        }
+        // For the active file, skip if editor already moved on (AI write or newer typing)
+        const latestEditorValue = editorRef.current?.getValue();
+        if (latestEditorValue !== undefined && latestEditorValue !== content) {
+            return;
+        }
         let finalContent = content;
         if (settings.code.formatOnSave && editorRef.current) {
             try {
@@ -231,12 +312,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         if (isCheckSuccess) setIsCheckSuccess(false);
         if (hasErrors) setHasErrors(false);
         
-        // Clear markers when user starts typing to avoid stale errors
+        // Clear markers and premium annotations when user starts typing to avoid stale errors
         if (editorRef.current && monacoRef.current) {
             const model = editorRef.current.getModel();
             if (model) {
                 monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', []);
             }
+        }
+        if (diagnosticsDecorationsRef.current) {
+            diagnosticsDecorationsRef.current.clear();
+            diagnosticsDecorationsRef.current = null;
         }
         
         if (activeFile && value !== undefined) {
@@ -257,9 +342,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [runDiagnostics]);
 
-    // Clean up inline-completion debounce timer and pending promise on unmount
+    // Clean up inline-completion debounce timer, pending promise, decorations and
+    // any in-flight AI request on unmount so a destroyed editor never leaks.
     useEffect(() => {
         return () => {
+            cancelPendingRequest();
+            isProcessingAiCommandRef.current = false;
             if (debounceTimerRef.current) {
                 clearTimeout(debounceTimerRef.current);
                 debounceTimerRef.current = null;
@@ -268,6 +356,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 pendingInlineResolveRef.current({ items: [] });
                 pendingInlineResolveRef.current = null;
             }
+            if (commentDecorationTimerRef.current) {
+                clearTimeout(commentDecorationTimerRef.current);
+                commentDecorationTimerRef.current = null;
+            }
+            commentDecorationsRef.current?.clear();
+            commentDecorationsRef.current = null;
+            loadingDecorationRef.current?.clear();
+            loadingDecorationRef.current = null;
             if (completionProviderRef.current) {
                 completionProviderRef.current.dispose();
                 completionProviderRef.current = null;
@@ -275,16 +371,81 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         };
     }, []);
 
-    // Force update editor content when activeFile changes content (e.g. from AI)
-    // We only update if it differs from what the editor already holds
+    // Pending sync when file switches while AI is processing — apply once AI finishes
+    const pendingSyncRef = useRef<{ id: string; content: string; name: string } | null>(null);
+
+    // Glitch-free sync when activeFile changes externally (e.g., AI edit via file-tree).
+    // Avoids flicker/cursor jump from setValue() by using executeEdits and respecting in-flight AI.
     useEffect(() => {
-        if (editorRef.current && activeFile) {
-            const currentContent = editorRef.current.getValue();
-            if (currentContent !== activeFile.content) {
-                editorRef.current.setValue(activeFile.content || '');
-            }
+        if (!editorRef.current || !activeFile) return;
+        // If AI is currently applying a /// edit, queue the sync for when it finishes
+        // instead of dropping it forever (which would leave editor showing stale file).
+        if (isProcessingAiCommandRef.current) {
+            pendingSyncRef.current = { id: activeFile.id, content: activeFile.content || '', name: activeFile.name };
+            setActiveEditor(editorRef.current, monacoRef.current, { id: activeFile.id, name: activeFile.name });
+            return;
         }
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        if (!model || model.isDisposed()) return;
+        const currentContent = editor.getValue();
+        const nextContent = activeFile.content || '';
+        if (currentContent === nextContent) {
+            setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name });
+            return;
+        }
+        // Preserve cursor/selection and undo stack: apply as a single edit, not setValue()
+        const selection = editor.getSelection();
+        editor.pushUndoStop();
+        const fullRange = model.getFullModelRange();
+        editor.executeEdits('file-sync', [{ range: fullRange, text: nextContent, forceMoveMarkers: true }]);
+        editor.pushUndoStop();
+        if (selection) {
+            try { editor.setSelection(selection); } catch {}
+        }
+        setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name });
     }, [activeFile?.id, activeFile?.content]);
+
+    // Flush any pending file-switch sync once AI processing completes
+    useEffect(() => {
+        if (isProcessingAiCommandRef.current || !pendingSyncRef.current || !editorRef.current || !activeFile) return;
+        const pending = pendingSyncRef.current;
+        if (pending.id !== activeFile.id || pending.content !== (activeFile.content || '')) {
+            // Active file changed again while we were processing — keep the latest
+            pendingSyncRef.current = { id: activeFile.id, content: activeFile.content || '', name: activeFile.name };
+            return;
+        }
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        if (!model || model.isDisposed()) return;
+        if (editor.getValue() === pending.content) {
+            pendingSyncRef.current = null;
+            return;
+        }
+        const selection = editor.getSelection();
+        editor.pushUndoStop();
+        editor.executeEdits('file-sync-pending', [{ range: model.getFullModelRange(), text: pending.content, forceMoveMarkers: true }]);
+        editor.pushUndoStop();
+        if (selection) { try { editor.setSelection(selection); } catch {} }
+        pendingSyncRef.current = null;
+        setActiveEditor(editor, monacoRef.current, { id: pending.id, name: pending.name });
+    });
+
+    // Sync Single Source of Truth when file switches or is closed
+    useEffect(() => {
+        if (!activeFile && editorRef.current) {
+            clearActiveEditor();
+        } else if (activeFile && editorRef.current && monacoRef.current) {
+            setActiveEditor(editorRef.current, monacoRef.current, { id: activeFile.id, name: activeFile.name });
+        }
+    }, [activeFile?.id]);
+
+    // Clear active editor on unmount
+    useEffect(() => {
+        return () => {
+            clearActiveEditor();
+        };
+    }, []);
 
     // Explain Selection: respond to request from Explanation panel
     useEffect(() => {
@@ -324,196 +485,143 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     // Track if we're currently processing an AI command (to prevent re-triggering)
     const isProcessingAiCommandRef = useRef(false);
+    // Deduplicate identical /// triggers per-file (same file + line + content + version) — prevents double invocation and cross-file suppression
+    const lastAiTriggerRef = useRef<{ fileId: string; line: number; content: string; versionId: number } | null>(null);
 
-    // Auto-replace AI comments when user types semicolon
+    // Premium Triple-Slash — from-base rebuild, no hardcoded templates, pure DeepSeek Flash dynamic
     const handleAiCommentAutoReplace = useCallback(async (
         editor: Monaco.editor.IStandaloneCodeEditor,
-        monaco: typeof Monaco,
+        _monaco: typeof Monaco,
         lineNumber: number,
         lineContent: string
     ) => {
-        // Check if it's an AI command pattern (now supports inline)
-        // Matches: [code] /// [command];
         const match = lineContent.match(/^(.*?)\/\/\/\s*(.+);$/);
         if (!match) return;
-
-        // Prevent re-triggering while processing
         if (isProcessingAiCommandRef.current) return;
+        const modelForDedup = editor.getModel();
+        const versionForDedup = modelForDedup?.getVersionId() ?? -1;
+        const fileIdForDedup = activeFileRef.current?.id ?? 'unknown';
+        const last = lastAiTriggerRef.current;
+        if (last && last.fileId === fileIdForDedup && last.line === lineNumber && last.content === lineContent && last.versionId === versionForDedup) {
+            return;
+        }
+        lastAiTriggerRef.current = { fileId: fileIdForDedup, line: lineNumber, content: lineContent, versionId: versionForDedup };
         isProcessingAiCommandRef.current = true;
 
-        const commandText = match[2].trim();
         const model = editor.getModel();
         if (!model) {
             isProcessingAiCommandRef.current = false;
             return;
         }
 
-        console.log('[AI Auto-Replace] Detected command:', commandText, 'on line:', lineNumber);
-
-        // Show loading state
+        const fileIdAtStart = activeFileRef.current?.id ?? null;
+        console.log('[AI Auto-Replace] Detected command:', match[2].trim(), 'on line:', lineNumber);
         setIsAiProcessing(true);
         setActiveAiLine(lineNumber);
+        let versionId = model.getVersionId();
+        const processingTimeout = setTimeout(() => {
+            if (isProcessingAiCommandRef.current) {
+                console.warn('[AI Auto-Replace] Timeout — clearing stuck processing state (65s)');
+                setIsAiProcessing(false);
+                setActiveAiLine(null);
+                isProcessingAiCommandRef.current = false;
+            }
+        }, 65000);
 
         try {
-            const currentFile = activeFileRef.current;
-            const fileName = currentFile?.name || 'untitled.ts';
-            const language = getLanguage(fileName);
-            const code = model.getValue();
-            const cursorOffset = model.getOffsetAt({ lineNumber, column: lineContent.length + 1 });
-
-            // Call the AI service
-            const result = await getCodeSuggestion({
-                code,
-                cursorPosition: cursorOffset,
-                language,
-                fileName
+            const { executeTripleSlashPremium } = await import('../../core/ai/tripleSlashPipeline');
+            const result = await executeTripleSlashPremium({
+                editor,
+                model,
+                lineNumber,
+                lineContent,
+                workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent },
+                getFileTree,
             });
 
-            // Handle cancellation
-            if (result?.error === 'Cancelled') {
-                console.log('[AI Auto-Replace] Request was cancelled');
+            clearTimeout(processingTimeout);
+
+            if (model.isDisposed() || model.getVersionId() !== versionId || activeFileRef.current?.id !== fileIdAtStart) {
+                console.log('[AI Auto-Replace] Skipping stale post-check (file switch or version mismatch)');
                 return;
             }
 
-            console.log('[AI Auto-Replace] Result:', result);
-
-            // Check if we have valid generated code (explicit length check)
-            if (result && result.text && result.text.length > 0) {
-                // Apply indentation/formatting to generated code
-                const generatedCode = result.text;
-
-                // If this was an inline comment, we might want to preserve the prefix
-                // usage: let x = 1; /// change to 2; -> let x = 2; (AI usually returns full line)
-                // But if AI returns just the snippet, we might need to handle it.
-                // For now, assume AI returns the replacement for the *entire line* or *block* if it was a modification.
-
-                // If the result looks like a direct replacement, use it.
-
-                console.log('[AI Auto-Replace] Inserting code:', generatedCode.substring(0, 100) + '...');
-
-                // Replace the ENTIRE line (including the code before the comment) with the new code
-                // This allows "let x = 1; /// change to 2;" -> "let x = 2;"
-                const range = new monaco.Range(
-                    lineNumber,
-                    1,
-                    lineNumber,
-                    lineContent.length + 1
-                );
-
-                // Apply the edit
-                editor.executeEdits('ai-auto-replace', [{
-                    range,
-                    text: generatedCode,
-                    forceMoveMarkers: true
-                }]);
-
-                // Move cursor to end of inserted code
-                const newLines = generatedCode.split('\n');
-                const newEndLine = lineNumber + newLines.length - 1;
-                const newEndColumn = newLines[newLines.length - 1].length + 1;
-                editor.setPosition({ lineNumber: newEndLine, column: newEndColumn });
-                editor.focus();
-
-                console.log('[AI Auto-Replace] Code inserted successfully');
-            } else if (result?.error) {
-                // Show the specific error from the AI service
-                console.warn('[AI Auto-Replace] Error from service:', result.error);
-                const range = new monaco.Range(lineNumber, lineContent.length + 1, lineNumber, lineContent.length + 1);
-                editor.executeEdits('ai-auto-replace', [{
-                    range,
-                    text: ` // AI: ${result.error}`,
-                    forceMoveMarkers: true
-                }]);
-            } else {
-                console.warn('[AI Auto-Replace] No code generated, result was:', result);
-                const range = new monaco.Range(lineNumber, lineContent.length + 1, lineNumber, lineContent.length + 1);
-                editor.executeEdits('ai-auto-replace', [{
-                    range,
-                    text: ' // AI: No response - try again',
-                    forceMoveMarkers: true
-                }]);
+            if (!result.success) {
+                console.warn('[AI Auto-Replace] Premium pipeline failed:', result.message);
+                return;
             }
+
+            console.log('[AI Auto-Replace] Premium edit applied:', result.message);
+
+            const newContent = getActiveEditorContext()?.code ?? model.getValue();
+            const newLines = newContent.split('\n');
+            const targetIdx = Math.min(lineNumber, newLines.length) - 1;
+            const col = (newLines[targetIdx]?.length || 0) + 1;
+            editor.setPosition({ lineNumber: Math.min(lineNumber, newLines.length), column: col });
+            editor.focus();
         } catch (error) {
-            console.error('[AI Auto-Replace] Error:', error);
-            // Add error feedback to the editor
-            const range = new monaco.Range(lineNumber, lineContent.length + 1, lineNumber, lineContent.length + 1);
-            editor.executeEdits('ai-auto-replace', [{
-                range,
-                text: ' // AI: Error - try again',
-                forceMoveMarkers: true
-            }]);
+            console.error('[AI Auto-Replace] Error, editor left untouched:', error);
         } finally {
+            clearTimeout(processingTimeout);
             setIsAiProcessing(false);
             setActiveAiLine(null);
             isProcessingAiCommandRef.current = false;
         }
-    }, []);
+    }, [getFileTree, createFile, deleteNode, renameNode, updateFileContent]);
 
-    // Effect to listen for content changes and trigger AI auto-replace
-    // Uses debouncing to handle rapid typing and edge cases
+    // Effect to listen for content changes and trigger AI auto-replace — zero delay
     useEffect(() => {
         if (!editorRef.current || !monacoRef.current) return;
 
         const editor = editorRef.current;
         const monaco = monacoRef.current;
-        let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
         const disposable = editor.onDidChangeModelContent((e) => {
-            // Clear any pending debounce
-            if (debounceTimer) {
-                clearTimeout(debounceTimer);
-            }
+            // A keystroke supersedes any pending suggestion or /// command so a
+            // stale AI response can never write into text the user has moved on
+            // from (the request aborts immediately via the runtime manager).
+            cancelPendingRequest();
 
             // Skip if already processing
             if (isProcessingAiCommandRef.current) return;
 
             // Check if the change includes a semicolon (handles paste and multi-char inputs)
             const changes = e.changes;
-            let triggerLine: number | null = null;
-
+            const triggerLines: number[] = [];
             for (const change of changes) {
                 if (change.text.includes(';')) {
                     const model = editor.getModel();
                     if (!model) continue;
-
-                    // Check the affected line(s)
                     const startLine = change.range.startLineNumber;
                     const endLine = change.range.startLineNumber + (change.text.split('\n').length - 1);
-
                     for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
                         const lineContent = model.getLineContent(lineNum);
-                        // Check if this line matches the AI command pattern (now supports inline)
                         if (/^(.*?)\/\/\/\s*.+;$/.test(lineContent)) {
-                            triggerLine = lineNum;
-                            break;
+                            if (!triggerLines.includes(lineNum)) triggerLines.push(lineNum);
                         }
                     }
-                    if (triggerLine) break;
                 }
             }
 
-            if (triggerLine !== null) {
-                const model = editor.getModel();
-                if (!model) return;
-
-                const lineNum = triggerLine;
-
-                // Small debounce to ensure typing is complete
-                debounceTimer = setTimeout(() => {
-                    // Double-check the line still matches (user might have continued typing)
+            if (triggerLines.length > 0 && !isProcessingAiCommandRef.current) {
+                // Process all trigger lines sequentially (e.g., paste of 3 /// lines)
+                for (const lineNum of triggerLines) {
+                    const model = editor.getModel();
+                    if (!model) break;
                     const currentLineContent = model.getLineContent(lineNum);
-                    if (/^(.*?)\/\/\/\s*.+;$/.test(currentLineContent) && !isProcessingAiCommandRef.current) {
+                    if (/^(.*?)\/\/\/\s*.+;$/.test(currentLineContent)) {
+                        // Only process first immediately; subsequent will be deduped and queued via versionId
                         handleAiCommentAutoReplace(editor, monaco, lineNum, currentLineContent);
+                        break; // Process one per change batch to avoid concurrent AI calls
                     }
-                }, 50); // 50ms debounce
+                }
             }
         });
 
         return () => {
             disposable.dispose();
-            if (debounceTimer) clearTimeout(debounceTimer);
         };
-    }, [handleAiCommentAutoReplace, editorReady]);
+    }, [handleAiCommentAutoReplace, editorInstance]);
 
     // ESC key listener to cancel AI requests
     useEffect(() => {
@@ -544,6 +652,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     // AI Comment Decoration Logic - Split into static and loading collections
     const commentDecorationsRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
     const loadingDecorationRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
+    const diagnosticsDecorationsRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
 
     // Update static comment decorations (only on content change)
     const updateCommentDecorations = useCallback(() => {
@@ -615,12 +724,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 updateCommentDecorations();
                 return;
             }
-            // Otherwise batch full-file scans, since decorations auto-clip on deletes anyway
+            // Immediate update — no debounce for faster AI feedback
             if (commentDecorationTimerRef.current) return;
             commentDecorationTimerRef.current = setTimeout(() => {
                 commentDecorationTimerRef.current = null;
                 updateCommentDecorations();
-            }, 250);
+            }, 0);
         });
         return () => {
             disposable.dispose();
@@ -629,7 +738,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 commentDecorationTimerRef.current = null;
             }
         };
-    }, [updateCommentDecorations, editorReady]);
+    }, [updateCommentDecorations, editorInstance]);
 
     // Update loading decoration when activeAiLine changes
     useEffect(() => {
@@ -643,29 +752,49 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
     }, [activeFile, updateCommentDecorations]);
 
+    // Switching files invalidates any in-flight /// command or inline-completion
+    // request so a stale suggestion can never apply to the wrong file.
+    useEffect(() => {
+        cancelPendingRequest();
+        isProcessingAiCommandRef.current = false;
+    }, [activeFile?.id]);
+
 
     // Fetch suggestion from API
     const fetchSuggestion = async (
         model: Monaco.editor.ITextModel,
         position: Monaco.Position,
-        monaco: typeof Monaco
+        monaco: typeof Monaco,
+        token?: Monaco.CancellationToken
     ) => {
+        // Stale-guard: capture the document version up-front; if the user types
+        // while we're awaiting, every write path below is discarded so a stale
+        // suggestion can never be inserted at the wrong place.
+        const versionId = model.getVersionId();
         const code = model.getValue();
         const offset = model.getOffsetAt(position);
         const currentActiveFile = activeFileRef.current;
         const fileName = currentActiveFile?.name || 'untitled.ts';
         const language = getLanguage(fileName);
 
+        const isStale = () => Boolean(token?.isCancellationRequested) || model.isDisposed() || model.getVersionId() !== versionId;
+
         try {
             const result = await getCodeSuggestion({
                 code,
                 cursorPosition: offset,
                 language,
-                fileName
+                fileName,
+                documentVersion: versionId,
+                isStale
             });
+            if (isStale()) return { items: [] };
 
             // If getCodeSuggestion returned a result (/// command), use it
             if (result && result.text !== null && result.text !== undefined && result.text !== '') {
+                const safeText = sanitizeAiCodeOutputForLanguage(result.text, language);
+                // Never insert an empty/whitespace suggestion after sanitization.
+                if (!safeText || safeText.trim() === '') return { items: [] };
                 if (result.isModify && result.startOffset !== undefined) {
                     const startPos = model.getPositionAt(result.startOffset);
                     const endPos = position;
@@ -677,7 +806,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     );
                     return {
                         items: [{
-                            insertText: result.text,
+                            insertText: safeText,
                             range: range
                         }]
                     };
@@ -691,7 +820,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 );
                 return {
                     items: [{
-                        insertText: result.text,
+                        insertText: safeText,
                         range: range
                     }]
                 };
@@ -702,10 +831,15 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 code,
                 cursorPosition: offset,
                 language,
-                fileName
+                fileName,
+                documentVersion: versionId,
+                isStale
             });
+            if (isStale()) return { items: [] };
 
             if (inlineResult && inlineResult.text) {
+                const safeText = sanitizeAiCodeOutputForLanguage(inlineResult.text, language);
+                if (!safeText || safeText.trim() === '') return { items: [] };
                 const range = new monaco.Range(
                     position.lineNumber,
                     position.column,
@@ -714,7 +848,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 );
                 return {
                     items: [{
-                        insertText: inlineResult.text,
+                        insertText: safeText,
                         range: range
                     }]
                 };
@@ -729,7 +863,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     // Keep a ref to the latest fetchSuggestion to avoid stale closures in the provider
     const fetchSuggestionRef = useRef(fetchSuggestion);
-    fetchSuggestionRef.current = fetchSuggestion;
+    useEffect(() => { fetchSuggestionRef.current = fetchSuggestion; });
 
     // Register inline completion provider
     const registerInlineCompletionProvider = useCallback((monaco: typeof Monaco) => {
@@ -772,36 +906,36 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             pendingInlineResolveRef.current({ items: [] });
                             pendingInlineResolveRef.current = null;
                         }
-                        if (debounceTimerRef.current) {
-                            clearTimeout(debounceTimerRef.current);
-                            debounceTimerRef.current = null;
-                        }
 
                         return new Promise((resolve) => {
                             pendingInlineResolveRef.current = resolve;
-                            debounceTimerRef.current = setTimeout(async () => {
-                                debounceTimerRef.current = null;
-                                pendingInlineResolveRef.current = null;
+                            // Zero-delay: fire AI request immediately for fastest response
+                            (async () => {
                                 if (token.isCancellationRequested || !isSuggestionsEnabledRef.current) {
+                                    pendingInlineResolveRef.current = null;
                                     resolve({ items: [] });
                                     return;
                                 }
-
                                 try {
-                                    // Use REF to get latest function
-                                    const suggestion = await fetchSuggestionRef.current(model, position, monaco);
+                                    const suggestion = await fetchSuggestionRef.current(model, position, monaco, token);
+                                    if (pendingInlineResolveRef.current === resolve) {
+                                        pendingInlineResolveRef.current = null;
+                                    }
                                     resolve(suggestion);
                                 } catch (error) {
                                     console.error('[CodeEditor] Error fetching suggestion:', error);
+                                    if (pendingInlineResolveRef.current === resolve) {
+                                        pendingInlineResolveRef.current = null;
+                                    }
                                     resolve({ items: [] });
                                 }
-                            }, 800);
+                            })();
                         });
                     }
 
                     // Direct trigger (e.g., from explicit request)
                     try {
-                        return await fetchSuggestionRef.current(model, position, monaco);
+                        return await fetchSuggestionRef.current(model, position, monaco, token);
                     } catch (error) {
                         console.error('[CodeEditor] Error fetching suggestion:', error);
                         return { items: [] };
@@ -812,17 +946,61 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         );
     }, []);
 
-    // Format Document - use format-on-save setting as the permission gate
-    const handleFormat = () => {
+    // Format Document — dynamic via DeepSeek (high-quality, preserves functionality)
+    const handleFormat = async () => {
+        const editor = editorRef.current;
+        const rawCode = editor?.getValue() ?? activeFile?.content ?? '';
+        if (!rawCode.trim()) return;
+        const fileName = activeFile?.name || 'untitled.js';
+        const language = getLanguage(fileName);
+        // Don't format if already processing AI
+        if (isProcessingAiCommandRef.current) {
+            editor?.getAction('editor.action.formatDocument')?.run();
+            return;
+        }
         setIsFormatting(true);
-        if (editorRef.current) {
-            if (settings.code.formatOnSave) {
-                editorRef.current.getAction('editor.action.formatDocument')?.run();
-                setTimeout(() => setIsFormatting(false), 600);
-            } else {
-                // Just show that format is disabled
-                setTimeout(() => setIsFormatting(false), 500);
+        try {
+            const { sendChat } = await import('../../core/ai/AIClient');
+            const { sanitizeEditorOutputWithPolicy } = await import('../../core/ai/AIOutputPolicy');
+            const system = `You are a premium code formatter for ${language}. Format the code with proper indentation, line breaks, and idiomatic style. Output ONLY the formatted code, no markdown, no fences, no explanations. Preserve functionality exactly. Use ${language === 'python' ? 'PEP 8' : language === 'javascript' || language === 'typescript' ? 'Prettier' : 'standard'} style.`;
+            const user = `File: ${fileName} (${language})\n\nCode to format:\n\`\`\`${language}\n${rawCode}\n\`\`\`\n\nReturn ONLY the formatted code.`;
+            const raw = await sendChat(
+                [
+                    { role: 'system', content: system },
+                    { role: 'user', content: user },
+                ],
+                { task: 'simple_edit', temperature: 0.1, maxTokens: 2048 },
+            );
+            const sanitized = sanitizeEditorOutputWithPolicy(raw, {
+                task: 'format' as any,
+                language,
+                filename: fileName,
+                userInstruction: 'format code',
+                outputMode: 'format' as any,
+                preserve: rawCode,
+            });
+            const finalCode = sanitized?.trim() ? sanitized.trim() : raw.trim();
+            if (finalCode && finalCode !== rawCode) {
+                const { createExecutorDeps, captureSnapshot } = await import('../../core/editor/workspaceBridge');
+                const { executeActionPlan } = await import('../../core/ai/aiToolExecutor');
+                const deps: any = createExecutorDeps({ getFileTree, createFile, deleteNode, renameNode, updateFileContent } as any, fileName, activeFile?.id || null);
+                const snap: any = captureSnapshot(fileName, rawCode);
+                const snapshotMap: any = snap ? new Map([[fileName, snap]]) : new Map();
+                const result: any = await executeActionPlan([{ action: 'update_file', path: fileName, content: finalCode } as any], deps, { language, snapshot: snap, snapshotMap } as any);
+                if (!result.success) {
+                    // Fallback to direct edit if atomic plan was rejected (e.g., stale snapshot)
+                    editor?.pushUndoStop();
+                    editor?.executeEdits('format', [{ range: editor.getModel()!.getFullModelRange(), text: finalCode }]);
+                    editor?.pushUndoStop();
+                    if (activeFile) updateFileContent(activeFile.id, finalCode);
+                }
             }
+        } catch (e) {
+            console.warn('[Format] DeepSeek failed, falling back to Prettier', e);
+            editor?.getAction('editor.action.formatDocument')?.run();
+        } finally {
+            setIsFormatting(false);
+            setTimeout(() => setIsFormatting(false), 800);
         }
     };
 
@@ -862,28 +1040,66 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const handleEditorMount: OnMount = (editor, monaco) => {
         monacoRef.current = monaco;
         editorRef.current = editor;
+        setEditorInstance(editor);
+        // Single Source of Truth: register active Monaco instance for AI context
+        if (activeFile) {
+            setActiveEditor(editor, monaco, { id: activeFile.id, name: activeFile.name });
+        }
 
-        editor.onDidChangeCursorPosition((e) => {
-            setCursorPosition({
-                lineNumber: e.position.lineNumber,
-                column: e.position.column
-            });
+        // Track disposables for this editor instance to avoid leaks on remount
+        const disposables: Monaco.IDisposable[] = [];
+        disposables.push(
+            editor.onDidBlurEditorText(() => cancelPendingRequest()),
+            editor.onDidChangeCursorPosition((e) => setCursorPosition({ lineNumber: e.position.lineNumber, column: e.position.column })),
+            editor.onDidChangeCursorSelection((e) => {
+                const model = editor.getModel();
+                const sel = e.selection;
+                if (!model || !sel) return;
+                const text = model.getValueInRange(sel);
+                if (text.trim().length > 0 && activeFileRef.current) {
+                    lastSelectionRef.current = {
+                        fileId: activeFileRef.current.id,
+                        text,
+                        language: getLanguage(activeFileRef.current.name || ''),
+                        fileName: activeFileRef.current.name
+                    };
+                }
+            })
+        );
+        // Store for cleanup when editor is disposed/remounted
+        (editor as any)._codeEditorDisposables = disposables;
+
+        // Powerful AI Commenting — available everywhere via context menu (right-click) and Cmd+Shift+C
+        editor.addAction({
+            id: 'ai-add-comments',
+            label: 'Add AI Comments (Powerful)',
+            keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyC],
+            contextMenuGroupId: '1_modification',
+            contextMenuOrder: 1.5,
+            run: async (ed) => {
+                const model = ed.getModel();
+                if (!model) return;
+                const selection = ed.getSelection();
+                const hasSelection = !!(selection && !selection.isEmpty());
+                const prompt = hasSelection
+                    ? 'Add comprehensive comments to the selected code'
+                    : 'Add comprehensive comments to this code';
+                window.dispatchEvent(new CustomEvent('ai-chat-prefill', { detail: { prompt } }));
+                // Focus AI panel if available
+                window.dispatchEvent(new CustomEvent('ai-panel-open'));
+            }
         });
 
-        editor.onDidChangeCursorSelection((e) => {
-            const model = editor.getModel();
-            const sel = e.selection;
-            if (!model || !sel) return;
-            const text = model.getValueInRange(sel);
-            if (text.trim().length > 0 && activeFileRef.current) {
-                lastSelectionRef.current = {
-                    fileId: activeFileRef.current.id,
-                    text,
-                    language: getLanguage(activeFileRef.current.name || ''),
-                    fileName: activeFileRef.current.name
-                };
+        editor.addAction({
+            id: 'ai-remove-comments',
+            label: 'Remove AI Comments',
+            keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyR],
+            contextMenuGroupId: '1_modification',
+            contextMenuOrder: 1.6,
+            run: async () => {
+                window.dispatchEvent(new CustomEvent('ai-chat-prefill', { detail: { prompt: 'Remove comments' } }));
+                window.dispatchEvent(new CustomEvent('ai-panel-open'));
             }
-            // Do not clear cache when selection collapses (e.g. on blur) so Explain Selection still has the last selection
         });
 
         monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
@@ -917,9 +1133,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             formatOnPaste: settings.code.formatOnPaste,
             formatOnType: settings.code.formatOnType,
         });
-
-        // Signal that editor is ready - this triggers effects that depend on the editor
-        setEditorReady(true);
     };
 
     const language = getLanguage(activeFile?.name || '');
@@ -938,7 +1151,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         fontSize: settings.editor.fontSize,
         fontFamily: settings.editor.fontFamily,
         padding: densityPadding,
-        inlineSuggest: { enabled: true, mode: 'subwordSmart' },
+        inlineSuggest: { enabled: settings.ai.inlineSuggestions, mode: 'subwordSmart' },
         quickSuggestions: settings.code.quickSuggestions,
         suggestOnTriggerCharacters: settings.code.quickSuggestions,
         formatOnPaste: settings.code.formatOnPaste,
@@ -981,6 +1194,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         settings.code.formatOnPaste,
         settings.code.formatOnType,
         settings.performance.optimizeEditorRendering,
+        settings.ai.inlineSuggestions,
         densityPadding,
     ]);
 
@@ -1011,24 +1225,31 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             {/* Toolbar */}
             <div className="h-11 bg-[#0d1117] border-b border-white/10 flex items-center justify-between px-3 shrink-0">
                 <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden transition-all duration-200 ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
-                    {/* Check Errors Button */}
+                    {/* Check Errors — Premium AI DeepCheck */}
                     <button
                         onClick={runDiagnostics}
                         disabled={isChecking}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-3 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isChecking 
-                                ? 'text-zinc-400 bg-white/5 border border-transparent animate-pulse'
+                                ? 'text-violet-300 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-violet-500/20 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
                                 : hasErrors
                                     ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/30'
                                     : isCheckSuccess
                                         ? 'bg-green-500/15 text-green-300 border border-green-500/30'
                                         : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'}
                         `}
-                        title="Check for syntax errors"
+                        title="Deep code check — AI + syntax (Minimax)"
                     >
                         {isChecking ? (
-                            <Loader2 size={12} className="animate-spin" />
+                            <>
+                                <span className="relative flex items-center justify-center">
+                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/30 animate-ping" />
+                                    <Loader2 size={12} className="animate-spin text-violet-300 relative" />
+                                </span>
+                                {toolbarSize === 'full' && <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-violet-300 bg-clip-text text-transparent animate-pulse">Checking...</span>}
+                                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent -translate-x-full animate-[shimmer_1.2s_infinite]" />
+                            </>
                         ) : hasErrors ? (
                             <AlertCircle size={12} />
                         ) : isCheckSuccess ? (
@@ -1036,9 +1257,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         ) : (
                             <CheckCircle size={12} />
                         )}
-                        {toolbarSize === 'full' && (
+                        {!isChecking && toolbarSize === 'full' && (
                             <span>
-                                {isChecking ? 'Checking...' : hasErrors ? 'Has Errors' : isCheckSuccess ? 'No Errors' : 'Check'}
+                                {hasErrors ? 'Has Errors' : isCheckSuccess ? 'No Errors' : 'Check'}
                             </span>
                         )}
                     </button>
@@ -1076,19 +1297,36 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         </button>
                     )}
 
-                    {/* Format */}
+                    {/* Format — Premium DeepSeek with animated loading */}
                     <button
                         onClick={handleFormat}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                        disabled={isFormatting}
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isFormatting
-                                ? 'text-green-400 bg-green-400/10 border border-green-400/20'
+                                ? 'text-violet-300 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-violet-500/20 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.25)]'
                                 : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
                         `}
-                        title="Format Document (Shift+Alt+F)"
+                        title="Format Document (Shift+Alt+F) — Premium DeepSeek"
                     >
-                        {isFormatting ? <CheckCircle size={12} /> : <AlignLeft size={12} />}
-                        {toolbarSize === 'full' && <span>{isFormatting ? 'Formatted' : 'Format'}</span>}
+                        {isFormatting ? (
+                            <>
+                                <span className="relative flex items-center justify-center">
+                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/30 animate-ping" />
+                                    <span className="absolute h-2 w-2 rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-400 animate-spin" style={{ borderTopColor: 'transparent', borderWidth: '1.5px', borderStyle: 'solid' }} />
+                                    <Loader2 size={12} className="animate-spin text-violet-300 relative" />
+                                </span>
+                                <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-violet-300 bg-clip-text text-transparent animate-pulse">
+                                    {toolbarSize === 'full' ? 'Formatting...' : ''}
+                                </span>
+                                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent -translate-x-full animate-[shimmer_1.2s_infinite]" />
+                            </>
+                        ) : (
+                            <>
+                                <AlignLeft size={12} className="group-hover:rotate-3 transition-transform" />
+                                {toolbarSize === 'full' && <span>Format</span>}
+                            </>
+                        )}
                     </button>
 
                     {/* Word Wrap */}
@@ -1111,7 +1349,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             ${settings.editor.showMinimap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
                         title="Toggle Minimap"
                     >
-                        <Map size={12} />
+                        <MapIcon size={12} />
                         {toolbarSize === 'full' && <span>Map</span>}
                     </button>
 
@@ -1154,17 +1392,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                                 const btn = e.currentTarget;
                                 btn.classList.add('burst');
 
-                                // Create ripple effect
+                                // Create ripple effect — immediate
                                 const rippleContainer = btn.querySelector('.ai-toggle-ripple');
                                 if (rippleContainer) {
                                     const ripple = document.createElement('span');
                                     ripple.className = 'ripple';
                                     rippleContainer.appendChild(ripple);
-                                    setTimeout(() => ripple.remove(), 600);
+                                    setTimeout(() => ripple.remove(), 100);
                                 }
 
                                 // Remove burst class after animation
-                                setTimeout(() => btn.classList.remove('burst'), 500);
+                                setTimeout(() => btn.classList.remove('burst'), 100);
 
                                 onToggleAi();
                             }}
@@ -1220,19 +1458,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                             {/* Active indicator dot */}
                             {isAiOpen && (
-                                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-gradient-to-r from-purple-400 to-violet-400 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
+                                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-gradient-to-r from-purple-400 to-violet-400 shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
                             )}
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Editor Area */}
+            {/* Editor Area — uncontrolled to avoid wrapper's setValue() race with glitch-free executeEdits */}
             <div className="flex-1 min-h-0 relative">
                 <Editor
                     height="100%"
                     language={language}
-                    value={activeFile?.content || ''}
+                    defaultValue={activeFile?.content || ''}
                     theme={isDark ? 'github-dark' : 'vs-light'}
                     onChange={handleEditorChange}
                     beforeMount={handleEditorBeforeMount}
@@ -1243,7 +1481,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
             {/* Glass Status Bar */}
             {settings.general.showStatusBar && (
-            <div className="h-7 bg-gradient-to-r from-primary/90 to-primary/70 text-white text-[11px] flex items-center justify-between px-3 shrink-0 select-none font-medium backdrop-blur-sm">
+            <div className="h-7 bg-gradient-to-r from-primary/90 to-primary/70 text-white text-[11px] flex items-center justify-between px-3 shrink-0 select-none font-medium backdrop-blur-sm overflow-hidden">
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1.5 hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
                         <GitBranch size={11} />
@@ -1260,7 +1498,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 <div className="flex items-center gap-2">
                     <CursorStatus />
                     <div className="w-px h-3 bg-white/30" />
-                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+                    <div className="hidden sm:flex hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
                         UTF-8
                     </div>
                     <div className="w-px h-3 bg-white/30" />
@@ -1268,7 +1506,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         {language.toUpperCase()}
                     </div>
                     <div className="w-px h-3 bg-white/30" />
-                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+                    <div className="hidden sm:flex hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
                         Prettier
                     </div>
                 </div>

@@ -27,9 +27,9 @@ export const KeyboardShortcutsList: React.FC = () => {
         {SHORTCUTS.map((shortcut, index) => (
           <div
             key={shortcut.keys}
-            className={`flex items-center justify-between gap-3 px-4 py-2.5 ${index > 0 ? 'border-t border-white/[0.06]' : ''}`}
+            className={`flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap ${index > 0 ? 'border-t border-white/[0.06]' : ''}`}
           >
-            <span className="text-[12px] text-white/70">{shortcut.action}</span>
+            <span className="text-[12px] text-white/70 min-w-0">{shortcut.action}</span>
             <kbd className="text-[11px] font-mono text-white/50 bg-white/[0.07] border border-white/10 rounded px-1.5 py-0.5 whitespace-nowrap">
               {shortcut.keys}
             </kbd>

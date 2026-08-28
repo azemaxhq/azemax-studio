@@ -6,35 +6,14 @@ import {
 } from 'lucide-react';
 import { FileExplorer } from './FileExplorer';
 import { useProjectFile, useProjectUI, useProjectActions } from '../../context/ProjectContext';
-import type { FileNode } from '../../utils/mockFileSystem';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { ErrorBoundary } from '../UI/ErrorBoundary';
+import { countTree } from '../../utils/safeTree';
 
-// Count all files and folders recursively
-const countNodes = (nodes: FileNode[]): { files: number; folders: number } => {
-    let files = 0;
-    let folders = 0;
-    for (const node of nodes) {
-        if (node.type === 'folder') {
-            folders++;
-            if (node.children) {
-                const sub = countNodes(node.children);
-                files += sub.files;
-                folders += sub.folders;
-            }
-        } else {
-            files++;
-        }
-    }
-    return { files, folders };
-};
-
-// Check if any folder is open
-const hasOpenFolder = (nodes: FileNode[]): boolean => {
-    for (const node of nodes) {
-        if (node.type === 'folder' && node.isOpen) return true;
-        if (node.children && hasOpenFolder(node.children)) return true;
-    }
-    return false;
-};
+// The file tree is sanitized at its entry point (ProjectContext.loadFileTree),
+// and countTree is iterative + cycle-safe, so this render path can never
+// overflow the stack ("too much recursion") on corrupt data. Folder expansion
+// is UI state (expandedFolderIds), never part of the filesystem tree.
 
 // Tooltip component — uses fixed positioning to escape overflow-hidden containers
 const ActionTooltip = ({ text, shortcut, show, anchorRect }: { text: string; shortcut?: string; show: boolean; anchorRect: DOMRect | null }) => {
@@ -119,7 +98,7 @@ const HeaderActionBtn = ({
             >
                 <Icon size={iconSize} className="relative z-10 transition-transform duration-150 group-hover/abtn:scale-110" />
                 {isActive && (
-                    <div className="absolute inset-0 rounded-md bg-blue-500/5 animate-pulse" />
+                    <div className="absolute inset-0 rounded-md bg-blue-500/5" />
                 )}
             </button>
             <ActionTooltip text={tooltip} shortcut={shortcut} show={showTooltip} anchorRect={anchorRect} />
@@ -129,13 +108,26 @@ const HeaderActionBtn = ({
 
 export const Sidebar: React.FC = () => {
     const { fileTree } = useProjectFile();
-    const { selectedFolder } = useProjectUI();
+    const { selectedFolder, expandedFolderIds } = useProjectUI();
     const { startCreating, collapseAll, expandAll } = useProjectActions();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [isRefreshing, setIsRefreshing] = useState(false);
 
-    const { files, folders } = useMemo(() => countNodes(fileTree), [fileTree]);
-    const anyFolderOpen = useMemo(() => hasOpenFolder(fileTree), [fileTree]);
+    // Below 1024px the header action cluster becomes fluid: buttons compress,
+    // gap/divider spacing tightens, and the cluster may wrap to a second row
+    // instead of ever clipping. Desktop rendering is completely unchanged.
+    const isDesktop = useMediaQuery('(min-width: 1024px)');
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => () => {
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    }, []);
+
+    const { files, folders } = useMemo(() => countTree(fileTree), [fileTree]);
+    // The canonical root is a container, not a user-facing folder — never count it.
+    const folderCount = Math.max(0, folders - 1);
+    // The root is always in the expansion set; any extra id means a folder is open.
+    const anyFolderOpenFlag = expandedFolderIds.size > 1;
 
     const handleCreateFile = useCallback(() => {
         const parentId = selectedFolder || 'root';
@@ -150,7 +142,7 @@ export const Sidebar: React.FC = () => {
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
         // Simulate refresh with a brief delay for visual feedback
-        setTimeout(() => {
+        refreshTimerRef.current = setTimeout(() => {
             setIsRefreshing(false);
         }, 600);
     }, []);
@@ -160,12 +152,12 @@ export const Sidebar: React.FC = () => {
     }, []);
 
     const handleToggleFolders = useCallback(() => {
-        if (anyFolderOpen) {
+        if (anyFolderOpenFlag) {
             collapseAll();
         } else {
             expandAll();
         }
-    }, [anyFolderOpen, collapseAll, expandAll]);
+    }, [anyFolderOpenFlag, collapseAll, expandAll]);
 
     // ⌘F keyboard shortcut to toggle search
     useEffect(() => {
@@ -190,7 +182,7 @@ export const Sidebar: React.FC = () => {
                 <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/25 to-transparent z-20" />
 
                 {/* Top bar: title + action buttons */}
-                <div className="h-11 px-2 flex items-center justify-between flex-nowrap overflow-hidden relative">
+                <div className={`${isDesktop ? 'h-11 flex-nowrap overflow-hidden' : 'min-h-11 flex-wrap'} flex items-center justify-between px-2 relative`}>
                     {/* Title */}
                     <div className="flex items-center min-w-0 flex-1 mr-2 px-1">
                         <span className="text-[11px] font-medium tracking-wider text-white/50 uppercase truncate select-none">
@@ -199,7 +191,7 @@ export const Sidebar: React.FC = () => {
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex items-center justify-end flex-nowrap gap-[2px] overflow-hidden shrink min-w-0">
+                    <div className={`flex items-center justify-end ${isDesktop ? 'flex-nowrap gap-[2px] overflow-hidden' : 'flex-wrap gap-x-1 gap-y-0.5'} shrink min-w-0`}>
                         <HeaderActionBtn
                             onClick={toggleSearch}
                             icon={Search}
@@ -230,9 +222,9 @@ export const Sidebar: React.FC = () => {
 
                         <HeaderActionBtn
                             onClick={handleToggleFolders}
-                            icon={anyFolderOpen ? ChevronsDownUp : ChevronsUpDown}
+                            icon={anyFolderOpenFlag ? ChevronsDownUp : ChevronsUpDown}
                             iconSize={14}
-                            tooltip={anyFolderOpen ? 'Collapse All Folders' : 'Expand All Folders'}
+                            tooltip={anyFolderOpenFlag ? 'Collapse All Folders' : 'Expand All Folders'}
                         />
                         <div className="relative">
                             <HeaderActionBtn
@@ -266,7 +258,7 @@ export const Sidebar: React.FC = () => {
                     <div className="flex items-center gap-1.5 shrink min-w-0">
                         <div className="w-[4px] h-[4px] shrink-0 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 shadow-[0_0_4px_rgba(168,85,247,0.3)]" />
                         <span className="text-[10px] font-medium text-white/35 tabular-nums truncate">
-                            <span className="text-white/50 font-semibold">{folders}</span> folder{folders !== 1 ? 's' : ''}
+                            <span className="text-white/50 font-semibold">{folderCount}</span> folder{folderCount !== 1 ? 's' : ''}
                         </span>
                     </div>
 
@@ -282,7 +274,9 @@ export const Sidebar: React.FC = () => {
 
             {/* File Explorer */}
             <div className="flex-1 overflow-hidden">
-                <FileExplorer isSearchOpen={isSearchOpen} onSearchClose={() => setIsSearchOpen(false)} />
+                <ErrorBoundary>
+                    <FileExplorer isSearchOpen={isSearchOpen} onSearchClose={() => setIsSearchOpen(false)} />
+                </ErrorBoundary>
             </div>
         </div>
     );

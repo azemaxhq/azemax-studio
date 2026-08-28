@@ -419,107 +419,47 @@ const parseWarnings = (stderr: string, stdout: string): PerformanceMetrics['warn
   return { count, messages };
 };
 
-/**
- * Identify performance bottlenecks
- */
-const identifyBottlenecks = (
-  metrics: PerformanceMetrics,
-  _code: string,
-  language: string
-): PerformanceBottleneck[] => {
-  const bottlenecks: PerformanceBottleneck[] = [];
-  
-  // Memory bottlenecks
-  if (metrics.memoryUsage.peak > 100) {
-    bottlenecks.push({
-      type: 'memory',
-      severity: 'high',
-      description: 'High memory usage detected',
-      suggestion: 'Consider optimizing data structures or implementing memory pooling',
-      impact: 'May cause slowdowns on systems with limited RAM'
-    });
+type BottleneckRule = { test: (m: PerformanceMetrics, lang: string) => boolean; bottleneck: PerformanceBottleneck | ((m: PerformanceMetrics) => PerformanceBottleneck) };
+const BOTTLENECK_RULES: BottleneckRule[] = [
+  { test: (m) => m.memoryUsage.peak > 100, bottleneck: { type: 'memory', severity: 'high', description: 'High memory usage detected', suggestion: 'Consider optimizing data structures or implementing memory pooling', impact: 'May cause slowdowns on systems with limited RAM' } },
+  { test: (m) => m.cpuUsage.peak > 80, bottleneck: { type: 'cpu', severity: 'medium', description: 'High CPU usage during execution', suggestion: 'Optimize algorithms or consider parallel processing', impact: 'Affects system responsiveness' } },
+  { test: (m) => m.executionTime > 5, bottleneck: { type: 'algorithm', severity: 'medium', description: 'Slow execution detected', suggestion: 'Review algorithm efficiency and consider optimizations', impact: 'Poor user experience and resource utilization' } },
+  { test: (m) => m.errors.count > 0, bottleneck: (m) => ({ type: 'error', severity: 'critical', description: `Execution failed with ${m.errors.count} error(s)`, suggestion: 'Fix errors before optimizing performance', impact: 'Prevents successful execution' }) },
+  { test: (m, lang) => lang === 'python' && m.executionTime > 2, bottleneck: { type: 'algorithm', severity: 'medium', description: 'Python execution is slow', suggestion: 'Consider using NumPy for numerical operations or rewrite in a compiled language', impact: 'Significant performance improvement possible' } },
+];
+
+const identifyBottlenecks = (metrics: PerformanceMetrics, _code: string, language: string): PerformanceBottleneck[] => {
+  const out: PerformanceBottleneck[] = [];
+  for (const rule of BOTTLENECK_RULES) if (rule.test(metrics, language)) {
+    out.push(typeof rule.bottleneck === 'function' ? (rule.bottleneck as (m: PerformanceMetrics) => PerformanceBottleneck)(metrics) : rule.bottleneck as PerformanceBottleneck);
   }
-  
-  // CPU bottlenecks
-  if (metrics.cpuUsage.peak > 80) {
-    bottlenecks.push({
-      type: 'cpu',
-      severity: 'medium',
-      description: 'High CPU usage during execution',
-      suggestion: 'Optimize algorithms or consider parallel processing',
-      impact: 'Affects system responsiveness'
-    });
-  }
-  
-  // Execution time bottlenecks
-  if (metrics.executionTime > 5) {
-    bottlenecks.push({
-      type: 'algorithm',
-      severity: 'medium',
-      description: 'Slow execution detected',
-      suggestion: 'Review algorithm efficiency and consider optimizations',
-      impact: 'Poor user experience and resource utilization'
-    });
-  }
-  
-  // Error bottlenecks
-  if (metrics.errors.count > 0) {
-    bottlenecks.push({
-      type: 'error',
-      severity: 'critical',
-      description: `Execution failed with ${metrics.errors.count} error(s)`,
-      suggestion: 'Fix errors before optimizing performance',
-      impact: 'Prevents successful execution'
-    });
-  }
-  
-  // Language-specific bottlenecks
-  if (language === 'python' && metrics.executionTime > 2) {
-    bottlenecks.push({
-      type: 'algorithm',
-      severity: 'medium',
-      description: 'Python execution is slow',
-      suggestion: 'Consider using NumPy for numerical operations or rewrite in a compiled language',
-      impact: 'Significant performance improvement possible'
-    });
-  }
-  
-  return bottlenecks;
+  return out;
 };
 
+const GRADE_THRESHOLDS: Array<{ limit: number; grade: PerformanceReport['grade'] }> = [
+  { limit: 95, grade: 'A+' },
+  { limit: 90, grade: 'A' },
+  { limit: 80, grade: 'B' },
+  { limit: 70, grade: 'C' },
+  { limit: 60, grade: 'D' },
+];
+
+function penaltyFor(value: number, table: Array<{ limit: number; penalty: number }>): number {
+  for (const row of table) if (value > row.limit) return row.penalty;
+  return 0;
+}
+
 /**
- * Calculate performance grade
+ * Calculate performance grade (table-driven to reduce branching)
  */
 const calculatePerformanceGrade = (metrics: PerformanceMetrics): PerformanceReport['grade'] => {
   let score = 100;
-  
-  // Deduct points for execution time
-  if (metrics.executionTime > 10) score -= 30;
-  else if (metrics.executionTime > 5) score -= 20;
-  else if (metrics.executionTime > 2) score -= 10;
-  else if (metrics.executionTime > 1) score -= 5;
-  
-  // Deduct points for memory usage
-  if (metrics.memoryUsage.peak > 200) score -= 25;
-  else if (metrics.memoryUsage.peak > 100) score -= 15;
-  else if (metrics.memoryUsage.peak > 50) score -= 8;
-  
-  // Deduct points for CPU usage
-  if (metrics.cpuUsage.peak > 90) score -= 20;
-  else if (metrics.cpuUsage.peak > 70) score -= 10;
-  
-  // Deduct points for errors
+  score -= penaltyFor(metrics.executionTime, [{ limit: 10, penalty: 30 }, { limit: 5, penalty: 20 }, { limit: 2, penalty: 10 }, { limit: 1, penalty: 5 }]);
+  score -= penaltyFor(metrics.memoryUsage.peak, [{ limit: 200, penalty: 25 }, { limit: 100, penalty: 15 }, { limit: 50, penalty: 8 }]);
+  score -= penaltyFor(metrics.cpuUsage.peak, [{ limit: 90, penalty: 20 }, { limit: 70, penalty: 10 }]);
   score -= metrics.errors.count * 15;
-  
-  // Deduct points for warnings
   score -= metrics.warnings.count * 5;
-  
-  // Convert score to grade
-  if (score >= 95) return 'A+';
-  if (score >= 90) return 'A';
-  if (score >= 80) return 'B';
-  if (score >= 70) return 'C';
-  if (score >= 60) return 'D';
+  for (const row of GRADE_THRESHOLDS) if (score >= row.limit) return row.grade;
   return 'F';
 };
 

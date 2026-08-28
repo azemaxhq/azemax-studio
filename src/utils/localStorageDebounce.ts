@@ -53,11 +53,12 @@ const scheduleWrite = () => {
     }, 0);
 };
 
-export const debouncedLocalStorageSet = (key: string, value: string, delay = 250) => {
+export const debouncedLocalStorageSet = (key: string, value: string, delay = 0) => {
     if (!pending.has(key)) queue.push(key);
     pending.set(key, value);
     if (timer) clearTimeout(timer);
-    timer = setTimeout(scheduleWrite, delay);
+    if (delay === 0) scheduleWrite();
+    else timer = setTimeout(scheduleWrite, delay);
 };
 
 if (typeof window !== 'undefined') {
