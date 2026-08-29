@@ -24,16 +24,10 @@ export const SmoothStreamingBubble: React.FC<Props> = ({ text, isStreaming, comp
         prevLengthRef.current = text.length;
     }, [text.length]);
 
-    // No artificial delay — rAF coalescing already done in AIAssistant scheduleStreamUpdate
+    // No skeleton — compact contextual loading is handled by unified AILoadingIndicator.
+    // Return null while no real content exists so the conversation doesn't show a giant blank placeholder.
     if (!text || !text.trim()) {
-        // Premium skeleton while waiting for first token (thinking → generating)
-        return (
-            <div className="premium-skeleton" aria-hidden="true" role="status" aria-label="Generating response">
-                <div className="premium-skeleton-line" />
-                <div className="premium-skeleton-line" />
-                <div className="premium-skeleton-line" />
-            </div>
-        );
+        return null;
     }
 
     return (

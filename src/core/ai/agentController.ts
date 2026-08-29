@@ -45,6 +45,17 @@ export interface AgentControllerResult extends ExecutionResult {
 function makeActivity(tool: string, status: AgentToolStatus, message: string, path?: string): AgentActivity {
     return { id: `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, tool, status, message, path };
 }
+function withTimeout<T>(promise: Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`Tool timed out after ${ms}ms`)), ms);
+        const onAbort = () => { clearTimeout(timer); reject(new DOMException('The operation was aborted.', 'AbortError')); };
+        if (signal) {
+            if (signal.aborted) { clearTimeout(timer); reject(new DOMException('The operation was aborted.', 'AbortError')); return; }
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
+        promise.then(v => { clearTimeout(timer); if(signal) signal.removeEventListener('abort', onAbort); resolve(v); }, e => { clearTimeout(timer); if(signal) signal.removeEventListener('abort', onAbort); reject(e); });
+    });
+}
 
 const READ_TYPES = new Set(['read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file', 'run_code']);
 
@@ -210,7 +221,8 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
             const act = makeActivity(toolName, 'running', `Reading ${String(args.path ?? args.query ?? '')}…`, String(args.path ?? ''));
             push(act);
             try {
-                const res = await registry.execute(toolName, args);
+                if (req.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+                const res = await withTimeout(registry.execute(toolName, args), 12000, req.signal);
                 act.status = res.ok ? 'done' : 'error';
                 act.message = res.ok ? `Read ${String(args.path ?? args.query)}` : `Failed: ${res.error}`;
                 act.detail = res.ok ? JSON.stringify(res.result).slice(0, 600) : res.error;
@@ -218,9 +230,20 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
                 if (res.ok && res.result) {
                     readEnrichment += `\n[Tool ${toolName} ${JSON.stringify(args)}]\n${JSON.stringify(res.result).slice(0, 4000)}\n`;
                 }
-            } catch (e) {
-                act.status = 'error';
-                act.message = `Error ${toolName}`;
+            } catch (e: any) {
+                if (e?.name === 'AbortError') {
+                    act.status = 'error';
+                    act.message = `Cancelled ${toolName}`;
+                    (act as any).detail = 'Request cancelled';
+                } else if (String(e?.message || '').includes('timed out')) {
+                    act.status = 'error';
+                    act.message = `Timeout ${toolName}`;
+                    (act as any).detail = e.message;
+                } else {
+                    act.status = 'error';
+                    act.message = `Error ${toolName}`;
+                    (act as any).detail = e?.message ?? String(e);
+                }
                 push({ ...act });
             }
         }

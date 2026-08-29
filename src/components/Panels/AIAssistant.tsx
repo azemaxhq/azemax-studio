@@ -11,7 +11,6 @@ import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
 import { buildWorkspaceSnapshot } from '../../core/workspace/workspaceContext';
 import { useAILoading } from '../../hooks/useAILoading';
 import { AILoadingIndicator } from '../AI/AILoadingIndicator';
-import { AIStreamingIndicator } from '../AI/AIStreamingIndicator';
 import { SmoothStreamingBubble } from '../AI/SmoothStreamingBubble';
 import { AIComposer } from './AIComposer';
 import '../AI/ai-loading.css';
@@ -31,6 +30,7 @@ import { cleanResponse } from '../../core/ai/AIResponseParser';
 import type { ChatMessage } from '../../core/ai/types';
 import { parseArtifacts } from './ai/artifactParser';
 import { AI_ERROR_CODES } from '../../core/ai/AIError';
+import { AIRequestStore } from '../../core/ai/aiRequestStore';
 import type { AgentActivity } from '../../core/ai/agentController';
 
 import { AzemaxLogo } from '../UI/AzemaxLogo';
@@ -77,7 +77,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
     return (
         <div className="my-3 rounded-xl border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden">
             <div
-                className="flex items-center justify-between px-3 py-2.5 hover:bg-[var(--az-surface-2)] cursor-pointer transition-colors"
+                className="flex items-center justify-between px-2.5 py-2 hover:bg-[#15181E] cursor-pointer transition-colors"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -170,6 +170,7 @@ const MessageItem = React.memo(({
             const codeId = `${msg.id}-${index}-${language}-${code.slice(0, 10)}`;
             const isLongBlock = !inline && !!match && code.split('\n').length > 24;
             const [expanded, setExpanded] = React.useState(!isLongBlock);
+            const [applyState, setApplyState] = React.useState<'idle'|'applying'|'applied'|'failed'>('idle');
             if (!inline && match) {
                 // Syntax Highlighting — skip during streaming (heavy, causes jank)
                 const highlightedCode = prismReady && !isStreaming ? tryHighlight(code, language) : null;
@@ -177,7 +178,7 @@ const MessageItem = React.memo(({
 
                 return (
                     <div className="my-3 rounded-xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-surface-2)]">
-                        <div className="flex items-center justify-between px-3 py-2 bg-[var(--az-surface-2)] border-b border-[var(--az-border)]">
+                        <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#15181E] border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                             <span className="text-[11px] text-[var(--az-text-muted)] font-mono">{language}</span>
                             <div className="flex items-center gap-1.5">
                                 <button
@@ -188,10 +189,29 @@ const MessageItem = React.memo(({
                                 </button>
                                 {msg.role === 'ai' && onApplyCode && (
                                     <button
-                                        onClick={() => onApplyCode(code)}
-                                        className="px-2 py-1 rounded-md text-[11px] bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border border-[var(--az-accent)] transition-colors"
+                                        onClick={async () => {
+                                            if (applyState === 'applying') return;
+                                            setApplyState('applying');
+                                            try {
+                                                // onApplyCode may return success boolean; treat undefined as success if no exception
+                                                const res: any = await onApplyCode(code);
+                                                const ok = res === false ? false : true;
+                                                setApplyState(ok ? 'applied' : 'failed');
+                                                if (ok) setTimeout(() => setApplyState('idle'), 2500);
+                                                else setTimeout(() => setApplyState('idle'), 3000);
+                                            } catch {
+                                                setApplyState('failed');
+                                                setTimeout(() => setApplyState('idle'), 3000);
+                                            }
+                                        }}
+                                        disabled={applyState === 'applying'}
+                                        className={`px-2 py-1 rounded-md text-[11px] border transition-colors ${applyState === 'applied' ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-400' : applyState === 'failed' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border-[var(--az-accent)]'} ${applyState === 'applying' ? 'opacity-70 cursor-wait' : ''}`}
+                                        title={applyState === 'failed' ? 'Apply failed — retry' : applyState === 'applied' ? 'Applied' : 'Apply to editor'}
                                     >
-                                        Apply
+                                        {applyState === 'idle' && 'Apply'}
+                                        {applyState === 'applying' && 'Applying…'}
+                                        {applyState === 'applied' && 'Applied ✓'}
+                                        {applyState === 'failed' && 'Failed — Retry'}
                                     </button>
                                 )}
                             </div>
@@ -225,29 +245,29 @@ const MessageItem = React.memo(({
             );
         },
         h1({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h1 className="text-[18px] font-semibold tracking-tight text-[var(--az-text)] mt-6 mb-3" {...props}>{children}</h1>;
+            return <h1 className="text-[22px] font-semibold tracking-tight text-[var(--az-text)] mt-7 mb-3 leading-tight" {...props}>{children}</h1>;
         },
         h2({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h2 className="text-[15px] font-semibold tracking-tight text-[var(--az-text)] mt-5 mb-2" {...props}>{children}</h2>;
+            return <h2 className="text-[18px] font-semibold tracking-tight text-[var(--az-text)] mt-6 mb-2.5 leading-tight" {...props}>{children}</h2>;
         },
         h3({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h3 className="text-[13px] font-medium tracking-wide text-white/75 mt-4 mb-2 uppercase" {...props}>{children}</h3>;
+            return <h3 className="text-[15px] font-semibold tracking-tight text-[var(--az-text)] mt-5 mb-2" {...props}>{children}</h3>;
         },
         p({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-            return <p className="leading-[1.65] mb-3 text-[14px] text-[var(--az-text-secondary)] tracking-[-0.01em] last:mb-0" {...props}>{children}</p>;
+            return <p className="leading-[1.72] mb-4 text-[15px] text-[var(--az-text-secondary)] tracking-[-0.01em] last:mb-0 max-w-[680px]" {...props}>{children}</p>;
         },
         ul({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) {
-            return <ul className="list-disc list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-[var(--az-text-secondary)]" {...props}>{children}</ul>;
+            return <ul className="list-disc list-outside ml-5 mb-4 space-y-2 text-[15px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ul>;
         },
         ol({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) {
-            return <ol className="list-decimal list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-[var(--az-text-secondary)]" {...props}>{children}</ol>;
+            return <ol className="list-decimal list-outside ml-5 mb-4 space-y-2 text-[15px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ol>;
         },
         li({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) {
-            return <li className="pl-1 leading-[1.6] marker:text-white/20" {...props}>{children}</li>;
+            return <li className="pl-1 leading-[1.65] marker:text-white/25" {...props}>{children}</li>;
         },
         blockquote({ children, ...props }: React.QuoteHTMLAttributes<HTMLQuoteElement>) {
             return (
-                <blockquote className="border-l border-[var(--az-border)] pl-3 py-1 my-3 text-[13px] text-[var(--az-text-muted)] leading-relaxed" {...props}>
+                <blockquote className="border-l-2 border-[var(--az-border)] pl-4 py-1 my-4 text-[14px] text-[var(--az-text-muted)] leading-relaxed max-w-[680px]" {...props}>
                     {children}
                 </blockquote>
             );
@@ -320,12 +340,11 @@ const MessageItem = React.memo(({
                             }`} style={msg.role !== 'ai' ? { background: '#1E232B', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--az-text)' } : undefined}>
 
                             {msg.role === 'ai' && (
-                                <div className="flex items-center gap-1.5 mb-2">
-                                    <span className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center text-[9px] font-bold tracking-tight" style={{ background: '#171A20', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text-muted)' }}>A</span>
-                                    <span className="text-[11px] font-medium" style={{ color: 'var(--az-text-muted)' }}>Azemax</span>
+                                <div className="flex items-center gap-2 mb-2 select-none">
+                                    <span className="text-[13px] font-medium tracking-tight" style={{ color: 'var(--az-text-faint)', letterSpacing: '0.02em' }}>Azemax</span>
                                 </div>
                             )}
-                            <div className={`markdown-content relative z-10 ${msg.role === 'ai' ? 'text-[13.5px] leading-[1.7] text-[var(--az-text-secondary)]' : 'text-[13.5px] leading-relaxed'}`}>
+                            <div className={`markdown-content relative z-10 max-w-[680px] ${msg.role === 'ai' ? 'text-[15px] leading-[1.72] text-[var(--az-text-secondary)]' : 'text-[15px] leading-relaxed'}`}>
                                 {msg.role === 'ai' ? (
                                     <>
                                         {parseArtifacts(displayText).segments.map((segment, segIdx) =>
@@ -364,10 +383,10 @@ const MessageItem = React.memo(({
                             </div>
 
                             {msg.role === 'ai' && (
-                                <div className="flex items-center gap-1 mt-2.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+                                <div className="flex items-center gap-1 mt-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
                                     <button
                                         onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
-                                        className="w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
+                                        className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 hover:bg-[var(--az-surface-3)]"
                                         style={{ color: 'var(--az-text-muted)', border: '1px solid transparent' }}
                                         title={copiedId === `msg-${msg.id}` ? 'Copied' : 'Copy'}
                                         aria-label="Copy"
@@ -377,7 +396,7 @@ const MessageItem = React.memo(({
                                     {onRegenerate && (
                                         <button
                                             onClick={() => typeof index === 'number' && onRegenerate(index)}
-                                            className="w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
+                                            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
                                             style={{ color: 'var(--az-text-muted)' }}
                                             title="Regenerate"
                                             aria-label="Regenerate"
@@ -437,7 +456,7 @@ const MessageItem = React.memo(({
                             )}
                         </div>
                         {msg.timestamp && (
-                            <span className={`text-[10px] font-normal mt-1 px-1 transition-opacity duration-150 ${msg.role === 'ai' ? 'opacity-60 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100 text-right self-end'}`} style={{ color: 'var(--az-text-faint)' }}>
+                            <span className={`text-[11px] font-normal mt-2 px-1 transition-opacity duration-200 ${msg.role === 'ai' ? 'opacity-50 group-hover:opacity-80' : 'opacity-0 group-hover:opacity-70 text-right self-end'}`} style={{ color: 'var(--az-text-faint)' }}>
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase()}
                             </span>
                         )}
@@ -765,6 +784,12 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     }, [messages, scrollToBottom]);
 
     const handleNewChat = useCallback(() => {
+        // Cancel any in-flight request before starting new chat — prevents old response overwriting new chat
+        if (abortControllerRef.current) { abortControllerRef.current.abort(); abortControllerRef.current = null; }
+        if (currentRequestIdRef.current) { AIRequestStore.cancelRequest(currentRequestIdRef.current); currentRequestIdRef.current = null; }
+        setStreamingText('');
+        if (pendingStreamFrameRef.current !== null) { cancelAnimationFrame(pendingStreamFrameRef.current); pendingStreamFrameRef.current = null; }
+        isSendingRef.current = false;
         const newSession = createSession();
         setSessions(prev => {
             const updated = [newSession, ...prev];
@@ -774,8 +799,8 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             return updated;
         });
         setCurrentSessionId(newSession.id);
-        setStreamingText('');
         setAgentActivities([]);
+        setLastDiffs([]);
         if (window.innerWidth < 768) setShowSidebar(false);
     }, [settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
@@ -811,7 +836,11 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         setTimeout(() => setCopiedId(null), 1000);
     }, []);
 
+    const lastApplyRef = useRef<{ code: string; at: number } | null>(null);
     const handleApplyCode = useCallback(async (code: string) => {
+        const now = Date.now();
+        if (lastApplyRef.current && lastApplyRef.current.code === code && now - lastApplyRef.current.at < 2000) return;
+        lastApplyRef.current = { code, at: now };
         const activeFile = getActiveFile();
         const editorCtx = getActiveEditorContext();
         if (!activeFile || !code) return;
@@ -833,7 +862,9 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         const result = await depsExecute([action], deps as any, { language, snapshot, snapshotMap } as any);
         if (!result.success) {
             console.warn('[Apply] Safe edit rejected (file untouched):', result.message);
+            return false;
         }
+        return true;
     }, [getActiveFile, getFileTree, createFile, deleteNode, renameNode, updateFileContent]);
 
     const handleQuickAction = (prompt: string) => {
@@ -964,6 +995,14 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
 
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
+        let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+            if (currentRequestIdRef.current === requestId && !abortController.signal.aborted) {
+                abortController.abort();
+                // Ensure store reaches terminal state even if provider hangs
+                const live = AIRequestStore.getActiveRequestForOperation('chat');
+                if (live?.id === requestId) AIRequestStore.failRequest(requestId, 'Request timed out after 75s — please retry.');
+            }
+        }, 75000);
 
         // Build fresh context at request time (Monaco-first, never cached)
         const activeFile = getActiveFile();
@@ -972,6 +1011,32 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         const fileContent = editorCtx?.code ?? activeFile?.content ?? '';
         const fileName = editorCtx?.fileName ?? activeFile?.name ?? '';
         const language = editorCtx?.language ?? 'plaintext';
+        // Collect @File referenced files (bounded, fresh) for context-aware @File
+        const referencedContents: Array<{ path: string; content: string }> = [];
+        try {
+            const atPaths = [...userMessageText.matchAll(/@([^\s@,;]+)/g)].map(m => m[1].trim()).filter(Boolean).slice(0,3);
+            const findByPath = (tree: any[], target: string): any | null => {
+                const clean = target.replace(/^\//,'');
+                const walk = (nodes: any[], prefix: string): any | null => {
+                    for (const n of nodes) {
+                        if (n.id === 'root') { if (n.children) { const f = walk(n.children, ''); if (f) return f; } continue; }
+                        const full = prefix ? `${prefix}/${n.name}` : n.name;
+                        if (full === clean || n.name === clean) return n;
+                        if (n.children) { const f = walk(n.children, full); if (f) return f; }
+                    }
+                    return null;
+                };
+                return walk(tree, '');
+            };
+            for (const pth of atPaths) {
+                const node = findByPath(fileTree as any, pth);
+                if (node && node.type === 'file' && typeof node.content === 'string' && node.content.trim()) {
+                    // Prefer live editor content if this is active file
+                    const live = editorCtx && editorCtx.fileName === node.name ? editorCtx.code : node.content;
+                    referencedContents.push({ path: pth, content: (live ?? node.content).slice(0, 4000) });
+                }
+            }
+        } catch { /* ignore context parse errors */ }
 
         // Convert chat history to ChatMessage[] for the pipeline
         const historyForPipeline: ChatMessage[] = messages
@@ -986,13 +1051,17 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             let plannerResponseMessage = '';
 
             try {
-                const semanticPlan = await generateSemanticPlan(
-                    userMessageText,
-                    editorCtx,
-                    buildWorkspaceSnapshot(editorCtx, fileTree).fileTreeString,
-                    historyForPipeline,
-                    abortController.signal
-                );
+                const planWithTimeout = (async () => {
+                    const timeout = new Promise<null>((_, reject) => {
+                        const t = setTimeout(() => reject(new Error('Semantic planner timed out')), 12000);
+                        if (abortController.signal) abortController.signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('The operation was aborted.', 'AbortError')); }, { once: true });
+                    });
+                    return await Promise.race([
+                        generateSemanticPlan(userMessageText, editorCtx, buildWorkspaceSnapshot(editorCtx, fileTree).fileTreeString, historyForPipeline, abortController.signal),
+                        timeout as Promise<null>
+                    ]);
+                })();
+                const semanticPlan = await planWithTimeout as any;
                 if (semanticPlan) {
                     operationForStatus = semanticPlanToAIOperationType(semanticPlan);
                     wantsModification = semanticPlan.analysis.wantsModification;
@@ -1022,13 +1091,13 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                     history: historyForPipeline,
                     signal: abortController.signal,
                     onActivity: (act) => {
+                        if (currentRequestIdRef.current !== requestId) return;
                         setAgentActivities(prev => {
                             const idx = prev.findIndex(a => a.id === act.id);
                             if (idx >= 0) { const next = [...prev]; next[idx] = act; return next; }
-                            // also collapse running->done for same tool+path
                             return [...prev, act].slice(-12);
                         });
-                        // Drive loading states: interpreting→gathering→executing→verifying
+                        if (currentRequestIdRef.current !== requestId) return;
                         if (act.tool === 'interpret' && act.status === 'running') aiLoading.setThinking();
                         else if (['read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file'].includes(act.tool) && act.status === 'running') aiLoading.setGenerating();
                         else if (act.tool === 'apply' && act.status === 'running') aiLoading.setApplying();
@@ -1090,11 +1159,12 @@ Provide a warm, concise explanation. Keep to 2-4 bullets or short paragraphs. Do
                     : `You are ${BRAND.name} AI — warm and efficient. Be conversational, concise, and genuinely helpful.
 Natural: Talk like a friendly teammate, not a formal doc. Use contractions, a little warmth, an emoji when fitting.
 Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Code only when needed.`;
+                const refBlock = referencedContents.length ? `\nReferenced files:\n${referencedContents.map(r => `@${r.path}:\n\`\`\`\n${r.content}\n\`\`\``).join('\n')}` : '';
                 const fileContext = isCodeRelated && fileContent && fileContent.length > 10
-                    ? `File: ${fileName} (${language}, ${fileContent.split('\n').length} lines)\n\`\`\`${language}\n${fileContent.slice(0, 6000)}\n\`\`\`\nTree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}\n\nQ: "${userMessageText}"`
+                    ? `File: ${fileName} (${language}, ${fileContent.split('\n').length} lines)\n\`\`\`${language}\n${fileContent.slice(0, 6000)}\n\`\`\`${refBlock}\nTree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}\n\nQ: "${userMessageText}"`
                     : isCodeRelated && fileName
-                        ? `File: ${fileName} (${language}) | Q: "${userMessageText}" | Tree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}`
-                        : userMessageText;
+                        ? `File: ${fileName} (${language}) | Q: "${userMessageText}"${refBlock} | Tree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}`
+                        : referencedContents.length ? `${userMessageText}${refBlock}` : userMessageText;
 
                 // Super-fast local handling for file identity queries — instant, no network, fully context-aware
                 if (isFileQuery && fileName) {
@@ -1162,20 +1232,47 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
         } catch (error: any) {
             if (error.name !== 'AbortError') {
                 console.error('AI Error:', error);
+                // Preserve partial streaming content if stream failed after 60% — do not erase
+                const partial = latestStreamTextRef.current?.trim();
+                const stillCurrentErr = currentRequestIdRef.current === requestId;
+                if (partial && stillCurrentErr && !processedRequestsRef.current.has(requestId) && partial.length > 20) {
+                    const partialClean = cleanResponse(partial);
+                    if (partialClean) {
+                        const partialId = `${requestId}-partial`;
+                        if (!processedRequestsRef.current.has(partialId)) {
+                            processedRequestsRef.current.add(partialId);
+                            const partialMsg: Message = { id: partialId, role: 'ai', text: partialClean + "\n\n*Response interrupted — showing partial output.*", timestamp: Date.now() };
+                            setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, messages: [...s.messages, partialMsg], updatedAt: Date.now() } : s));
+                        }
+                    }
+                }
                 const code = error?.code as string | undefined;
                 let friendlyError: string;
+                let what = 'AI response failed';
+                let why = '';
                 if (code === AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR || error?.message?.includes('No AI providers are configured')) {
+                    what = 'AI not configured';
+                    why = 'No API keys found.';
                     friendlyError = 'No AI providers are configured. Add NVIDIA_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY or HF_TOKEN to .env and restart the server. Deterministic tasks like “Remove comments” and “/// hello world” work offline.';
                 } else if (code === AI_ERROR_CODES.AI_PROVIDER_AUTH_ERROR || error?.message?.includes('API key') || error?.message?.includes('auth')) {
+                    what = 'Authentication failed';
+                    why = 'API key rejected.';
                     friendlyError = 'AI provider authentication failed. Please check your API keys in .env / settings.';
                 } else if (code === AI_ERROR_CODES.AI_PROVIDER_RATE_LIMITED) {
+                    what = 'Rate limited';
+                    why = 'Too many requests.';
                     friendlyError = 'AI is rate-limited. Please wait a moment and try again.';
-                } else if (code === AI_ERROR_CODES.AI_PROVIDER_TIMEOUT) {
+                } else if (code === AI_ERROR_CODES.AI_PROVIDER_TIMEOUT || error?.message?.includes('timed out')) {
+                    what = 'Request timed out';
+                    why = 'The provider was slow — the request was cancelled after 75s.';
                     friendlyError = 'AI request timed out. The provider was slow — please try again.';
                 } else if (code === AI_ERROR_CODES.AI_ALL_PROVIDERS_FAILED || error?.message?.includes('unavailable')) {
+                    what = 'AI temporarily unavailable';
+                    why = 'All providers failed.';
                     friendlyError = 'AI is temporarily unavailable. Please try again in a moment.';
                 } else {
-                    friendlyError = error?.message ? String(error.message).slice(0, 300) : "I'm sorry, I encountered an error. Please try again.";
+                    why = error?.message ? String(error.message).slice(0, 220) : '';
+                    friendlyError = why ? `${what}: ${why}` : "I'm sorry, I encountered an error. Please try again.";
                 }
                 aiLoading.setError(friendlyError);
                 const errorMsg: Message = {
@@ -1190,16 +1287,30 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
             }
         } finally {
             isSendingRef.current = false;
-            if (aiLoading.status !== 'success' && aiLoading.status !== 'error' && aiLoading.status !== 'idle') {
-                aiLoading.stop();
+            if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+            // Defensive: query live store, not captured closure status — prevents stuck loading
+            const live = AIRequestStore.getActiveRequestForOperation('chat');
+            if (live && live.id === requestId && !['success','error','cancelled','idle'].includes(live.status)) {
+                AIRequestStore.cancelRequest(requestId);
             }
             setStreamingText('');
+            if (pendingStreamFrameRef.current !== null) { cancelAnimationFrame(pendingStreamFrameRef.current); pendingStreamFrameRef.current = null; }
             abortControllerRef.current = null;
             currentRequestIdRef.current = null;
         }
     }, [input, sessions, currentSessionId, aiLoading, handleNewChat, settings, getActiveFile, getFileTree]);
 
     handleSendRef.current = handleSend;
+
+    // Cleanup on unmount — never leave orphaned stream or pending frame
+    useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) { abortControllerRef.current.abort(); abortControllerRef.current = null; }
+            if (pendingStreamFrameRef.current !== null) { cancelAnimationFrame(pendingStreamFrameRef.current); pendingStreamFrameRef.current = null; }
+            // Do not clear store here — request may be shared, but ensure local UI reset
+            setStreamingText('');
+        };
+    }, []);
 
     // Coalesce streaming updates: at most one rAF pending, always renders the latest text
     const scheduleStreamUpdate = useCallback((requestId: string, text: string) => {
@@ -1480,7 +1591,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full relative z-10">
                 {/* Header — compact premium toolbar */}
-                <div className="h-10 shrink-0 flex items-center justify-between px-2.5 border-b z-20" style={{ background: '#101217', borderColor: 'rgba(255,255,255,0.07)' }}>
+                <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b z-20" style={{ background: '#101217', borderColor: 'rgba(255,255,255,0.06)' }}>
                     <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => setShowSidebar(!showSidebar)}
@@ -1505,7 +1616,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: newTitle.trim(), updatedAt: Date.now() } : s));
                             }
                         }}
-                        className="flex-1 min-w-0 mx-3 px-2 py-1 rounded-md text-[12.5px] font-medium truncate text-center transition-colors hover:bg-[var(--az-surface-3)]"
+                        className="flex-1 min-w-0 mx-3 px-2.5 py-1.5 rounded-md text-[14px] font-medium truncate text-center transition-colors hover:bg-[var(--az-surface-3)]"
                         style={{ color: 'var(--az-text-secondary)' }}
                         title={`${currentSession?.title || 'New Chat'} — Click to rename`}
                     >
@@ -1539,10 +1650,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 <div
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
-                    className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar w-full ${messages.length > 0 || streamingText ? 'pb-32' : ''}`}
+                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar w-full"
                     style={{ overflowAnchor: 'auto' }}
                 >
-                    <div className="mx-auto w-full max-w-[640px] px-3.5 pt-5 pb-6 space-y-5">
+                    <div className="mx-auto w-full max-w-[640px] px-4 pt-6 pb-8 space-y-6">
                     {messages.length === 0 && !streamingText && settings.general.showWelcomeScreen ? (
                         <div className="flex flex-col items-center justify-center px-6 py-10 text-center animate-fade-in-up w-full max-w-[360px] mx-auto">
                             <div className="mb-4 opacity-90">
@@ -1609,47 +1720,45 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 );
                             })}
 
-                            {/* Premium smooth streaming — 60fps, rAF coalesced, no layout jump */}
-                            {(streamingText || (isLoading && !streamingText)) && (
-                                <div className="ai-response-container w-full flex gap-4" style={{ contain: 'layout paint' }}>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="w-full bg-transparent">
-                                            <SmoothStreamingBubble
-                                                text={streamingText}
-                                                isStreaming={aiLoading.status === 'streaming' || aiLoading.status === 'generating'}
-                                            />
-                                            {/* Inline caret only when streaming has content */}
-                                            {streamingText && (aiLoading.status === 'streaming' || aiLoading.status === 'generating') && (
-                                                <div className="pl-1 pt-1 flex items-center gap-1 opacity-60">
-                                                    <AIStreamingIndicator active />
-                                                    <span className="text-[11px] text-[var(--az-text-muted)]">Writing…</span>
-                                                </div>
-                                            )}
-                                        </div>
+                            {/* Unified streaming — minimal premium, no logo */}
+                            {streamingText && (
+                                <div className="ai-response-container w-full" style={{ contain: 'layout paint' }}>
+                                    <div className="flex flex-col">
+                                        <div className="text-[13px] font-medium mb-2" style={{ color: 'var(--az-text-faint)', letterSpacing: '0.02em' }}>Azemax</div>
+                                        <SmoothStreamingBubble
+                                            text={streamingText}
+                                            isStreaming={aiLoading.status === 'streaming' || aiLoading.status === 'generating'}
+                                        />
                                     </div>
                                 </div>
                             )}
                         </>
                     )}
 
-                    {/* Premium centralized AI loading — contextual operation, hidden when streaming has content to avoid duplicate */}
-                    {(aiLoading.status === 'thinking' || aiLoading.status === 'preparing' || aiLoading.status === 'applying' || (aiLoading.status === 'generating' && !streamingText)) && (
-                        <div className="pl-2 py-2 message-appear ai-response-container">
-                            <AILoadingIndicator status={aiLoading.status} operation={currentOperation} variant="chat" />
-                        </div>
-                    )}
-                    {/* Subtle AI activity — minimal, quiet */}
-                    {agentActivities.length > 0 && (
-                        <div className="px-1 py-1 space-y-0.5">
-                            {agentActivities.slice(-4).map(act => (
-                                <div key={act.id} className="flex items-center gap-2 px-2 py-1 text-[11px] leading-none transition-opacity duration-200" style={{ contain: 'layout paint' }}>
-                                    <span className={`shrink-0 text-[11px] ${act.status === 'running' ? 'text-[var(--az-text-faint)] animate-pulse' : act.status === 'done' ? 'text-emerald-300/60' : 'text-red-300/60'}`}>
-                                        {act.status === 'running' ? '◌' : act.status === 'done' ? '✓' : '✕'}
-                                    </span>
-                                    <span className={`truncate ${act.status === 'running' ? 'text-white/45' : 'text-white/35'}`}>{act.message}</span>
-                                    {act.path && <span className="ml-auto shrink-0 text-[10px] text-white/20 truncate max-w-[120px]">{act.path}</span>}
+                    {/* Unified AI activity — exactly ONE compact status at a time, no skeleton, no duplicate loaders */}
+                    {!streamingText && isLoading && (
+                        <div className="message-appear" style={{ minHeight: '28px', marginTop: '12px', marginBottom: '12px' }}>
+                            {agentActivities.length > 0 ? (
+                                <div className="space-y-1">
+                                    {agentActivities.slice(-4).map(act => (
+                                        <div key={act.id} className="flex items-center gap-2 px-2 py-1.5 text-[13px] leading-none" style={{ minHeight: '28px', contain: 'layout paint' }}>
+                                            <span className={`flex-1 truncate ${act.status === 'running' ? 'text-[#A1A6B0]' : act.status === 'done' ? 'text-[#707680]' : 'text-red-300/70'}`}>{act.message.replace(/…+$|\.\.\.+$/,'').trim()}</span>
+                                            <span className="ai-loading-dots-subtle ai-dots-fixed" aria-hidden="true" style={{ display: act.status === 'running' ? 'inline-flex' : 'none', width: 16 }}>
+                                                <span className="ai-dot-subtle" />
+                                                <span className="ai-dot-subtle" />
+                                                <span className="ai-dot-subtle" />
+                                            </span>
+                                            <span className={`shrink-0 text-[11px] ${act.status === 'running' ? 'text-transparent' : act.status === 'done' ? 'text-emerald-400/60' : 'text-red-400/70'}`}>
+                                                {act.status === 'running' ? '' : act.status === 'done' ? '✓' : '✕'}
+                                            </span>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                            ) : (
+                                <div className="px-1">
+                                    <AILoadingIndicator status={aiLoading.status} operation={currentOperation} variant="chat" />
+                                </div>
+                            )}
                         </div>
                     )}
                     {/* Premium diff artifacts — compact */}
@@ -1700,21 +1809,20 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     </div>
                 </div>
 
-                {/* Scroll to Bottom Button */}
+                {/* Scroll to Bottom Button — sticky above composer */}
                 <button
                     onClick={handleScrollToBottom}
                     className={`ai-scroll-btn ${showScrollButton ? 'visible' : ''} group/scroll-btn`}
                     aria-label="Scroll to bottom"
                 >
                     <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-black/80 backdrop-blur-sm border border-[var(--az-border)] shadow-md transition-all duration-200 hover:scale-105 hover:bg-black hover:border-white/30">
-                        {/* Icon - Down Arrow */}
                         <ChevronUp size={18} className="rotate-180 text-[var(--az-text-secondary)] group-hover/scroll-btn:text-white transition-colors" />
                     </div>
                 </button>
 
-                {/* Premium Floating Composer — minimal, quiet, responsive */}
-                <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 z-30" style={{ background: "linear-gradient(to top, #101217 70%, transparent)" }}>
-                    <div className="max-w-3xl mx-auto">
+                {/* Composer — sticky, anchored, premium floating */}
+                <div className="shrink-0 px-3 pb-3 pt-3 z-10" style={{ background: '#101217', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div className="mx-auto w-full max-w-[640px]">
                         <AIComposer
                             input={input}
                             setInput={setInput}
