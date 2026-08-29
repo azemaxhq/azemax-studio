@@ -590,7 +590,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
     // Centralized AI loading lifecycle — single source via AIRequestStore (chat operation)
-    // Keep current user-facing operation for contextual status (Adding comments… vs Preparing response…)
+    // Keep current user-facing operation for contextual status
     const aiLoading = useAILoading('chat');
     const isLoading = aiLoading.isLoading;
     const [currentOperation, setCurrentOperation] = useState<import('../../core/ai/aiRequestStore').AIOperationType>('chat');
@@ -1741,9 +1741,9 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             {agentActivities.length > 0 ? (
                                 <div className="space-y-1">
                                     {agentActivities.slice(-4).map(act => (
-                                        <div key={act.id} className="flex items-center gap-2 px-2 py-1.5 text-[13px] leading-none" style={{ minHeight: '28px', contain: 'layout paint' }}>
+                                        <div key={act.id} className="flex items-center gap-2 px-2 py-1 text-[13px] leading-none" style={{ minHeight: '28px', contain: 'layout paint' }}>
                                             <span className={`flex-1 truncate ${act.status === 'running' ? 'text-[#A1A6B0]' : act.status === 'done' ? 'text-[#707680]' : 'text-red-300/70'}`}>{act.message.replace(/…+$|\.\.\.+$/,'').trim()}</span>
-                                            <span className="ai-loading-dots-subtle ai-dots-fixed" aria-hidden="true" style={{ display: act.status === 'running' ? 'inline-flex' : 'none', width: 16 }}>
+                                            <span className="ai-loading-dots-subtle ai-dots-fixed" aria-hidden="true" style={{ display: act.status === 'running' ? 'inline-flex' : 'none', width: 16, gap: 4 }}>
                                                 <span className="ai-dot-subtle" />
                                                 <span className="ai-dot-subtle" />
                                                 <span className="ai-dot-subtle" />
@@ -1756,7 +1756,15 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 </div>
                             ) : (
                                 <div className="px-1">
-                                    <AILoadingIndicator status={aiLoading.status} operation={currentOperation} variant="chat" />
+                                    <AILoadingIndicator
+                                        status={aiLoading.status}
+                                        operation={currentOperation}
+                                        prompt={lastUserMessage || undefined}
+                                        fileName={activeFileMeta?.name || undefined}
+                                        activeTool={(() => { const a = agentActivities.find(x => x.status === 'running'); return a ? { name: a.tool, target: a.path, label: a.message } as any : null; })()}
+                                        hasSelection={!!getActiveEditorContext()?.selectionText}
+                                        variant="chat"
+                                    />
                                 </div>
                             )}
                         </div>

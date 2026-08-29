@@ -1,17 +1,16 @@
-/* Azemax AI-native loader — mark + status, stable space, subtle 180ms */
+/* Ultra-minimal loader — text + dots, no card, no logo */
 .ai-loading-minimal {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    min-height: 32px;
-    min-width: 180px;
+    gap: 6px;
+    padding: 2px 0;
+    min-height: 20px;
     animation: ai-loading-in 180ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)) both;
     will-change: opacity, transform;
     contain: layout;
 }
 .ai-loading-stable {
-    min-width: 180px;
+    min-width: auto;
 }
 @keyframes ai-loading-in {
     from { opacity: 0; transform: translateY(3px); }
@@ -50,35 +49,37 @@
 .ai-loading-dots-subtle {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    margin-left: 2px;
+    gap: 4px;
+    margin-left: 4px;
+    width: 16px;
+    justify-content: flex-start;
 }
 .ai-dot-subtle {
-    width: 3px;
-    height: 3px;
+    width: 3.5px;
+    height: 3.5px;
     border-radius: 999px;
-    background: var(--az-text-muted, #707680);
-    opacity: 0.32;
-    animation: ai-dot-subtle 1.8s ease-in-out infinite;
+    background: var(--az-text-muted, #8B949E);
+    opacity: 0.28;
+    animation: ai-dot-subtle 1000ms ease-in-out infinite;
     will-change: opacity, transform;
 }
-.ai-dot-subtle:nth-child(2) { animation-delay: 0.18s; }
-.ai-dot-subtle:nth-child(3) { animation-delay: 0.36s; }
+.ai-dot-subtle:nth-child(2) { animation-delay: 0.14s; }
+.ai-dot-subtle:nth-child(3) { animation-delay: 0.28s; }
 @keyframes ai-dot-subtle {
-    0%, 100% { opacity: 0.22; transform: scale(0.85); }
-    50% { opacity: 0.75; transform: scale(1); }
+    0%, 100% { opacity: 0.24; transform: translateY(0) scale(0.92); }
+    50% { opacity: 0.88; transform: translateY(-0.6px) scale(1); }
 }
 .ai-loading-minimal-text {
     display: inline-flex;
     align-items: center;
     min-height: 16px;
+    font-size: 13px;
+    font-weight: 450;
+    letter-spacing: 0.01em;
+    color: var(--az-text-muted, #8B949E);
+    line-height: 1.4;
+    white-space: nowrap;
 }
-.ai-loading-minimal .ai-response-status { font-size: 12px; font-weight: 450; letter-spacing: 0.15px; color: rgba(255,255,255,0.58); }
-.ai-loading-minimal .ai-response-status--thinking,
-.ai-loading-minimal .ai-response-status--preparing { color: rgba(255,255,255,0.58); }
-.ai-loading-minimal .ai-response-status--generating,
-.ai-loading-minimal .ai-response-status--streaming { color: rgba(255,255,255,0.58); }
-.ai-loading-minimal .ai-response-status--applying { color: rgba(255,255,255,0.58); }
 
 /* Legacy pill — kept for compact variant only, not used for chat */
 .ai-loading-indicator {

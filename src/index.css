@@ -314,19 +314,94 @@ body {
   font-style: italic; font-weight: 400;
   background: none; text-shadow: none; -webkit-text-fill-color: initial;
 }
+/* Premium Azemax inline comment — subtle hierarchy, still code */
+.ai-comment-slash {
+  color: var(--az-accent, #3B82F6) !important;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-style: normal !important;
+  opacity: 0.95;
+}
+.ai-comment-suggestion {
+  color: #AAB4C8 !important;
+  font-style: italic;
+  font-weight: 400;
+  opacity: 0.96;
+  letter-spacing: 0.01em;
+}
+.ai-comment-suggestion.ai-comment-streaming {
+  animation: ai-comment-reveal 200ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)) both;
+}
+@keyframes ai-comment-reveal {
+  from { opacity: 0; transform: translateY(1px); }
+  to { opacity: 0.96; transform: translateY(0); }
+}
+.ai-comment-line-premium {
+  background: transparent !important;
+  transition: background 160ms var(--az-ease, cubic-bezier(0.2,0,0,1));
+}
+.ai-comment-line-premium:hover {
+  background: rgba(255,255,255,0.015) !important;
+}
+.ai-comment-breathing {
+  animation: ai-comment-breathe 2.4s ease-in-out infinite;
+  will-change: opacity;
+}
+@keyframes ai-comment-breathe {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-comment-breathing { animation: none !important; opacity: 1 !important; }
+}
+.ai-comment-glyph-premium {
+  border-left: 1.5px solid rgba(122,142,185,0.28) !important;
+  margin-left: 3px;
+  opacity: 0.9;
+  transition: border-color 160ms ease, opacity 160ms ease;
+}
+.ai-comment-line-premium:hover .ai-comment-glyph-premium,
+.ai-comment-glyph-premium:hover {
+  border-left-color: rgba(122,142,185,0.45) !important;
+  opacity: 1;
+}
 .ai-comment-line { background: rgba(59,130,246,0.04) !important; }
 .ai-comment-glyph { border-left: 2px solid var(--az-border-strong); }
 .glass-line-highlight { background: rgba(59,130,246,0.06) !important; }
 .glass-line-highlight::before { display: none; }
+/* Minimal inline AI indicator — Azemax spark, ultra small, editor-native */
 .ai-loading-spinner::after {
-  content: '● Processing…';
+  content: '✦ Writing comment';
   font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 11px; font-weight: 500;
-  margin-left: 12px; padding: 2px 8px; border-radius: var(--az-r-full);
-  color: var(--az-text-secondary);
-  background: var(--az-surface-3);
-  border: 1px solid var(--az-border);
+  font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+  margin-left: 10px; padding: 2px 8px; border-radius: 6px;
+  color: var(--az-text-muted);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
   display: inline-block;
+  animation: ai-comment-reveal 180ms ease-out both;
+}
+.ai-comment-caret {
+  position: relative;
+}
+.ai-comment-caret::after {
+  content: '';
+  position: absolute;
+  right: -1px; top: 1px; bottom: 1px;
+  width: 1px;
+  background: var(--az-accent, #3B82F6);
+  opacity: 0.72;
+  border-radius: 1px;
+  animation: ai-caret-pulse 1100ms ease-in-out infinite;
+}
+@keyframes ai-caret-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 0.22; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-comment-suggestion.ai-comment-streaming { animation: none !important; }
+  .ai-comment-caret::after { animation: none !important; opacity: 0.5; }
+  .ai-loading-spinner::after { animation: none !important; }
 }
 
 /* Diagnostics — muted */

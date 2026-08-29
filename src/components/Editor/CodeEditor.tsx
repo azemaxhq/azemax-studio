@@ -12,6 +12,8 @@ import { checkCodeErrors } from '../../utils/diagnosticsService';
 import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map as MapIcon, WrapText, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
 import { ModernAILogo } from '../Icons/ModernAILogo';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
+import { AICommentIndicator } from './AICommentIndicator';
+import { AIRequestStore } from '../../core/ai/aiRequestStore';
 import { BRAND } from '../../core/branding';
 import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
@@ -125,6 +127,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const [isFormatting, setIsFormatting] = useState(false);
     const [, setIsAiProcessing] = useState(false);
     const [activeAiLine, setActiveAiLine] = useState<number | null>(null);
+    const [activeAiIntent, setActiveAiIntent] = useState<string | null>(null);
     // Tracks the LIVE editor instance. Unlike a boolean "ready" flag, this
     // changes identity whenever the inner Monaco editor is (re)created (e.g.
     // after the placeholder "no file" view), so effects that attach listeners
@@ -517,9 +520,15 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
 
         const fileIdAtStart = activeFileRef.current?.id ?? null;
-        console.log('[AI Auto-Replace] Detected command:', match[2].trim(), 'on line:', lineNumber);
+        const intent = match[2].trim();
+        console.log('[AI Auto-Replace] Detected command:', intent, 'on line:', lineNumber);
         setIsAiProcessing(true);
         setActiveAiLine(lineNumber);
+        setActiveAiIntent(intent);
+        let reqId: string | null = null;
+        try { reqId = AIRequestStore.startRequest('comment', 'thinking'); } catch {}
+        // Progressive phases: thinking -> generating
+        if (reqId) { try { AIRequestStore.updateRequest(reqId, 'generating'); } catch {} }
         let versionId = model.getVersionId();
         const processingTimeout = setTimeout(() => {
             if (isProcessingAiCommandRef.current) {
@@ -531,7 +540,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }, 65000);
 
         try {
+            if (reqId) { try { AIRequestStore.updateRequest(reqId, 'generating'); } catch {} }
             const { executeTripleSlashPremium } = await import('../../core/ai/tripleSlashPipeline');
+            if (reqId) { try { AIRequestStore.updateRequest(reqId, 'applying'); } catch {} }
             const result = await executeTripleSlashPremium({
                 editor,
                 model,
@@ -550,9 +561,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
             if (!result.success) {
                 console.warn('[AI Auto-Replace] Premium pipeline failed:', result.message);
+                if (reqId) { try { AIRequestStore.failRequest(reqId, result.message); } catch {} }
                 return;
             }
-
+            if (reqId) { try { AIRequestStore.updateRequest(reqId, 'success'); } catch {} }
+            // Keep completion visible briefly: "Comments added ✓" then fade
+            setTimeout(() => { try { if (reqId) AIRequestStore.completeRequest(reqId); } catch {} }, 1200);
             console.log('[AI Auto-Replace] Premium edit applied:', result.message);
 
             const newContent = getActiveEditorContext()?.code ?? model.getValue();
@@ -563,11 +577,28 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             editor.focus();
         } catch (error) {
             console.error('[AI Auto-Replace] Error, editor left untouched:', error);
+            if (reqId) { try { AIRequestStore.failRequest(reqId, (error as Error).message); } catch {} }
         } finally {
             clearTimeout(processingTimeout);
             setIsAiProcessing(false);
-            setActiveAiLine(null);
-            isProcessingAiCommandRef.current = false;
+            // Keep completion visible for 1.2s, otherwise clear immediately
+            const isSuccess = reqId ? AIRequestStore.getRequest(reqId)?.status === 'success' : false;
+            if (isSuccess) {
+                setTimeout(() => {
+                    setActiveAiLine(null);
+                    setActiveAiIntent(null);
+                    isProcessingAiCommandRef.current = false;
+                    if (reqId) { try { AIRequestStore.completeRequest(reqId); } catch {} }
+                }, 1200);
+            } else {
+                setActiveAiLine(null);
+                setActiveAiIntent(null);
+                isProcessingAiCommandRef.current = false;
+                if (reqId) {
+                    const st = AIRequestStore.getRequest(reqId)?.status;
+                    if (st && !['success','error','cancelled'].includes(st)) { try { AIRequestStore.cancelRequest(reqId); } catch {} }
+                }
+            }
         }
     }, [getFileTree, createFile, deleteNode, renameNode, updateFileContent]);
 
@@ -668,16 +699,26 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         const newDecorations: Monaco.editor.IModelDeltaDecoration[] = [];
 
         lines.forEach((line, index) => {
-            // Check for /// pattern
-            if (line.indexOf('///') !== -1) {
-                const startCol = line.indexOf('///') + 1;
-                // Always highlight the AI command part, even if incomplete (while typing)
+            const slashIdx = line.indexOf('///');
+            if (slashIdx !== -1) {
+                const startCol = slashIdx + 1;
+                const slashEndCol = startCol + 3;
+                // /// prefix → muted accent, keeps source syntax recognizable
                 newDecorations.push({
-                    range: new monacoRef.current!.Range(index + 1, startCol, index + 1, line.length + 1),
-                    options: {
-                        isWholeLine: false,
-                        inlineClassName: 'ai-comment-decoration',
-                    }
+                    range: new monacoRef.current!.Range(index + 1, startCol, index + 1, slashEndCol),
+                    options: { isWholeLine: false, inlineClassName: 'ai-comment-slash' }
+                });
+                // AI suggestion text → slightly brighter secondary, premium italic
+                if (line.length >= slashEndCol) {
+                    newDecorations.push({
+                        range: new monacoRef.current!.Range(index + 1, slashEndCol, index + 1, line.length + 1),
+                        options: { isWholeLine: false, inlineClassName: 'ai-comment-suggestion' }
+                    });
+                }
+                // Subtle line container for hover affordance — no large bg
+                newDecorations.push({
+                    range: new monacoRef.current!.Range(index + 1, 1, index + 1, 1),
+                    options: { isWholeLine: true, className: 'ai-comment-line-premium', glyphMarginClassName: 'ai-comment-glyph-premium' }
                 });
             }
         });
@@ -688,26 +729,35 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         commentDecorationsRef.current = editorRef.current.createDecorationsCollection(newDecorations);
     }, []);
 
-    // Update loading decoration separately (only when activeAiLine changes)
+    // Premium — breathing on comment range + caret; spinner is overlay widget (no layout shift)
     const updateLoadingDecoration = useCallback(() => {
         if (!editorRef.current || !monacoRef.current) return;
-
-        // Clear existing loading decoration
         if (loadingDecorationRef.current) {
             loadingDecorationRef.current.clear();
             loadingDecorationRef.current = null;
         }
-
-        // Add new loading decoration if there's an active AI line
         if (activeAiLine !== null) {
-            loadingDecorationRef.current = editorRef.current.createDecorationsCollection([{
-                range: new monacoRef.current!.Range(activeAiLine, 1, activeAiLine, 1),
-                options: {
-                    isWholeLine: true,
-                    afterContentClassName: 'ai-loading-spinner',
-                    className: 'glass-line-highlight'
+            const model = editorRef.current.getModel();
+            const lineContent = model ? model.getLineContent(activeAiLine) : '';
+            const slashIdx = lineContent.indexOf('///');
+            const commentStartCol = slashIdx !== -1 ? slashIdx + 1 : 1;
+            const endCol = lineContent.length + 1;
+            loadingDecorationRef.current = editorRef.current.createDecorationsCollection([
+                {
+                    range: new monacoRef.current!.Range(activeAiLine, commentStartCol, activeAiLine, endCol),
+                    options: {
+                        isWholeLine: false,
+                        inlineClassName: 'ai-comment-breathing'
+                    }
+                },
+                {
+                    range: new monacoRef.current!.Range(activeAiLine, endCol, activeAiLine, endCol),
+                    options: {
+                        isWholeLine: false,
+                        inlineClassName: 'ai-comment-caret'
+                    }
                 }
-            }]);
+            ]);
         }
     }, [activeAiLine]);
 
@@ -1422,7 +1472,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             </div>
 
             {/* Editor Area — uncontrolled to avoid wrapper's setValue() race with glitch-free executeEdits */}
-            <div className="flex-1 min-h-0 relative">
+            <div className="flex-1 min-h-0 relative overflow-hidden">
                 <Editor
                     height="100%"
                     language={language}
@@ -1433,6 +1483,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     onMount={handleEditorMount}
                     options={editorOptions}
                 />
+                <AICommentIndicator activeLine={activeAiLine} intent={activeAiIntent} editorRef={editorRef} monacoRef={monacoRef} />
             </div>
 
             {/* Status Bar — neutral, calm */}

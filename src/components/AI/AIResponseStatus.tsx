@@ -11,20 +11,9 @@ interface AIResponseStatusProps {
 
 export const AIResponseStatus: React.FC<AIResponseStatusProps> = ({ status, operation, className = '' }) => {
     const label = operation ? getUserFacingStatus(operation, status) : null;
-    // Fallback to legacy status label if no operation provided (should not happen for new code)
     const fallback = !operation ? (() => {
-        const map: Record<AILoadingStatus, string | null> = {
-            idle: null,
-            preparing: 'Preparing response…',
-            thinking: 'Preparing response…',
-            generating: 'Writing response…',
-            streaming: 'Writing response…',
-            applying: 'Applying changes…',
-            success: null,
-            error: null,
-            cancelled: null,
-        };
-        return map[status] ?? null;
+        if (status === 'idle' || status === 'success' || status === 'error' || status === 'cancelled') return null;
+        return 'Working';
     })() : null;
     const finalLabel = label ?? fallback;
     if (!finalLabel) return null;

@@ -303,15 +303,15 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     // [5] VALIDATION + [6] APPLY + [7] VERIFY — refined, single card per phase
     // Build a human-friendly label for the apply step
     const firstAction = actions[0] as { action: string; file?: string; path?: string; comments?: { line?: number }[] };
-    let applyLabel = `Updating ${fileName || 'file'}…`;
+    let applyLabel = `Updating ${fileName || 'file'}`;
     if (firstAction.action === 'add_comments' && firstAction.comments?.length === 1 && firstAction.comments[0].line) {
-        applyLabel = `Adding comment to line ${firstAction.comments[0].line}…`;
+        applyLabel = `Adding comment to line ${firstAction.comments[0].line}`;
     } else if (firstAction.action === 'add_comments') {
-        applyLabel = `Adding ${firstAction.comments?.length ?? actions.length} comment(s)…`;
+        applyLabel = `Adding ${firstAction.comments?.length ?? actions.length} comment(s)`;
     } else if (firstAction.action === 'create_file') {
-        applyLabel = `Creating ${firstAction.path}…`;
+        applyLabel = `Creating ${firstAction.path}`;
     } else if (firstAction.action === 'rename_file') {
-        applyLabel = `Renaming file…`;
+        applyLabel = `Renaming file`;
     }
     const applying = makeActivity('apply', 'running', applyLabel);
     push(applying);
