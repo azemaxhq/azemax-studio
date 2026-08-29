@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom';
 import {
     FilePlus, FolderPlus, ChevronsDownUp, ChevronsUpDown,
-    RefreshCw, Search, Sparkles
+    RefreshCw, Search
 } from 'lucide-react';
 import { FileExplorer } from './FileExplorer';
 import { useProjectFile, useProjectUI, useProjectActions } from '../../context/ProjectContext';
@@ -87,12 +87,12 @@ const HeaderActionBtn = ({
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
                 className={`
-                    relative p-1.5 rounded-md transition-all duration-200 group/abtn
+                    relative p-1.5 rounded-md transition-all duration-150 group/abtn
                     ${isActive
-                        ? 'text-blue-400 bg-blue-500/15 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
+                        ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
                         : danger
-                            ? 'text-white/30 hover:text-red-400 hover:bg-red-500/10'
-                            : 'text-white/30 hover:text-white/80 hover:bg-white/[0.06] active:scale-90'
+                            ? 'text-[var(--az-text-muted)] hover:text-[var(--az-error)] hover:bg-[var(--az-error-soft)]'
+                            : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] active:scale-[0.97]'
                     }
                 `}
             >
@@ -172,20 +172,11 @@ export const Sidebar: React.FC = () => {
     }, []);
 
     return (
-        <div className="h-full flex flex-col bg-transparent relative overflow-hidden group/sidebar">
-            {/* Ambient gradient glow */}
-            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-blue-500/[0.05] via-purple-500/[0.02] to-transparent pointer-events-none" />
-
-            {/* ── Premium Header ── */}
+        <div className="h-full flex flex-col relative overflow-hidden group/sidebar" style={{ background: 'var(--az-surface)' }}>
             <div className="shrink-0 relative z-10">
-                {/* Gradient accent line at very top */}
-                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/25 to-transparent z-20" />
-
-                {/* Top bar: title + action buttons */}
-                <div className={`${isDesktop ? 'h-11 flex-nowrap overflow-hidden' : 'min-h-11 flex-wrap'} flex items-center justify-between px-2 relative`}>
-                    {/* Title */}
+                <div className={`${isDesktop ? 'h-10 flex-nowrap overflow-hidden' : 'min-h-10 flex-wrap'} flex items-center justify-between px-2 relative`} style={{ borderBottom: '1px solid var(--az-border)' }}>
                     <div className="flex items-center min-w-0 flex-1 mr-2 px-1">
-                        <span className="text-[11px] font-medium tracking-wider text-white/50 uppercase truncate select-none">
+                        <span className="text-[11px] font-medium tracking-wider uppercase truncate select-none" style={{ color: 'var(--az-text-muted)' }}>
                             Explorer
                         </span>
                     </div>
@@ -242,33 +233,16 @@ export const Sidebar: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Project stats bar */}
-                <div className="h-7 px-3 flex items-center gap-2 border-t border-white/[0.03] border-b border-b-white/[0.03] bg-gradient-to-r from-white/[0.01] to-transparent overflow-hidden">
-                    {/* File count */}
-                    <div className="flex items-center gap-1.5 shrink min-w-0">
-                        <div className="w-[4px] h-[4px] shrink-0 rounded-full bg-gradient-to-r from-blue-400 to-cyan-400 shadow-[0_0_4px_rgba(59,130,246,0.4)]" />
-                        <span className="text-[10px] font-medium text-white/35 tabular-nums truncate">
-                            <span className="text-white/50 font-semibold">{files}</span> file{files !== 1 ? 's' : ''}
-                        </span>
-                    </div>
-
-                    <span className="text-white/[0.06] text-[10px] shrink-0">·</span>
-
-                    {/* Folder count */}
-                    <div className="flex items-center gap-1.5 shrink min-w-0">
-                        <div className="w-[4px] h-[4px] shrink-0 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 shadow-[0_0_4px_rgba(168,85,247,0.3)]" />
-                        <span className="text-[10px] font-medium text-white/35 tabular-nums truncate">
-                            <span className="text-white/50 font-semibold">{folderCount}</span> folder{folderCount !== 1 ? 's' : ''}
-                        </span>
-                    </div>
-
+                <div className="h-7 px-3 flex items-center gap-2 overflow-hidden" style={{ borderBottom: '1px solid var(--az-border)', background: 'var(--az-surface-2)' }}>
+                    <span className="text-[10px] tabular-nums truncate" style={{ color: 'var(--az-text-muted)' }}>
+                        <span style={{ color: 'var(--az-text-secondary)', fontWeight: 600 }}>{files}</span> file{files !== 1 ? 's' : ''}
+                    </span>
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--az-border-strong)' }}>·</span>
+                    <span className="text-[10px] tabular-nums truncate" style={{ color: 'var(--az-text-muted)' }}>
+                        <span style={{ color: 'var(--az-text-secondary)', fontWeight: 600 }}>{folderCount}</span> folder{folderCount !== 1 ? 's' : ''}
+                    </span>
                     <div className="flex-1" />
-
-                    {/* Active badge */}
-                    <div className="flex items-center gap-1 px-1.5 py-[1px] rounded bg-emerald-500/[0.06] border border-emerald-500/[0.08] shrink-0 ml-1 overflow-hidden max-w-[60px]">
-                        <Sparkles size={7} className="text-emerald-400/50 shrink-0" />
-                        <span className="text-[7px] font-bold text-emerald-400/40 uppercase tracking-[0.15em] truncate">Active</span>
-                    </div>
+                    <span className="text-[10px] font-medium truncate" style={{ color: 'var(--az-text-faint)' }}>{anyFolderOpenFlag ? 'Expanded' : 'Collapsed'}</span>
                 </div>
             </div>
 

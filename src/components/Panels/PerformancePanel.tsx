@@ -191,7 +191,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/10 border border-blue-500/30 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center">
             <BarChart3 size={18} className="text-blue-400" />
           </div>
           <div>
@@ -381,7 +381,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                     alert.severity === 'critical' ? 'bg-red-500/10 border-red-500/30' :
                     alert.severity === 'high' ? 'bg-orange-500/10 border-orange-500/30' :
                     alert.severity === 'medium' ? 'bg-yellow-500/10 border-yellow-500/30' :
-                    'bg-blue-500/10 border-blue-500/30'
+                    'bg-[var(--az-surface-3)] border-[var(--az-border)]'
                   }`}
                 >
                   <div className="flex items-start gap-2">

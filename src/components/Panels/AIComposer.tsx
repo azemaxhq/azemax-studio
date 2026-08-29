@@ -176,7 +176,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
         <div className="relative w-full">
             {/* Mentions popup */}
             {showMentions && filteredFiles.length > 0 && (
-                <div className="absolute bottom-full mb-2 left-0 right-0 mx-0 bg-[#1c1c1f] border border-white/[0.08] rounded-xl shadow-xl shadow-black/30 overflow-hidden z-50 animate-fade-in" style={{ contain: 'layout paint' }}>
+                <div className="absolute bottom-full mb-2 left-0 right-0 mx-0 rounded-lg overflow-hidden z-50 animate-fade-in" style={{ background: "var(--az-overlay)", border: "1px solid var(--az-border)", boxShadow: "0 12px 32px rgba(0,0,0,0.4)", contain: 'layout paint' } as React.CSSProperties}>
                     <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
                         {filteredFiles.map((file, idx) => (
                             <button
@@ -193,9 +193,9 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                         setAttachedChips(prev => [...prev, { id: `at-${file}`, label: file, icon: <FileCode size={12} />, removable: true }]);
                                     }
                                 }}
-                                className={`w-full text-left px-3 py-2 flex items-center gap-2 text-[13px] transition-colors ${idx === mentionIndex ? 'bg-white/[0.06] text-white' : 'text-white/70 hover:bg-white/[0.04] hover:text-white'}`}
+                                className={`w-full text-left px-3 py-2 flex items-center gap-2 text-[13px] transition-colors ${idx === mentionIndex ? 'bg-[var(--az-surface-3)] text-[var(--az-text)]' : 'text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text)]'}`}
                             >
-                                <FileCode size={14} className="text-white/40 shrink-0" />
+                                <FileCode size={14} className="shrink-0" style={{ color: "var(--az-text-muted)"}} />
                                 <span className="truncate">{file}</span>
                             </button>
                         ))}
@@ -204,17 +204,17 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
             )}
             {/* Slash popup */}
             {showSlash && filteredSlash.length > 0 && (
-                <div className="absolute bottom-full mb-2 left-0 right-0 bg-[#1c1c1f] border border-white/[0.08] rounded-xl shadow-xl shadow-black/30 overflow-hidden z-50 animate-fade-in">
+                <div className="absolute bottom-full mb-2 left-0 right-0 rounded-lg overflow-hidden z-50 animate-fade-in" style={{ background: "var(--az-overlay)", border: "1px solid var(--az-border)", boxShadow: "0 12px 32px rgba(0,0,0,0.4)"}}>
                     <div className="py-1">
                         {filteredSlash.map((item, idx) => (
                             <button
                                 key={item.cmd}
                                 onClick={() => { setInput(item.cmd + ' '); setShowSlash(false); inputRef.current?.focus(); }}
-                                className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${idx === slashIndex ? 'bg-white/[0.06] text-white' : 'text-white/70 hover:bg-white/[0.04]'}`}
+                                className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${idx === slashIndex ? 'bg-[var(--az-surface-3)] text-[var(--az-text)]' : 'text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)]'}`}
                             >
-                                <item.icon size={14} className="text-white/40" />
+                                <item.icon size={14} style={{ color: "var(--az-text-muted)"}} />
                                 <span className="text-[13px] font-medium">{item.cmd}</span>
-                                <span className="text-[12px] text-white/40 truncate">{item.desc}</span>
+                                <span className="text-[12px] truncate" style={{ color: 'var(--az-text-muted)'}}>{item.desc}</span>
                             </button>
                         ))}
                     </div>
@@ -222,17 +222,17 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
             )}
 
             {/* Composer container */}
-            <div className="relative bg-[#1a1a1e] border border-white/[0.07] rounded-[20px] shadow-sm shadow-black/20 overflow-hidden transition-all duration-200 focus-within:border-white/[0.12] focus-within:shadow-md focus-within:shadow-black/20">
+            <div className="az-composer relative rounded-[12px] overflow-hidden" style={{ background: "var(--az-surface-3)", border: "1px solid var(--az-border)"}}>
                 {/* Context chips */}
                 {allChips.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-1">
                         {allChips.map(chip => (
-                            <span key={chip.id} className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-full bg-white/[0.06] border border-white/[0.06] text-[11px] text-white/70 leading-none">
-                                <span className="text-white/40">{chip.icon}</span>
-                                <span className="truncate max-w-[140px]">{chip.label}</span>
+                            <span key={chip.id} className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-full text-[11px] leading-none" style={{ background: "var(--az-surface-hover)", border: "1px solid var(--az-border)", color: "var(--az-text-secondary)"}}>
+                                <span style={{ color: "var(--az-text-muted)"}}>{chip.icon}</span>
+                                <span className="truncate max-w-[140px]" style={{ color: "var(--az-text-secondary)"}}>{chip.label}</span>
                                 {chip.detail && <span className="text-white/30">{chip.detail}</span>}
                                 {chip.removable && (
-                                    <button onClick={() => removeChip(chip.id)} className="ml-1 p-0.5 rounded-full hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors">
+                                    <button onClick={() => removeChip(chip.id)} className="ml-1 p-0.5 rounded-full transition-colors" style={{ color: "var(--az-text-muted)"}} onMouseEnter={e=>e.currentTarget.style.background="var(--az-surface-3)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                         <X size={10} />
                                     </button>
                                 )}
@@ -247,10 +247,10 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                     value={input}
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask AI about your code..."
+                    placeholder="Ask Azemax..."
                     rows={1}
-                    className="w-full bg-transparent text-white placeholder-white/30 text-[14px] leading-[1.5] px-4 pt-3 pb-2 min-h-[44px] max-h-[160px] resize-none focus:outline-none"
-                    style={{ height: '44px' }}
+                    className="w-full bg-transparent text-[14px] leading-[1.5] px-4 pt-3 pb-2 min-h-[44px] max-h-[160px] resize-none focus:outline-none"
+                    style={{ color: "var(--az-text)", height: '44px' } as React.CSSProperties}
                 />
 
                 {/* Bottom bar */}
@@ -264,7 +264,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                     setAttachedChips(prev => [...prev, { id: `file-${activeFileMeta.name}`, label: activeFileMeta.name, icon: <FileCode size={12} />, removable: true }]);
                                 }
                             }}
-                            className="p-1.5 rounded-full hover:bg-white/[0.06] text-white/40 hover:text-white/80 transition-colors"
+                            className="p-1.5 rounded-md transition-colors" style={{ color: "var(--az-text-muted)"}} onMouseEnter={e=>{e.currentTarget.style.background="var(--az-surface-hover)"; e.currentTarget.style.color="var(--az-text)"}} onMouseLeave={e=>{e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--az-text-muted)"}}
                         >
                             <Paperclip size={14} />
                         </button>
@@ -280,25 +280,25 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                 setShowMentions(true);
                                 setMentionQuery('');
                             }}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full hover:bg-white/[0.06] text-white/40 hover:text-white/70 text-[12px] transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[12px] transition-colors" style={{ color: "var(--az-text-muted)"}}
                             title="Mention file @"
                         >
                             <AtSign size={12} />
                             <span className="hidden sm:inline text-[11px]">File</span>
                         </button>
-                        <span className="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/[0.04] border border-white/[0.06] text-[11px] text-white/50">
-                            <Sparkles size={11} className="text-violet-300/60" /> Agent
+                        <span className="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "var(--az-surface-2)", border: "1px solid var(--az-border)", color: "var(--az-text-muted)"}}>
+                            <Sparkles size={11} style={{ color: "var(--az-text-faint)"}} /> Agent
                         </span>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                        <span className="hidden xl:block text-[11px] text-white/20 whitespace-nowrap">
+                        <span className="hidden xl:block text-[11px] whitespace-nowrap" style={{ color: "var(--az-text-faint)"}}>
                             {isLoading ? 'Esc to stop' : 'Enter · Shift+Enter newline'}
                         </span>
                         {isLoading ? (
                             <button
                                 onClick={onStop}
-                                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/15 text-white flex items-center justify-center transition-colors"
+                                className="w-7 h-7 rounded-full flex items-center justify-center transition-colors" style={{ background: "var(--az-surface-hover)", color: "var(--az-text)", border: "1px solid var(--az-border)"}}
                                 title="Stop (Esc)"
                             >
                                 <Square size={12} fill="currentColor" />
@@ -307,7 +307,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                             <button
                                 onClick={onSend}
                                 disabled={disabled || !input.trim()}
-                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${input.trim() && !disabled ? 'bg-white text-black hover:bg-white/90 active:scale-95' : 'bg-white/[0.06] text-white/20 cursor-not-allowed'}`}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${input.trim() && !disabled ? 'active:scale-[0.97]' : 'cursor-not-allowed'}`} style={input.trim() && !disabled ? { background: 'var(--az-accent)', color: 'white', border: '1px solid var(--az-accent)'} : { background: 'var(--az-surface-2)', color: 'var(--az-text-disabled)', border: '1px solid var(--az-border)'}}
                                 title="Send (Enter)"
                             >
                                 <ArrowUp size={14} strokeWidth={2.5} />

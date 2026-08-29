@@ -169,7 +169,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                     {explanationStats.topics.map((topic, index) => (
                                         <span
                                             key={index}
-                                            className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-md border border-blue-500/30"
+                                            className="px-2 py-1 bg-blue-500/20 text-[var(--az-text)] text-xs rounded-md border border-[var(--az-border)]"
                                         >
                                             {topic}
                                         </span>
@@ -278,7 +278,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                             </button>
                             <button
                                 onClick={handleShare}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-300 hover:bg-blue-500/30 transition-colors text-sm"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 border border-[var(--az-border)] rounded-lg text-[var(--az-text)] hover:bg-blue-500/30 transition-colors text-sm"
                             >
                                 <Share2 size={13} />
                                 Share
@@ -287,7 +287,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                     </div>
                 ) : showEmpty ? (
                     <div className="flex flex-col items-center justify-center min-h-[220px] px-4 py-6">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#a371f7]/20 to-[#58a6ff]/10 border border-[#a371f7]/25 flex items-center justify-center mb-5 shadow-[0_4px_24px_-4px_rgba(163,113,247,0.2)]">
+                        <div className="w-16 h-16 rounded-2xl bg-[var(--az-surface-3)] border border-[#a371f7]/25 flex items-center justify-center mb-5 shadow-[0_4px_24px_-4px_rgba(163,113,247,0.2)]">
                             <BookOpen size={28} className="text-[#a371f7]/90" />
                         </div>
                         <h3 className="text-white/90 font-semibold text-base mb-1.5">No explanation yet</h3>

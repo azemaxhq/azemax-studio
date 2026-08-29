@@ -85,7 +85,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         className="relative w-full max-w-[340px] rounded-xl border border-white/10 bg-[#161b22] shadow-2xl shadow-black/50 p-4"
       >
         <div className="flex items-start gap-3">
-          <div className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg ${danger ? 'bg-red-500/15 text-red-400' : 'bg-blue-500/15 text-blue-400'}`}>
+          <div className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg ${danger ? 'bg-red-500/15 text-red-400' : 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border)]'}`}>
             <AlertTriangle size={16} />
           </div>
           <div className="min-w-0">
@@ -113,7 +113,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             className={`px-3 py-1.5 text-[12px] font-semibold rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-0 transition-colors ${
               danger
                 ? 'bg-red-500/15 border-red-500/30 text-red-300 hover:bg-red-500/25 focus-visible:ring-red-400/50'
-                : 'bg-blue-500/15 border-blue-500/30 text-blue-300 hover:bg-blue-500/25 focus-visible:ring-blue-400/50'
+                : 'bg-blue-500/15 border-blue-500/30 text-[var(--az-text)] hover:bg-blue-500/25 focus-visible:ring-blue-400/50'
             }`}
           >
             {confirmLabel}

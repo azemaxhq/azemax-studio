@@ -118,13 +118,11 @@ export const TerminalPanel: React.FC = () => {
     }, [activeTerminalId]);
 
     return (
-        <div className="h-full flex flex-col bg-[#0a0d14]/90 relative overflow-hidden group border-t border-white/[0.02]">
-            {/* Ambient Glow */}
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent opacity-50" />
-            <div className="absolute top-0 left-1/4 right-1/4 h-32 bg-blue-500/5 blur-[80px] pointer-events-none" />
+        <div className="h-full flex flex-col relative overflow-hidden group" style={{ background: "var(--az-surface)"}}>
+
 
             {/* Header Bar */}
-            <div className="h-[42px] flex items-center justify-between px-3 bg-[#0a0d14] border-b border-white/[0.04] shrink-0 z-10 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)]">
+            <div className="h-9 flex items-center justify-between px-3 shrink-0 z-10" style={{ background: "var(--az-surface-2)", borderBottom: "1px solid var(--az-border)"}}>
 
                 {/* Tabs Area */}
                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar mask-gradient-right flex-1 min-w-0">
@@ -135,15 +133,15 @@ export const TerminalPanel: React.FC = () => {
                             className={`
                                 relative group/tab flex items-center gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-md cursor-pointer select-none transition-all duration-300 border min-w-[96px] sm:min-w-[120px] max-w-[200px] text-[12px]
                                 ${activeTerminalId === term.id
-                                    ? 'bg-blue-500/10 text-blue-100 border-blue-500/20 shadow-[0_0_15px_-3px_rgba(59,130,246,0.15)]'
-                                    : 'text-white/40 border-transparent hover:text-white/80 hover:bg-white/[0.03]'}
+                                    ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border-strong)]'
+                                    : 'text-[var(--az-text-muted)] border-transparent hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)]'}
                             `}
                         >
                             {/* Status Icon */}
                             {activeTerminalId === term.id && isRunning ? (
-                                <div className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
+                                <div className="w-2 h-2 rounded-full" style={{ background: "var(--az-warning)"}} />
                             ) : (
-                                <Terminal size={13} className={activeTerminalId === term.id ? "text-primary" : ""} />
+                                <Terminal size={13} style={{ color: activeTerminalId === term.id ? "var(--az-text)" : "var(--az-text-muted)"}} />
                             )}
 
                             <span className="text-[11px] font-medium truncate flex-1">{term.title}</span>
@@ -166,7 +164,7 @@ export const TerminalPanel: React.FC = () => {
                             {activeTerminalId === term.id && (
                                 <motion.div
                                     layoutId="activeTabIndicator"
-                                    className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-full"
+                                    className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full" style={{ background: "var(--az-text)"}}
                                 />
                             )}
                         </div>
@@ -174,7 +172,7 @@ export const TerminalPanel: React.FC = () => {
 
                     <button
                         onClick={() => createTerminal(selectedFolder || 'root')}
-                        className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/10 transition-colors ml-1"
+                        className="p-1 rounded-md transition-colors ml-1" style={{ color: "var(--az-text-muted)"}}
                         title="New Terminal"
                     >
                         <Plus size={14} />
@@ -182,12 +180,12 @@ export const TerminalPanel: React.FC = () => {
                 </div>
 
                 {/* Right Actions Toolbar */}
-                <div className="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-4 border-l border-white/5 shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-4 shrink-0" style={{ borderLeft: "1px solid var(--az-border)"}}>
 
                     {/* Clear */}
                     <button
                         onClick={() => activeTerminalId && clearTerminal(activeTerminalId)}
-                        className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-all"
+                        className="p-1.5 rounded-md transition-colors" style={{ color: "var(--az-text-muted)"}}
                         title="Clear Output"
                     >
                         <Eraser size={14} />
@@ -196,13 +194,13 @@ export const TerminalPanel: React.FC = () => {
                     {/* Stdin Toggle */}
                     <button
                         onClick={() => setShowStdin(!showStdin)}
-                        className={`p-1.5 rounded-lg transition-all ${showStdin ? 'bg-blue-500/20 text-blue-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                        className={`p-1.5 rounded-md transition-colors ${showStdin ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border-strong)]' : ''}`} style={showStdin ? {} : { color: 'var(--az-text-muted)'}}
                         title="Provide Input (stdin)"
                     >
                         <Keyboard size={14} />
                     </button>
 
-                    <div className="w-px h-4 bg-white/10" />
+                    <div className="w-px h-4" style={{ background: "var(--az-border)"}} />
 
                     {/* Run/Stop Button */}
                     <button
@@ -211,8 +209,8 @@ export const TerminalPanel: React.FC = () => {
                         className={`
                             flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all
                             ${isRunning
-                                ? 'bg-gradient-to-r from-red-500/80 to-rose-600/80 hover:from-red-500 hover:to-rose-600 text-white shadow-[0_0_20px_-5px_rgba(244,63,94,0.4)] border border-red-500/30 hover:scale-105 active:scale-95'
-                                : 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/20 hover:shadow-green-500/40 hover:scale-105 active:scale-95'}
+                                ? 'bg-[var(--az-error)] text-white border border-[var(--az-error-border)] hover:opacity-90'
+                                : 'bg-[var(--az-text)] text-[var(--az-bg)] border border-[var(--az-text)] hover:opacity-90'}
                             disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed
                         `}
                     >
@@ -225,16 +223,16 @@ export const TerminalPanel: React.FC = () => {
             {/* Stdin Input Panel */}
             <div className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${showStdin ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                 <div className="overflow-hidden">
-                    <div className="border-b border-white/[0.04] bg-[#0a0d14]/50 p-2 shrink-0">
+                    <div className="p-2 shrink-0" style={{ background: "var(--az-surface-2)", borderBottom: "1px solid var(--az-border)"}}>
                         <div className="flex flex-col gap-1">
-                            <div className="text-[10px] font-semibold text-white/40 uppercase tracking-wider px-1">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider px-1" style={{ color: "var(--az-text-muted)"}}>
                                 Standard Input (stdin)
                             </div>
                             <textarea
                                 value={stdinContent}
                                 onChange={(e) => setStdinContent(e.target.value)}
                                 placeholder="Type input here before running..."
-                                className="bg-black/20 border border-white/5 rounded-md px-3 py-2 text-xs text-white/80 font-mono focus:outline-none focus:border-blue-500/30 min-h-[60px] max-h-[150px] resize-y placeholder:text-white/20"
+                                className="rounded-md px-3 py-2 text-xs font-mono focus:outline-none min-h-[60px] max-h-[150px] resize-y" style={{ background: "var(--az-surface-3)", border: "1px solid var(--az-border)", color: "var(--az-text)"}}
                             />
                         </div>
                     </div>
@@ -249,14 +247,14 @@ export const TerminalPanel: React.FC = () => {
                     onContextMenu={(e) => handleContextMenu(e)}
                 >
                     {terminals.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-white/20 gap-4">
-                            <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center border border-white/5">
+                        <div className="flex flex-col items-center justify-center h-full gap-4" style={{ color: "var(--az-text-muted)"}}>
+                            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "var(--az-surface-2)", border: "1px solid var(--az-border)"}}>
                                 <Terminal size={32} />
                             </div>
                             <p className="font-mono text-sm">No active sessions</p>
                             <button
                                 onClick={() => createTerminal(selectedFolder || 'root')}
-                                className="text-xs bg-white/5 border border-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/10 transition-colors"
+                                className="text-xs px-4 py-2 rounded-md transition-colors" style={{ background: "var(--az-surface-3)", border: "1px solid var(--az-border)", color: "var(--az-text)"}}
                             >
                                 Start New Session
                             </button>

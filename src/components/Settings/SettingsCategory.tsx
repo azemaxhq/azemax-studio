@@ -29,7 +29,7 @@ export const SettingsCategory: React.FC<SettingsCategoryProps> = memo(({ categor
     <div className="pb-6">
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-lg bg-blue-500/10 border border-blue-400/20 flex items-center justify-center text-blue-300">
+          <div className="w-9 h-9 shrink-0 rounded-lg bg-blue-500/10 border border-blue-400/20 flex items-center justify-center text-[var(--az-text)]">
             <Icon size={16} />
           </div>
           <div className="min-w-0">

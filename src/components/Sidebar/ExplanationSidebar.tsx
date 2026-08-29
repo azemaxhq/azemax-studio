@@ -67,10 +67,10 @@ export const ExplanationSidebar: React.FC = () => {
         >
             {/* Header */}
             <div className="shrink-0 relative z-10">
-                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#a371f7]/25 to-transparent z-20" />
+                <div className="absolute top-0 left-0 right-0 h-[1px]  z-20" />
                 <div className="h-11 px-3 flex items-center justify-between border-b border-white/[0.04]">
                     <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#a371f7]/20 to-[#58a6ff]/10 border border-[#a371f7]/30 flex items-center justify-center shrink-0">
+                        <div className="w-7 h-7 rounded-lg bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center shrink-0">
                             <BookOpen size={14} className="text-[#a371f7]" />
                         </div>
                         <span className="text-[11px] font-medium tracking-wider text-white/70 uppercase truncate">

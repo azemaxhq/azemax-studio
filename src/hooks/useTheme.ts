@@ -13,7 +13,7 @@ export const useTheme = () => {
 
     // Apply theme class
     root.classList.remove('theme-dark', 'theme-light', 'theme-auto');
-    
+
     if (theme === 'auto') {
       // Check system preference
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -26,10 +26,10 @@ export const useTheme = () => {
 
     // Apply font family
     root.style.setProperty('--editor-font-family', fontFamily);
-    
+
     // Update Monaco editor theme
     const monacoTheme = theme === 'light' ? 'vs-light' : 'vs-dark';
-    
+
     // Store theme for Monaco editor to use
     root.setAttribute('data-monaco-theme', monacoTheme);
 
@@ -43,11 +43,11 @@ export const useTheme = () => {
     const handleChange = (e: MediaQueryListEvent) => {
       const root = document.documentElement;
       const body = document.body;
-      
+
       root.classList.remove('theme-dark', 'theme-light');
       root.classList.add(e.matches ? 'theme-dark' : 'theme-light');
       body.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-      
+
       const monacoTheme = e.matches ? 'vs-dark' : 'vs-light';
       root.setAttribute('data-monaco-theme', monacoTheme);
     };
@@ -59,7 +59,7 @@ export const useTheme = () => {
   return {
     currentTheme: theme,
     fontFamily,
-    isDark: theme === 'dark' || 
-            (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    isDark: theme === 'dark' ||
+      (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   };
 };

@@ -24,7 +24,7 @@ const CategoryCard: React.FC<{ category: CategoryDefinition; onSelect: (id: Cate
       </div>
       <span className="mt-1 text-[13px] font-medium text-white/90">{category.label}</span>
       <span className="text-[11px] text-white/40 leading-relaxed">{category.description}</span>
-      <span className="mt-auto inline-flex items-center gap-1 pt-1.5 text-[10px] font-medium text-blue-400/70 transition-colors group-hover:text-blue-300">
+      <span className="mt-auto inline-flex items-center gap-1 pt-1.5 text-[10px] font-medium text-blue-400/70 transition-colors group-hover:text-[var(--az-text)]">
         Open <ArrowRight size={10} />
       </span>
     </button>

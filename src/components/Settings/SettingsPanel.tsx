@@ -40,7 +40,7 @@ const SearchResultRow: React.FC<{ def: SettingDef; onOpen: () => void }> = ({ de
       <span className="block text-[13px] font-medium text-white/85 group-hover:text-white">{def.label}</span>
       <span className="block text-[11px] text-white/40 leading-relaxed truncate">{def.description}</span>
     </span>
-    <ArrowRight size={14} className="shrink-0 text-white/25 group-hover:text-blue-300 transition-colors" />
+    <ArrowRight size={14} className="shrink-0 text-white/25 group-hover:text-[var(--az-text)] transition-colors" />
   </button>
 );
 
@@ -93,7 +93,7 @@ export const SettingsPanel: React.FC = () => {
       onKeyDown={handleKeyDown}
       className="h-full flex flex-col bg-transparent relative overflow-hidden"
     >
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/25 to-transparent z-20" />
+      <div className="absolute top-0 left-0 right-0 h-[1px]  z-20" />
 
       {/* Header */}
       <div className="shrink-0 px-4 pt-3 pb-2">
@@ -162,7 +162,7 @@ export const SettingsPanel: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => openCategory(categoryId)}
-                          className="ml-auto inline-flex items-center gap-1 text-[10px] text-blue-400/70 hover:text-blue-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 rounded"
+                          className="ml-auto inline-flex items-center gap-1 text-[10px] text-blue-400/70 hover:text-[var(--az-text)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 rounded"
                         >
                           View category <ArrowRight size={10} />
                         </button>

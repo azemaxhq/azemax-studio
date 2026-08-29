@@ -67,46 +67,46 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
 
     const getIcon = () => {
         switch (type) {
-            case 'code': return <FileCode size={14} className="text-white/60" />;
-            case 'example': return <Lightbulb size={14} className="text-amber-300/70" />;
-            case 'explanation': return <MessageCircle size={14} className="text-violet-300/70" />;
-            default: return <Code2 size={14} className="text-white/60" />;
+            case 'code': return <FileCode size={14} className="text-[var(--az-text-muted)]" />;
+            case 'example': return <Lightbulb size={14} className="text-[var(--az-text-muted)]" />;
+            case 'explanation': return <MessageCircle size={14} className="text-[var(--az-text-muted)]" />;
+            default: return <Code2 size={14} className="text-[var(--az-text-muted)]" />;
         }
     };
 
     return (
-        <div className="my-3 rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+        <div className="my-3 rounded-xl border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden">
             <div
-                className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer transition-colors"
+                className="flex items-center justify-between px-3 py-2.5 hover:bg-[var(--az-surface-2)] cursor-pointer transition-colors"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="w-6 h-6 rounded-md bg-white/[0.06] border border-white/[0.06] flex items-center justify-center shrink-0">
+                    <span className="w-6 h-6 rounded-md bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center shrink-0">
                         {getIcon()}
                     </span>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-white/85 truncate">{title}</span>
-                            <span className="hidden sm:inline text-[11px] text-white/30">· {isCode ? `${lineCount} lines` : type}</span>
+                            <span className="text-[13px] font-medium text-[var(--az-text)] truncate">{title}</span>
+                            <span className="hidden sm:inline text-[11px] text-[var(--az-text-faint)]">· {isCode ? `${lineCount} lines` : type}</span>
                         </div>
-                        {isCode && language && <span className="text-[11px] text-white/30 hidden sm:block">{language}</span>}
+                        {isCode && language && <span className="text-[11px] text-[var(--az-text-faint)] hidden sm:block">{language}</span>}
                     </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                     <button
                         onClick={(e) => { e.stopPropagation(); onCopy?.(content, id); }}
-                        className="px-2 py-1 rounded-md text-[11px] text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-colors"
+                        className="px-2 py-1 rounded-md text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-3)] transition-colors"
                     >
                         {copiedId === id ? 'Copied' : 'Copy'}
                     </button>
-                    <span className={`w-6 h-6 rounded-md bg-white/[0.04] hover:bg-white/[0.08] flex items-center justify-center text-white/40 transition-colors ${isExpanded ? 'rotate-180' : ''}`}>
+                    <span className={`w-6 h-6 rounded-md bg-[var(--az-surface-3)] hover:bg-white/[0.08] flex items-center justify-center text-[var(--az-text-muted)] transition-colors ${isExpanded ? 'rotate-180' : ''}`}>
                         <ChevronDown size={14} />
                     </span>
                 </div>
             </div>
             {isExpanded && (
-                <div className="border-t border-white/[0.06] bg-[#0f0f12]">
-                    <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-white/80 leading-relaxed max-h-[320px] overflow-y-auto">
+                <div className="border-t border-[var(--az-border)] bg-[var(--az-surface)]">
+                    <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-[var(--az-text-secondary)] leading-relaxed max-h-[320px] overflow-y-auto">
                         {highlightedCode
                             ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
                             : <code>{content}</code>}
@@ -115,7 +115,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
             )}
             {!isExpanded && isCode && lineCount > 12 && (
                 <div className="px-3 pb-2">
-                    <button onClick={() => setIsExpanded(true)} className="text-[11px] text-white/30 hover:text-white/60 transition-colors">Show {lineCount - 12} more lines</button>
+                    <button onClick={() => setIsExpanded(true)} className="text-[11px] text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] transition-colors">Show {lineCount - 12} more lines</button>
                 </div>
             )}
         </div>
@@ -176,20 +176,20 @@ const MessageItem = React.memo(({
                 const displayCode = !expanded ? code.split('\n').slice(0, 20).join('\n') : code;
 
                 return (
-                    <div className="my-3 rounded-xl overflow-hidden border border-white/[0.07] bg-white/[0.02]">
-                        <div className="flex items-center justify-between px-3 py-2 bg-white/[0.02] border-b border-white/[0.06]">
-                            <span className="text-[11px] text-white/40 font-mono">{language}</span>
+                    <div className="my-3 rounded-xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-surface-2)]">
+                        <div className="flex items-center justify-between px-3 py-2 bg-[var(--az-surface-2)] border-b border-[var(--az-border)]">
+                            <span className="text-[11px] text-[var(--az-text-muted)] font-mono">{language}</span>
                             <div className="flex items-center gap-1.5">
                                 <button
                                     onClick={() => onCopy(displayCode, codeId)}
-                                    className="px-2 py-1 rounded-md text-[11px] text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-colors"
+                                    className="px-2 py-1 rounded-md text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-3)] transition-colors"
                                 >
                                     {copiedId === codeId ? 'Copied' : 'Copy'}
                                 </button>
                                 {msg.role === 'ai' && onApplyCode && (
                                     <button
                                         onClick={() => onApplyCode(code)}
-                                        className="px-2 py-1 rounded-md text-[11px] bg-white text-black hover:bg-white/90 transition-colors"
+                                        className="px-2 py-1 rounded-md text-[11px] bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border border-[var(--az-accent)] transition-colors"
                                     >
                                         Apply
                                     </button>
@@ -197,17 +197,17 @@ const MessageItem = React.memo(({
                             </div>
                         </div>
                         <div className="relative">
-                            <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-white/80 leading-relaxed bg-[#0f0f12] max-h-[360px] overflow-y-auto">
+                            <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-[var(--az-text-secondary)] leading-relaxed bg-[var(--az-surface)] max-h-[360px] overflow-y-auto">
                                 {highlightedCode && expanded
                                     ? <code dangerouslySetInnerHTML={{ __html: isLongBlock && !expanded ? tryHighlight(displayCode, language) || '' : highlightedCode }} />
                                     : <code>{displayCode}</code>}
                             </pre>
                             {isLongBlock && !expanded && (
-                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0f0f12] to-transparent pointer-events-none" />
+                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[var(--az-surface)] to-transparent pointer-events-none" />
                             )}
                         </div>
                         {isLongBlock && (
-                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] border-t border-white/[0.06] transition-colors">
+                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] hover:bg-[var(--az-surface-2)] border-t border-[var(--az-border)] transition-colors">
                                 {expanded ? 'Show less' : `Show ${code.split('\n').length - 20} more lines`}
                             </button>
                         )}
@@ -217,7 +217,7 @@ const MessageItem = React.memo(({
             // Inline code - ChatGPT style (subtle)
             return (
                 <code
-                    className="text-[14px] font-mono bg-[#343541] text-[#ececec] px-1 py-0.5 rounded"
+                    className="text-[14px] font-mono bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border)] px-1 py-0.5 rounded"
                     {...props}
                 >
                     {children}
@@ -225,46 +225,46 @@ const MessageItem = React.memo(({
             );
         },
         h1({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h1 className="text-[18px] font-semibold tracking-tight text-white/90 mt-6 mb-3" {...props}>{children}</h1>;
+            return <h1 className="text-[18px] font-semibold tracking-tight text-[var(--az-text)] mt-6 mb-3" {...props}>{children}</h1>;
         },
         h2({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h2 className="text-[15px] font-semibold tracking-tight text-white/85 mt-5 mb-2" {...props}>{children}</h2>;
+            return <h2 className="text-[15px] font-semibold tracking-tight text-[var(--az-text)] mt-5 mb-2" {...props}>{children}</h2>;
         },
         h3({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
             return <h3 className="text-[13px] font-medium tracking-wide text-white/75 mt-4 mb-2 uppercase" {...props}>{children}</h3>;
         },
         p({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-            return <p className="leading-[1.65] mb-3 text-[14px] text-white/70 tracking-[-0.01em] last:mb-0" {...props}>{children}</p>;
+            return <p className="leading-[1.65] mb-3 text-[14px] text-[var(--az-text-secondary)] tracking-[-0.01em] last:mb-0" {...props}>{children}</p>;
         },
         ul({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) {
-            return <ul className="list-disc list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-white/65" {...props}>{children}</ul>;
+            return <ul className="list-disc list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-[var(--az-text-secondary)]" {...props}>{children}</ul>;
         },
         ol({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) {
-            return <ol className="list-decimal list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-white/65" {...props}>{children}</ol>;
+            return <ol className="list-decimal list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-[var(--az-text-secondary)]" {...props}>{children}</ol>;
         },
         li({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) {
             return <li className="pl-1 leading-[1.6] marker:text-white/20" {...props}>{children}</li>;
         },
         blockquote({ children, ...props }: React.QuoteHTMLAttributes<HTMLQuoteElement>) {
             return (
-                <blockquote className="border-l border-white/10 pl-3 py-1 my-3 text-[13px] text-white/50 leading-relaxed" {...props}>
+                <blockquote className="border-l border-[var(--az-border)] pl-3 py-1 my-3 text-[13px] text-[var(--az-text-muted)] leading-relaxed" {...props}>
                     {children}
                 </blockquote>
             );
         },
         strong({ children, ...props }: React.HTMLAttributes<HTMLElement>) {
-            return <strong className="font-semibold text-[#e6edf3]" {...props}>{children}</strong>;
+            return <strong className="font-semibold text-[var(--az-text)]" {...props}>{children}</strong>;
         },
         em({ children, ...props }: React.HTMLAttributes<HTMLElement>) {
-            return <em className="italic text-[#c9d1d9]" {...props}>{children}</em>;
+            return <em className="italic text-[var(--az-text)]" {...props}>{children}</em>;
         },
         hr({ ...props }: React.HTMLAttributes<HTMLHRElement>) {
-            return <hr className="my-6 border-white/10" {...props} />;
+            return <hr className="my-6 border-[var(--az-border)]" {...props} />;
         },
         // Links
         a({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
             return (
-                <a target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors" {...props}>
+                <a target="_blank" rel="noopener noreferrer" className="text-[var(--az-accent)] hover:opacity-80 hover:underline transition-colors" {...props}>
                     {children ?? ''}
                 </a>
             );
@@ -272,7 +272,7 @@ const MessageItem = React.memo(({
         // Tables
         table({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) {
             return (
-                <div className="overflow-x-auto my-6 border border-white/10 rounded-lg bg-black/20">
+                <div className="overflow-x-auto my-6 border border-[var(--az-border)] rounded-lg bg-[var(--az-surface-2)]">
                     <table className="min-w-full divide-y divide-white/10 text-sm" {...props}>
                         {children}
                     </table>
@@ -283,10 +283,10 @@ const MessageItem = React.memo(({
             return <thead className="bg-white/5" {...props}>{children}</thead>;
         },
         th({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
-            return <th className="px-4 py-3 text-left text-xs font-semibold text-white/70 uppercase tracking-wider" {...props}>{children}</th>;
+            return <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--az-text-secondary)] uppercase tracking-wider" {...props}>{children}</th>;
         },
         td({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-            return <td className="px-4 py-3 whitespace-nowrap text-white/80 border-t border-white/5" {...props}>{children}</td>;
+            return <td className="px-4 py-3 whitespace-nowrap text-[var(--az-text-secondary)] border-t border-[var(--az-border)]" {...props}>{children}</td>;
         }
     };
 
@@ -299,15 +299,15 @@ const MessageItem = React.memo(({
         <div className={`flex gap-4 w-full message-appear ${msg.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
             <div className={`flex flex-col gap-2 min-w-0 ${msg.role === 'ai' ? 'items-end max-w-[85%]' : 'items-start flex-1 max-w-full'}`}>
                 {isEditing ? (
-                    <div className="w-full space-y-3 bg-[#161b22] p-4 rounded-xl border border-[#30363d]">
+                    <div className="w-full space-y-3 bg-[var(--az-surface-2)] p-4 rounded-xl border border-[var(--az-border)]">
                         <textarea
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-[#0d1117] border border-[#30363d] text-sm resize-none focus:outline-none focus:border-[#58a6ff] text-[#c9d1d9] placeholder-[#8b949e] transition-colors"
+                            className="w-full p-3 rounded-lg bg-[var(--az-surface)] border border-[var(--az-border)] text-sm resize-none focus:outline-none focus:border-[#58a6ff] text-[var(--az-text)] placeholder-[#8b949e] transition-colors"
                             rows={3}
                         />
                         <div className="flex gap-2 justify-end">
-                            <button onClick={onCancelEdit} className="px-4 py-2 rounded-lg hover:bg-[#21262d] text-[#8b949e] text-xs font-medium transition-colors">Cancel</button>
+                            <button onClick={onCancelEdit} className="px-4 py-2 rounded-lg hover:bg-[#21262d] text-[var(--az-text-muted)] text-xs font-medium transition-colors">Cancel</button>
                             <button onClick={() => onSaveEdit(msg.id)} className="px-4 py-2 rounded-lg bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-medium transition-colors">Save</button>
                         </div>
                     </div>
@@ -315,10 +315,10 @@ const MessageItem = React.memo(({
                     <>
                         <div className={`group relative break-words ${msg.role === 'ai'
                             ? 'w-full bg-transparent'
-                            : 'px-4 py-2.5 bg-[#1f6feb] text-white rounded-2xl shadow-sm'
+                            : 'px-4 py-2.5 bg-[var(--az-surface-3)] text-[var(--az-text)] rounded-xl border border-[var(--az-border)] shadow-sm'
                             }`}>
 
-                            <div className={`markdown-content relative z-10 ${msg.role === 'ai' ? 'text-[14px] leading-[1.65] text-white/70' : 'text-[14px] leading-relaxed'}`}>
+                            <div className={`markdown-content relative z-10 ${msg.role === 'ai' ? 'text-[14px] leading-[1.65] text-[var(--az-text-secondary)]' : 'text-[14px] leading-relaxed'}`}>
                                 {msg.role === 'ai' ? (
                                     <>
                                         {parseArtifacts(displayText).segments.map((segment, segIdx) =>
@@ -344,7 +344,7 @@ const MessageItem = React.memo(({
                                             )
                                         )}
                                         {isLong && (
-                                            <button onClick={() => setShowFull(!showFull)} className="mt-2 text-[11px] text-white/30 hover:text-white/60 transition-colors">
+                                            <button onClick={() => setShowFull(!showFull)} className="mt-2 text-[11px] text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] transition-colors">
                                                 {showFull ? 'Show less' : `Show ${msg.text.length - 1100} more characters`}
                                             </button>
                                         )}
@@ -362,7 +362,7 @@ const MessageItem = React.memo(({
                                     <div className="flex items-center gap-3">
                                         <button
                                             onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
-                                            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors"
+                                            className="flex items-center gap-1.5 text-xs text-[var(--az-text-muted)] hover:text-white transition-colors"
                                             title="Copy"
                                         >
                                             {copiedId === `msg-${msg.id}` ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
@@ -371,7 +371,7 @@ const MessageItem = React.memo(({
                                         {onRegenerate && (
                                             <button
                                                 onClick={() => typeof index === 'number' && onRegenerate(index)}
-                                                className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white transition-colors"
+                                                className="flex items-center gap-1.5 text-xs text-[var(--az-text-muted)] hover:text-white transition-colors"
                                                 title="Regenerate"
                                             >
                                                 <RefreshCw size={14} />
@@ -384,14 +384,14 @@ const MessageItem = React.memo(({
                                         <div className="flex items-center gap-2">
                                             <button
                                                 onClick={() => onReaction(msg.id, 'up')}
-                                                className={`text-white/40 hover:text-white transition-colors ${reaction === 'up' ? 'text-emerald-400' : ''}`}
+                                                className={`text-[var(--az-text-muted)] hover:text-white transition-colors ${reaction === 'up' ? 'text-emerald-400' : ''}`}
                                                 title="Helpful"
                                             >
                                                 <ThumbsUp size={14} />
                                             </button>
                                             <button
                                                 onClick={() => onReaction(msg.id, 'down')}
-                                                className={`text-white/40 hover:text-white transition-colors ${reaction === 'down' ? 'text-red-400' : ''}`}
+                                                className={`text-[var(--az-text-muted)] hover:text-white transition-colors ${reaction === 'down' ? 'text-red-400' : ''}`}
                                                 title="Not helpful"
                                             >
                                                 <ThumbsDown size={14} />
@@ -403,10 +403,10 @@ const MessageItem = React.memo(({
 
                             {/* User message hover actions - Enhanced Floating Pill - Compact */}
                             {msg.role === 'user' && (
-                                <div className="absolute -bottom-6 left-0 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center gap-0.5 p-0.5 bg-[#1e1e1e]/90 backdrop-blur-sm rounded-full border border-white/10 shadow-lg shadow-black/20 translate-y-2 group-hover:translate-y-0 text-white/40">
+                                <div className="absolute -bottom-6 left-0 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center gap-0.5 p-0.5 bg-[#1e1e1e]/90 backdrop-blur-sm rounded-full border border-[var(--az-border)] shadow-lg shadow-black/20 translate-y-2 group-hover:translate-y-0 text-[var(--az-text-muted)]">
                                     <button
                                         onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
-                                        className="p-1 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-all duration-200 group/btn"
+                                        className="p-1 rounded-full hover:bg-white/10 text-[var(--az-text-muted)] hover:text-white transition-all duration-200 group/btn"
                                         title="Copy"
                                     >
                                         {copiedId === `msg-${msg.id}` ? (
@@ -418,7 +418,7 @@ const MessageItem = React.memo(({
                                     <div className="w-[1px] h-2.5 bg-white/10" />
                                     <button
                                         onClick={() => onEditStart(msg)}
-                                        className="p-1 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-all duration-200 group/btn"
+                                        className="p-1 rounded-full hover:bg-white/10 text-[var(--az-text-muted)] hover:text-white transition-all duration-200 group/btn"
                                         title="Edit"
                                     >
                                         <Edit3 size={12} className="group-hover/btn:scale-110 transition-transform" />
@@ -427,7 +427,7 @@ const MessageItem = React.memo(({
                             )}
                         </div>
                         {msg.timestamp && (
-                            <span className="text-[11px] text-white/30 px-2 font-medium">
+                            <span className="text-[11px] text-[var(--az-text-faint)] px-2 font-medium">
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase()}
                             </span>
                         )}
@@ -1281,11 +1281,11 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 <div className="absolute -top-[20%] left-1/2 -translate-x-1/2 w-[80%] h-[60%] bg-violet-500/[0.03] blur-[120px] rounded-full" />
 
                 {/* Ambient side glows */}
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/[0.02] blur-[100px] rounded-full" />
-                <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-500/[0.02] blur-[100px] rounded-full" />
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] hidden rounded-full" />
+                <div className="absolute bottom-0 left-0 w-[500px] h-[500px] hidden rounded-full" />
 
                 {/* Subtle sheen overlay */}
-                <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent pointer-events-none" />
+                <div className="absolute inset-0  pointer-events-none" />
             </div>
 
             {/* Sidebar (History) - Liquid Glass Style */}
@@ -1302,19 +1302,19 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     transformOrigin: 'left center'
                 }}
             >
-                <div className="flex flex-col h-full bg-[#0d1117]/95 border-r border-[#30363d]/50">
+                <div className="flex flex-col h-full bg-[var(--az-surface)]/95 border-r border-[var(--az-border)]/50">
                     {/* Sidebar Header */}
-                    <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b border-[#30363d]/40 bg-[#161b22]/50">
+                    <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b border-[var(--az-border)]/40 bg-[var(--az-surface-2)]/50">
                         <button
                             onClick={() => { handleNewChat(); setShowSidebar(false); }}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[#21262d] text-[#c9d1d9]/80 hover:text-[#c9d1d9] text-sm font-medium transition-all duration-200"
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[#21262d] text-[var(--az-text)]/80 hover:text-[var(--az-text)] text-sm font-medium transition-all duration-200"
                         >
                             <Plus size={16} className="text-[#58a6ff]" />
                             New chat
                         </button>
                         <button
                             onClick={() => setShowSidebar(false)}
-                            className="p-1.5 hover:bg-[#21262d] rounded-lg text-[#8b949e] hover:text-[#c9d1d9] transition-colors duration-200"
+                            className="p-1.5 hover:bg-[#21262d] rounded-lg text-[var(--az-text-muted)] hover:text-[var(--az-text)] transition-colors duration-200"
                         >
                             <X size={16} />
                         </button>
@@ -1326,7 +1326,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             <input
                                 type="text"
                                 placeholder="Search conversations..."
-                                className="w-full px-3 py-2 pl-9 text-sm bg-[#0d1117] border border-[#30363d]/60 rounded-lg text-[#c9d1d9] placeholder-[#8b949e]/50 focus:outline-none focus:border-[#58a6ff]/50 focus:ring-1 focus:ring-[#58a6ff]/20 transition-all duration-200"
+                                className="w-full px-3 py-2 pl-9 text-sm bg-[var(--az-surface)] border border-[var(--az-border)]/60 rounded-lg text-[var(--az-text)] placeholder-[#8b949e]/50 focus:outline-none focus:border-[#58a6ff]/50 focus:ring-1 focus:ring-[#58a6ff]/20 transition-all duration-200"
                                 onChange={(e) => {
                                     const searchTerm = e.target.value.toLowerCase();
                                     document.querySelectorAll('[data-session-title]').forEach((el) => {
@@ -1335,7 +1335,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     });
                                 }}
                             />
-                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8b949e]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--az-text-muted)]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                         </div>
@@ -1345,8 +1345,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2">
                         {sessions.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">
-                                <MessageSquare size={24} className="text-[#8b949e]/30 mb-3" />
-                                <p className="text-sm text-[#8b949e]/60">No conversations yet</p>
+                                <MessageSquare size={24} className="text-[var(--az-text-muted)]/30 mb-3" />
+                                <p className="text-sm text-[var(--az-text-muted)]/60">No conversations yet</p>
                             </div>
                         ) : (() => {
                             // Group sessions by time period
@@ -1384,7 +1384,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 <div key={group.label} className="mb-4">
                                     {/* Group Label */}
                                     <div className="px-2 py-1.5">
-                                        <span className="text-[11px] font-semibold text-[#8b949e]/60 uppercase tracking-wider">{group.label}</span>
+                                        <span className="text-[11px] font-semibold text-[var(--az-text-muted)]/60 uppercase tracking-wider">{group.label}</span>
                                     </div>
 
                                     {/* Sessions in Group */}
@@ -1403,8 +1403,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-2.5 pr-12">
-                                                    <MessageSquare size={14} className={`shrink-0 ${isActive ? 'text-[#58a6ff]' : 'text-[#8b949e]/50'}`} />
-                                                    <span className={`text-[13px] truncate ${isActive ? 'text-[#c9d1d9]' : 'text-[#8b949e]'}`}>
+                                                    <MessageSquare size={14} className={`shrink-0 ${isActive ? 'text-[#58a6ff]' : 'text-[var(--az-text-muted)]/50'}`} />
+                                                    <span className={`text-[13px] truncate ${isActive ? 'text-[var(--az-text)]' : 'text-[var(--az-text-muted)]'}`}>
                                                         {session.title || 'New Chat'}
                                                     </span>
                                                 </div>
@@ -1421,14 +1421,14 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                                 ));
                                                             }
                                                         }}
-                                                        className="p-1.5 rounded-md hover:bg-[#30363d] text-[#8b949e] hover:text-[#c9d1d9] transition-colors"
+                                                        className="p-1.5 rounded-md hover:bg-[#30363d] text-[var(--az-text-muted)] hover:text-[var(--az-text)] transition-colors"
                                                         title="Rename"
                                                     >
                                                         <Edit3 size={13} />
                                                     </button>
                                                     <button
                                                         onClick={(e) => handleDeleteSession(e, session.id)}
-                                                        className="p-1.5 rounded-md hover:bg-red-500/20 text-[#8b949e] hover:text-red-400 transition-colors"
+                                                        className="p-1.5 rounded-md hover:bg-red-500/20 text-[var(--az-text-muted)] hover:text-red-400 transition-colors"
                                                         title="Delete"
                                                     >
                                                         <Trash2 size={13} />
@@ -1443,9 +1443,9 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     </div>
 
                     {/* Sidebar Footer */}
-                    <div className="px-3 py-2.5 border-t border-[#30363d]/40 bg-[#0d1117]/50">
+                    <div className="px-3 py-2.5 border-t border-[var(--az-border)]/40 bg-[var(--az-surface)]/50">
                         <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-[#8b949e]/60">{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
+                            <span className="text-[var(--az-text-muted)]/60">{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
                             <button
                                 onClick={() => {
                                     const doClear = () => {
@@ -1459,7 +1459,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                         doClear();
                                     }
                                 }}
-                                className="text-[#8b949e]/60 hover:text-red-400 transition-colors duration-200"
+                                className="text-[var(--az-text-muted)]/60 hover:text-red-400 transition-colors duration-200"
                             >
                                 Clear all
                             </button>
@@ -1482,10 +1482,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full relative z-10">
                 {/* Premium Header - Liquid Glass Style */}
-                <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-white/10 bg-white/[0.02] backdrop-blur-lg backdrop-saturate-150 z-20 transition-all relative overflow-hidden group/header">
+                <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-[var(--az-border)] bg-[var(--az-surface-2)] backdrop-blur-lg backdrop-saturate-150 z-20 transition-all relative overflow-hidden group/header">
                     {/* Liquid Glint Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.02] to-transparent pointer-events-none" />
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none opacity-50" />
+                    <div className="absolute inset-0  pointer-events-none opacity-50" />
 
                     {/* Left Section - History Button */}
                     <div className="flex items-center gap-3 relative z-10">
@@ -1514,7 +1514,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     );
                                 }
                             }}
-                            className="max-w-full w-full px-4 py-2 rounded-xl text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all duration-200 text-center truncate"
+                            className="max-w-full w-full px-4 py-2 rounded-xl text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent hover:border-[var(--az-border)] transition-all duration-200 text-center truncate"
                             title={`${currentSession?.title || 'New Chat'} — Click to rename`}
                         >
                             <span className="block truncate">{currentSession?.title || 'New Chat'}</span>
@@ -1524,7 +1524,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     {/* Right Section - Context & New Chat */}
                     <div className="flex items-center gap-3 relative z-10">
                         {activeFileMeta && (
-                            <span className="text-[11px] text-zinc-500 truncate font-medium tracking-wide leading-none px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 max-w-[140px]">
+                            <span className="text-[11px] text-zinc-500 truncate font-medium tracking-wide leading-none px-2.5 py-1 rounded-lg bg-white/5 border border-[var(--az-border)] max-w-[140px]">
                                 {activeFileMeta.name}
                             </span>
                         )}
@@ -1555,17 +1555,17 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
                             {/* Hero Section Container */}
                             <div className="flex flex-col items-center mb-6 cursor-default">
-                                <div className="mb-3 p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
+                                <div className="mb-3 p-3 rounded-2xl bg-[var(--az-surface-2)] border border-[var(--az-border)]">
                                     <AzemaxLogo size={48} />
                                 </div>
                             </div>
 
                             {/* Greeting & Subtitle */}
                             <div className="text-center space-y-2 mb-8 max-w-[90%] mx-auto animate-fade-in-up delay-100 opacity-0" style={{ animationFillMode: 'forwards' }}>
-                                <h3 className="text-2xl sm:text-3xl font-bold tracking-tight bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-transparent drop-shadow-sm">
+                                <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--az-text)] drop-shadow-sm">
                                     {greeting}, Creator
                                 </h3>
-                                <p className="text-[13px] sm:text-[14px] text-white/50 leading-relaxed font-normal tracking-wide">
+                                <p className="text-[13px] sm:text-[14px] text-[var(--az-text-muted)] leading-relaxed font-normal tracking-wide">
                                     How can I help you today?
                                 </p>
                             </div>
@@ -1576,21 +1576,21 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     <button
                                         key={idx}
                                         onClick={() => handleQuickAction(action.prompt)}
-                                        className="group/card relative overflow-hidden flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.15] transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-violet-500/10 text-left w-full"
+                                        className="group/card relative overflow-hidden flex items-center gap-3 p-3 rounded-xl bg-[var(--az-surface-2)] hover:bg-white/[0.08] border border-[var(--az-border)] hover:border-white/[0.15] transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-violet-500/10 text-left w-full"
                                     >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                                        <div className="absolute inset-0  opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
-                                        <div className="relative p-2 rounded-lg bg-gradient-to-br from-violet-500/10 to-blue-500/10 text-violet-300 group-hover/card:text-white group-hover/card:from-violet-500/20 group-hover/card:to-blue-500/20 transition-all duration-300 shrink-0 ring-1 ring-white/5 group-hover/card:ring-white/10">
+                                        <div className="relative p-2 rounded-lg bg-[var(--az-surface-3)] text-[var(--az-text-muted)] group-hover/card:text-white group-hover/card:from-violet-500/20 group-hover/card:to-blue-500/20 transition-all duration-300 shrink-0 ring-1 ring-white/5 group-hover/card:ring-white/10">
                                             <action.icon size={18} strokeWidth={1.5} className="transition-transform duration-300 group-hover/card:scale-110" />
                                         </div>
 
                                         <div className="relative min-w-0 flex-1">
-                                            <span className="text-[13px] sm:text-[14px] font-medium text-white/80 group-hover/card:text-white transition-colors block text-left">
+                                            <span className="text-[13px] sm:text-[14px] font-medium text-[var(--az-text-secondary)] group-hover/card:text-white transition-colors block text-left">
                                                 {action.label}
                                             </span>
                                         </div>
 
-                                        <div className="relative opacity-0 group-hover/card:opacity-100 -translate-x-2 group-hover/card:translate-x-0 transition-all duration-300 text-white/30">
+                                        <div className="relative opacity-0 group-hover/card:opacity-100 -translate-x-2 group-hover/card:translate-x-0 transition-all duration-300 text-[var(--az-text-faint)]">
                                             <ArrowRight size={14} strokeWidth={2} />
                                         </div>
                                     </button>
@@ -1604,12 +1604,12 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 if (isError) {
                                     return (
                                         <div key={msg.id || index} className="w-full rounded-xl border border-amber-500/15 bg-amber-500/[0.06] px-3 py-2.5 flex items-start gap-2.5 message-appear">
-                                            <span className="mt-0.5 text-amber-300/70 text-[13px]">⚠</span>
+                                            <span className="mt-0.5 text-[var(--az-text-muted)] text-[13px]">⚠</span>
                                             <div className="flex-1 min-w-0">
                                                 <div className="text-[13px] leading-[1.5] text-amber-100/80 whitespace-pre-wrap break-words">{msg.text.slice(0, 400)}</div>
                                                 <div className="flex gap-2 mt-2">
                                                     <button onClick={() => handleSend(lastUserMessage)} className="px-2.5 py-1 rounded-md bg-white text-black text-[11px] font-medium hover:bg-white/90 transition-colors">Retry</button>
-                                                    <button onClick={() => navigator.clipboard.writeText(msg.text)} className="px-2.5 py-1 rounded-md bg-white/[0.06] border border-white/[0.08] text-[11px] text-white/60 hover:text-white/80 transition-colors">Copy details</button>
+                                                    <button onClick={() => navigator.clipboard.writeText(msg.text)} className="px-2.5 py-1 rounded-md bg-[var(--az-surface-3)] border border-[var(--az-border)] text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] transition-colors">Copy details</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1650,7 +1650,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                             {streamingText && (aiLoading.status === 'streaming' || aiLoading.status === 'generating') && (
                                                 <div className="pl-1 pt-1 flex items-center gap-1 opacity-60">
                                                     <AIStreamingIndicator active />
-                                                    <span className="text-[11px] text-white/40">Writing…</span>
+                                                    <span className="text-[11px] text-[var(--az-text-muted)]">Writing…</span>
                                                 </div>
                                             )}
                                         </div>
@@ -1671,7 +1671,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         <div className="px-1 py-1 space-y-0.5">
                             {agentActivities.slice(-4).map(act => (
                                 <div key={act.id} className="flex items-center gap-2 px-2 py-1 text-[11px] leading-none transition-opacity duration-200" style={{ contain: 'layout paint' }}>
-                                    <span className={`shrink-0 text-[11px] ${act.status === 'running' ? 'text-white/30 animate-pulse' : act.status === 'done' ? 'text-emerald-300/60' : 'text-red-300/60'}`}>
+                                    <span className={`shrink-0 text-[11px] ${act.status === 'running' ? 'text-[var(--az-text-faint)] animate-pulse' : act.status === 'done' ? 'text-emerald-300/60' : 'text-red-300/60'}`}>
                                         {act.status === 'running' ? '◌' : act.status === 'done' ? '✓' : '✕'}
                                     </span>
                                     <span className={`truncate ${act.status === 'running' ? 'text-white/45' : 'text-white/35'}`}>{act.message}</span>
@@ -1684,13 +1684,13 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     {lastDiffs.length > 0 && (
                         <div className="px-1 py-1 space-y-2">
                             {lastDiffs.map(d => (
-                                <div key={d.file} className="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+                                <div key={d.file} className="rounded-xl border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden">
                                     <div className="flex items-center justify-between px-3 py-2.5">
                                         <div className="flex items-center gap-2 min-w-0">
                                             <span className="w-6 h-6 rounded-md bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center text-emerald-300/70 shrink-0">✓</span>
                                             <div className="min-w-0">
-                                                <div className="text-[13px] font-medium text-white/80 truncate">{d.file}</div>
-                                                <div className="text-[11px] text-white/30">{d.summary}</div>
+                                                <div className="text-[13px] font-medium text-[var(--az-text-secondary)] truncate">{d.file}</div>
+                                                <div className="text-[11px] text-[var(--az-text-faint)]">{d.summary}</div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-1.5 shrink-0">
@@ -1714,7 +1714,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                         setActiveFile(fromTree as never);
                                                     }
                                                 }}
-                                                className="px-2 py-1 rounded-md text-[11px] text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
+                                                className="px-2 py-1 rounded-md text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-3)] transition-colors"
                                             >
                                                 Open
                                             </button>
@@ -1733,14 +1733,14 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     className={`ai-scroll-btn ${showScrollButton ? 'visible' : ''} group/scroll-btn`}
                     aria-label="Scroll to bottom"
                 >
-                    <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-black/80 backdrop-blur-sm border border-white/10 shadow-md transition-all duration-200 hover:scale-105 hover:bg-black hover:border-white/30">
+                    <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-black/80 backdrop-blur-sm border border-[var(--az-border)] shadow-md transition-all duration-200 hover:scale-105 hover:bg-black hover:border-white/30">
                         {/* Icon - Down Arrow */}
-                        <ChevronUp size={18} className="rotate-180 text-white/80 group-hover/scroll-btn:text-white transition-colors" />
+                        <ChevronUp size={18} className="rotate-180 text-[var(--az-text-secondary)] group-hover/scroll-btn:text-white transition-colors" />
                     </div>
                 </button>
 
                 {/* Premium Floating Composer — minimal, quiet, responsive */}
-                <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 z-30 bg-gradient-to-t from-[#0c0c12] via-[#0c0c12]/90 to-transparent">
+                <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 z-30 bg-gradient-to-t from-[var(--az-surface)] via-[var(--az-surface)]/90 to-transparent">
                     <div className="max-w-3xl mx-auto">
                         <AIComposer
                             input={input}

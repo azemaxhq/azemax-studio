@@ -112,8 +112,8 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onC
             className={cn(
                 "flex items-center gap-2 py-2 px-2.5 mx-2 mt-1.5 rounded-xl backdrop-blur-md creation-shimmer-border",
                 isFolder
-                    ? "bg-gradient-to-r from-purple-500/12 via-fuchsia-500/8 to-purple-500/5 border border-purple-500/30 creation-shimmer-border-folder animate-creation-glow-folder"
-                    : "bg-gradient-to-r from-blue-500/12 via-cyan-500/8 to-blue-500/5 border border-blue-500/30 animate-creation-glow"
+                    ? "bg-[var(--az-surface-3)] border border-[var(--az-border)]"
+                    : "bg-[var(--az-surface-3)] border border-[var(--az-border)]"
             )}
         >
             {/* Chevron placeholder */}
@@ -144,8 +144,8 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onC
                         "placeholder:text-white/25 focus:outline-none",
                         isFocused
                             ? isFolder
-                                ? "ring-1 ring-purple-500/40 bg-purple-500/[0.06] shadow-[0_0_12px_rgba(168,85,247,0.1)]"
-                                : "ring-1 ring-blue-500/40 bg-blue-500/[0.06] shadow-[0_0_12px_rgba(59,130,246,0.1)]"
+                                ? "ring-1 ring-[var(--az-border-strong)] bg-[var(--az-surface-3)]"
+                                : "ring-1 ring-[var(--az-border-strong)] bg-[var(--az-surface-3)]"
                             : "ring-1 ring-white/[0.06]"
                     )}
                     placeholder={isFolder ? "Folder name..." : "File name..."}
@@ -177,24 +177,9 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onC
     )
 }
 
-// Get folder color based on name
-const getFolderColor = (name: string): string => {
-    const lowerName = name.toLowerCase();
-    if (lowerName === 'src' || lowerName === 'source') return 'text-blue-400';
-    if (lowerName === 'components' || lowerName === 'component') return 'text-purple-400';
-    if (lowerName === 'pages' || lowerName === 'views') return 'text-green-400';
-    if (lowerName === 'utils' || lowerName === 'helpers' || lowerName === 'lib') return 'text-yellow-400';
-    if (lowerName === 'hooks') return 'text-cyan-400';
-    if (lowerName === 'styles' || lowerName === 'css') return 'text-pink-400';
-    if (lowerName === 'assets' || lowerName === 'images' || lowerName === 'public') return 'text-amber-400';
-    if (lowerName === 'api' || lowerName === 'services') return 'text-emerald-400';
-    if (lowerName === 'context' || lowerName === 'store' || lowerName === 'redux') return 'text-rose-400';
-    if (lowerName === 'types' || lowerName === 'interfaces') return 'text-sky-400';
-    if (lowerName === 'tests' || lowerName === '__tests__' || lowerName === 'test') return 'text-orange-400';
-    if (lowerName === 'node_modules' || lowerName === 'vendor') return 'text-gray-500';
-    if (lowerName === 'config' || lowerName === 'configs') return 'text-slate-400';
-    if (lowerName === 'dist' || lowerName === 'build' || lowerName === 'out') return 'text-zinc-500';
-    return 'text-blue-300';
+// Neutral folder color — subtle, single muted tone (quiet confidence)
+const getFolderColor = (_name: string): string => {
+    return 'text-[#8B90A0]';
 };
 
 const FileIcon = ({ name, isOpen, isFolder }: { name: string; isOpen?: boolean; isFolder?: boolean }) => {
@@ -246,7 +231,7 @@ const FileIcon = ({ name, isOpen, isFolder }: { name: string; isOpen?: boolean; 
     if (name.endsWith('.sh') || name.endsWith('.bash') || name.endsWith('.zsh')) return <SiGnubash size={14} className="text-green-500 drop-shadow-sm" />;
 
     // Data
-    if (name.endsWith('.sql')) return <FaDatabase size={13} className="text-blue-300 drop-shadow-sm" />;
+    if (name.endsWith('.sql')) return <FaDatabase size={13} className="text-[var(--az-text)] drop-shadow-sm" />;
     if (name.endsWith('.yml') || name.endsWith('.yaml')) return <Settings size={14} className="text-red-300 drop-shadow-sm" />;
 
     // Images
@@ -422,15 +407,15 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
         <div className={isNewlyCreated ? 'animate-creation-success rounded-lg' : ''}>
             <div
                 className={cn(
-                    "flex items-center gap-2 py-[7px] px-2 cursor-pointer transition-all duration-150 text-[13px] select-none group relative rounded-lg mx-2 border",
+                    "flex items-center gap-2 py-[6px] px-2 cursor-pointer transition-colors duration-120 text-[13px] select-none group relative rounded-md mx-1.5 border",
                     isActive
-                        ? "bg-gradient-to-r from-blue-500/15 to-blue-500/5 text-blue-100 border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.08)]"
+                        ? "bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)]"
                         : isFocused
-                            ? "bg-white/8 text-white border-white/15 ring-1 ring-blue-500/40 shadow-sm"
+                            ? "bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border-strong)]"
                             : isSelected
-                                ? "bg-white/[0.04] text-white/90 border-white/[0.06]"
-                                : "text-zinc-400 hover:text-white hover:bg-white/[0.06] border-transparent hover:translate-x-0.5",
-                    isDragOver && "bg-blue-500/20 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)]"
+                                ? "bg-[var(--az-surface-2)] text-[var(--az-text-secondary)] border-[var(--az-border)]"
+                                : "text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border-transparent",
+                    isDragOver && "bg-[var(--az-accent-soft)] border-[var(--az-accent-border)]"
                 )}
                 style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
                 onClick={handleClick}
@@ -482,11 +467,10 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                 onBookmark(node.id);
                             }
                         }}
-                        className={`opacity-0 group-hover:opacity-100 p-1 rounded-md transition-all duration-150 ${
-                            isBookmarked 
-                                ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/25' 
+                        className={`opacity-0 group-hover:opacity-100 p-1 rounded-md transition-all duration-150 ${isBookmarked
+                                ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/25'
                                 : 'text-white/40 hover:text-yellow-400 hover:bg-yellow-500/15'
-                        }`}
+                            }`}
                         title={isBookmarked ? 'Remove from Favorites' : 'Add to Favorites'}
                     >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
@@ -532,8 +516,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                         {/* Indent Guide Line */}
                         {depth >= 0 && (
                             <div
-                                className="absolute top-0 bottom-0 w-px bg-gradient-to-b from-white/[0.03] via-white/[0.06] to-white/[0.03] group-hover:via-white/10 transition-colors"
-                                style={{ left: `${(depth * indentStep) + indentBase + 6}px` }}
+                                className="absolute top-0 bottom-0 w-px transition-colors"
+                                style={{ background: "var(--az-border)", left: `${(depth * indentStep) + indentBase + 6}px` } as React.CSSProperties}
                             />
                         )}
 
@@ -584,7 +568,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                     <div className="flex gap-2">
                                         <button
                                             onClick={(e) => { e.stopPropagation(); onStartCreating?.('file'); }}
-                                            className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-300 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
+                                            className="text-xs bg-blue-500/10 border border-blue-500/20 text-[var(--az-text)] px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
                                         >
                                             New File
                                         </button>
@@ -763,7 +747,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         prevTreeIdsRef.current = new Set(collectIds(fileTree));
         return () => { if (timer) clearTimeout(timer); };
     }, [fileTree]);
-    
+
     // Advanced search filters state
     const showHiddenFilesSetting = useSettingsSelector(s => s.editor.showHiddenFiles);
     const confirmDeleteSetting = useSettingsSelector(s => s.general.confirmDelete);
@@ -998,10 +982,10 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         setDraggedNode(node);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', node.id);
-        
+
         // Add visual feedback
         const dragImage = document.createElement('div');
-        dragImage.className = 'bg-blue-500/20 border border-blue-500/40 rounded-lg px-2 py-1 text-sm text-blue-300';
+        dragImage.className = 'bg-blue-500/20 border border-blue-500/40 rounded-lg px-2 py-1 text-sm text-[var(--az-text)]';
         dragImage.textContent = node.name;
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 0, 0);
@@ -1080,7 +1064,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     // Stable onDownload for memoized FileTreeNode. The ref keeps the identity
     // constant while always dispatching to the latest tree/logic, so memoized
     // rows never re-render for download purposes yet never act on stale data.
-    const downloadHandlerRef = useRef<(nodeId: string) => void>(() => {});
+    const downloadHandlerRef = useRef<(nodeId: string) => void>(() => { });
     downloadHandlerRef.current = (nodeId: string) => {
         const targetNode = findNodeById(fileTree, nodeId);
         if (targetNode?.type === 'folder') {
@@ -1101,21 +1085,21 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         try {
             // Get file content from the node itself
             const fileContent = node.content || '';
-            
+
             // Create blob with appropriate MIME type
             const mimeType = getMimeType(node.name);
             const blob = new Blob([fileContent], { type: mimeType });
-            
+
             // Create download link
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
             link.download = node.name;
-            
+
             // Trigger download
             document.body.appendChild(link);
             link.click();
-            
+
             // Cleanup
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
@@ -1132,18 +1116,18 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         try {
             // Collect all files in the folder
             const files = collectFilesInFolder(node);
-            
+
             if (files.length === 0) {
                 console.log('No files to download in this folder');
                 return;
             }
-            
+
             if (files.length === 1) {
                 // If only one file, download it directly
                 await downloadFile(files[0].id);
                 return;
             }
-            
+
             // Create ZIP file with all files
             await createAndDownloadZip(files, node.name);
         } catch (error) {
@@ -1157,58 +1141,58 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             // Import JSZip dynamically
             const JSZip = (await import('jszip')).default;
             const zip = new JSZip();
-            
+
             // Add all files to the ZIP with proper folder structure
             for (const file of files) {
                 // Get relative path from the folder being downloaded
                 const relativePath = pathOf(fileTree, file.id) || file.name;
-                    
+
                 zip.file(relativePath, file.content || '');
             }
-            
+
             // Generate the ZIP file
-            const zipBlob = await zip.generateAsync({ 
+            const zipBlob = await zip.generateAsync({
                 type: 'blob',
                 compression: 'DEFLATE',
                 compressionOptions: { level: 6 }
             });
-            
+
             // Create download link
             const url = URL.createObjectURL(zipBlob);
             const link = document.createElement('a');
             link.href = url;
             link.download = `${folderName}.zip`;
-            
+
             // Trigger download
             document.body.appendChild(link);
             link.click();
-            
+
             // Cleanup
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Failed to create ZIP file:', error);
-            
+
             // Fallback to text file if JSZip fails
             let content = `Files in folder "${folderName}":\n\n`;
-            
+
             for (const file of files) {
                 const relativePath = pathOf(fileTree, file.id) || file.name;
-                    
+
                 content += `\n=== ${relativePath} ===\n`;
                 content += file.content || '';
                 content += '\n';
             }
-            
+
             const blob = new Blob([content], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
             link.download = `${folderName}_files.txt`;
-            
+
             document.body.appendChild(link);
             link.click();
-            
+
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
         }
@@ -1295,7 +1279,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         const node = contextMenu?.nodeId ? findNodeById(fileTree, contextMenu.nodeId) : null;
         const isFolder = node?.type === 'folder';
         const isBookmarked = node ? bookmarkedFiles.has(node.id) : false;
-        
+
         const baseItems = [
             { label: 'New File...', onClick: () => startCreating('file', contextMenu?.nodeId !== 'root' ? contextMenu?.nodeId : undefined) },
             { label: 'New Folder...', onClick: () => startCreating('folder', contextMenu?.nodeId !== 'root' ? contextMenu?.nodeId : undefined) },
@@ -1317,7 +1301,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             icon: isBookmarked ? '⭐' : '☆'
         } : null;
 
-        const downloadItems = isFolder 
+        const downloadItems = isFolder
             ? [{ label: 'Download Folder...', onClick: () => downloadFolder(contextMenu?.nodeId || '') }]
             : [{ label: 'Download File', onClick: () => downloadFile(contextMenu?.nodeId || '') }];
 
@@ -1356,17 +1340,16 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                             />
                             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                                 {getActiveFilterCount() > 0 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-[var(--az-text)] font-semibold">
                                         {getActiveFilterCount()}
                                     </span>
                                 )}
                                 <button
                                     onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                                    className={`p-1 rounded-md transition-all ${
-                                        showAdvancedFilters 
-                                            ? 'bg-blue-500/20 text-blue-400' 
+                                    className={`p-1 rounded-md transition-all ${showAdvancedFilters
+                                            ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border)]'
                                             : 'text-white/40 hover:text-white hover:bg-white/10'
-                                    }`}
+                                        }`}
                                     title="Advanced Filters"
                                 >
                                     <Settings size={12} />
@@ -1384,7 +1367,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                 )}
                             </div>
                         </div>
-                        
+
                         {/* Advanced Filters Panel */}
                         <AnimatePresence>
                             {showAdvancedFilters && (
@@ -1414,7 +1397,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                                 <option value="media">Media Files</option>
                                             </select>
                                         </div>
-                                        
+
                                         {/* Date Range Filter */}
                                         <div className="flex items-center gap-2">
                                             <label className="text-[10px] text-white/40 w-12">Date:</label>
@@ -1429,7 +1412,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                                 <option value="month">This Month</option>
                                             </select>
                                         </div>
-                                        
+
                                         {/* Size Range Filter */}
                                         <div className="flex items-center gap-2">
                                             <label className="text-[10px] text-white/40 w-12">Size:</label>
@@ -1444,7 +1427,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                                 <option value="large">Large (&gt;100KB)</option>
                                             </select>
                                         </div>
-                                        
+
                                         {/* Show Hidden Files */}
                                         <div className="flex items-center gap-2">
                                             <label className="text-[10px] text-white/40 w-12">Show:</label>
@@ -1458,7 +1441,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                                 Hidden files
                                             </label>
                                         </div>
-                                        
+
                                         {/* Clear Filters Button */}
                                         <div className="flex items-center justify-between pt-1">
                                             <span className="text-[10px] text-white/30">
@@ -1547,7 +1530,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                         <div className="flex gap-2">
                             <button
                                 onClick={() => startCreating('file', 'root')}
-                                className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-300 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
+                                className="text-xs bg-blue-500/10 border border-blue-500/20 text-[var(--az-text)] px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
                             >
                                 New File
                             </button>

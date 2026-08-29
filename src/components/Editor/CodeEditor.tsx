@@ -24,7 +24,7 @@ import type { FileNode } from '../../utils/mockFileSystem';
 const CursorStatus: React.FC = React.memo(() => {
     const pos = useCursorPosition();
     return (
-        <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
+        <div className="hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
             Ln {pos.lineNumber}, Col {pos.column}
         </div>
     );
@@ -165,7 +165,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         setIsChecking(true);
         setHasErrors(false);
         setIsCheckSuccess(false);
-        
+
         const code = file.content || '';
         const fileName = file.name;
 
@@ -222,8 +222,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         const lineContent = model.getLineContent(m.startLineNumber) || '';
                         const why = m.message.includes('Unclosed') ? 'Mismatched bracket/brace — usually a missing `)` or `}` on this line or previous.'
                             : m.message.toLowerCase().includes('python') && m.message.toLowerCase().includes('indent') ? 'Python is indentation-sensitive — this line is not aligned with its block.'
-                            : m.source === 'AI DeepCheck' ? 'AI detected a semantic issue — logic, security, or style.'
-                            : `Syntax error in ${lineContent.slice(0, 40).trim() || 'this line'}.`;
+                                : m.source === 'AI DeepCheck' ? 'AI detected a semantic issue — logic, security, or style.'
+                                    : `Syntax error in ${lineContent.slice(0, 40).trim() || 'this line'}.`;
                         const fix = isError ? 'Fix: close the bracket/brace or correct the syntax and press Check again.' : 'Tip: review the line and re-check.';
                         return {
                             range: new monacoRef.current!.Range(m.startLineNumber, m.startColumn, m.endLineNumber, m.endColumn),
@@ -248,7 +248,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
             // Determine if there are actual errors (not warnings)
             const hasActualErrors = result.markers.some(marker => marker.severity === 8); // Severity.Error = 8
-            
+
             setHasErrors(hasActualErrors);
             if (!hasActualErrors) {
                 console.log('No errors detected, showing success');
@@ -313,7 +313,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         // Clear check status when user starts typing
         if (isCheckSuccess) setIsCheckSuccess(false);
         if (hasErrors) setHasErrors(false);
-        
+
         // Clear markers and premium annotations when user starts typing to avoid stale errors
         if (editorRef.current && monacoRef.current) {
             const model = editorRef.current.getModel();
@@ -325,7 +325,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             diagnosticsDecorationsRef.current.clear();
             diagnosticsDecorationsRef.current = null;
         }
-        
+
         if (activeFile && value !== undefined) {
             debouncedSave(activeFile.id, value);
         }
@@ -403,7 +403,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         editor.executeEdits('file-sync', [{ range: fullRange, text: nextContent, forceMoveMarkers: true }]);
         editor.pushUndoStop();
         if (selection) {
-            try { editor.setSelection(selection); } catch {}
+            try { editor.setSelection(selection); } catch { }
         }
         setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name });
     }, [activeFile?.id, activeFile?.content]);
@@ -428,7 +428,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         editor.pushUndoStop();
         editor.executeEdits('file-sync-pending', [{ range: model.getFullModelRange(), text: pending.content, forceMoveMarkers: true }]);
         editor.pushUndoStop();
-        if (selection) { try { editor.setSelection(selection); } catch {} }
+        if (selection) { try { editor.setSelection(selection); } catch { } }
         pendingSyncRef.current = null;
         setActiveEditor(editor, monacoRef.current, { id: pending.id, name: pending.name });
     });
@@ -1027,13 +1027,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 inherit: true,
                 rules: [],
                 colors: {
-                    'editor.background': '#0d1117',
-                    'editor.foreground': '#c9d1d9',
-                    'editorLineNumber.foreground': '#8b949e',
-                    'editor.lineHighlightBackground': '#161b22',
-                    'editorCursor.foreground': '#58a6ff',
-                    'editor.selectionBackground': '#30363d',
-                    'editor.inactiveSelectionBackground': '#30363d'
+                    'editor.background': '#101318',
+                    'editor.foreground': '#F2F3F5',
+                    'editorLineNumber.foreground': '#5A5F6A',
+                    'editorLineNumber.activeForeground': '#A7ACB5',
+                    'editor.lineHighlightBackground': '#14171C',
+                    'editorCursor.foreground': '#F2F3F5',
+                    'editor.selectionBackground': '#2A3040',
+                    'editor.inactiveSelectionBackground': '#232830',
+                    'editorIndentGuide.background': '#242830',
+                    'editorIndentGuide.activeBackground': '#303640',
+                    'editorGutter.background': '#101318',
+                    'scrollbarSlider.background': '#232830',
+                    'scrollbarSlider.hoverBackground': '#303640'
                 }
             });
         }
@@ -1210,23 +1216,20 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     if (!activeFile) {
         return (
-            <div className="w-full h-full bg-transparent flex flex-col items-center justify-center text-muted glass-panel-light relative select-none">
+            <div className="w-full h-full flex flex-col items-center justify-center relative select-none" style={{ background: "var(--az-surface)", color: "var(--az-text-muted)"}}>
                 <div className="flex flex-col items-center gap-3 mb-6">
-                    <AzemaxLogo size={56} />
-                    <span className="text-xl font-semibold text-white/90 tracking-tight">{BRAND.name}</span>
-                    <p className="text-xs text-white/40 max-w-sm text-center">
-                        Select a file from the explorer or use quick shortcuts to get started.
+                    <AzemaxLogo size={40} />
+                    <span className="text-[13px] font-semibold tracking-tight" style={{ color: "var(--az-text)"}}>{BRAND.name}</span>
+                    <p className="text-[11px] max-w-sm text-center" style={{ color: "var(--az-text-muted)"}}>
+                        Select a file from the explorer or create a new one to get started.
                     </p>
                 </div>
-                <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-white/40">
-                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
-                        <kbd className="text-[11px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-white/70">⌘P</kbd> Search files
+                <div className="flex flex-wrap items-center justify-center gap-2 text-xs" style={{ color: "var(--az-text-muted)"}}>
+                    <span className="flex items-center gap-2 px-2.5 py-1 rounded-md border" style={{ background: "var(--az-surface-2)", borderColor: "var(--az-border)"}}>
+                        <kbd className="text-[10px] font-mono px-1 py-0.5 rounded" style={{ background: "var(--az-surface-3)", color: "var(--az-text-secondary)"}}>⌘P</kbd> Search files
                     </span>
-                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
-                        <kbd className="text-[11px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-white/70">⌘⇧F</kbd> Search code
-                    </span>
-                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
-                        <kbd className="text-[11px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-white/70">⌘B</kbd> Toggle sidebar
+                    <span className="flex items-center gap-2 px-2.5 py-1 rounded-md border" style={{ background: "var(--az-surface-2)", borderColor: "var(--az-border)"}}>
+                        <kbd className="text-[10px] font-mono px-1 py-0.5 rounded" style={{ background: "var(--az-surface-3)", color: "var(--az-text-secondary)"}}>⌘B</kbd> Toggle sidebar
                     </span>
                 </div>
             </div>
@@ -1235,8 +1238,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     return (
         <div className="w-full h-full bg-transparent flex flex-col relative group">
-            {/* Toolbar */}
-            <div className="h-11 bg-[#0d1117] border-b border-white/10 flex items-center justify-between px-3 shrink-0">
+            {/* Toolbar — neutral minimal */}
+            <div className="h-10 flex items-center justify-between px-3 shrink-0" style={{ background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)'}}>
                 <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden transition-all duration-200 ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
                     {/* Check Errors — Premium AI DeepCheck */}
                     <button
@@ -1244,13 +1247,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         disabled={isChecking}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-3 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${isChecking 
-                                ? 'text-violet-300 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-violet-500/20 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
+                            ${isChecking
+                                ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
                                 : hasErrors
-                                    ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/30'
+                                    ? 'bg-[var(--az-error-soft)] text-[var(--az-error)] border border-[var(--az-error-border)]'
                                     : isCheckSuccess
-                                        ? 'bg-green-500/15 text-green-300 border border-green-500/30'
-                                        : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'}
+                                        ? 'bg-[var(--az-success-soft)] text-[var(--az-success)] border border-[var(--az-success-border)]'
+                                        : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
                         `}
                         title="Deep code check — AI + syntax (Minimax)"
                     >
@@ -1258,10 +1261,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             <>
                                 <span className="relative flex items-center justify-center">
                                     <span className="absolute h-3 w-3 rounded-full bg-violet-500/30 animate-ping" />
-                                    <Loader2 size={12} className="animate-spin text-violet-300 relative" />
+                                    <Loader2 size={12} className="animate-spin text-[var(--az-text-muted)] relative" />
                                 </span>
-                                {toolbarSize === 'full' && <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-violet-300 bg-clip-text text-transparent animate-pulse">Checking...</span>}
-                                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent -translate-x-full animate-[shimmer_1.2s_infinite]" />
+                                {toolbarSize === 'full' && <span className="text-[var(--az-text-secondary)]">Checking...</span>}
+                                <span className="hidden" />
                             </>
                         ) : hasErrors ? (
                             <AlertCircle size={12} />
@@ -1277,7 +1280,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         )}
                     </button>
 
-                    <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
+                    <div className={`shrink-0 w-px bg-[var(--az-border)] ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                     {/* Code Suggestions Toggle */}
                     <button
@@ -1285,8 +1288,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${settings.ai.inlineSuggestions
-                                ? 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/20'
-                                : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
+                                ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]'
+                                : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
                         `}
                         title={settings.ai.inlineSuggestions ? "Disable AI Suggestions" : "Enable AI Suggestions"}
                     >
@@ -1294,7 +1297,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         {toolbarSize === 'full' && <span>AI</span>}
                     </button>
 
-                    <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
+                    <div className={`shrink-0 w-px bg-[var(--az-border)] ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                     {/* Save Button - only show when auto-save is disabled */}
                     {!settings.editor.autoSave && (
@@ -1302,7 +1305,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             onClick={handleSave}
                             className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
                                 ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                                text-blue-400 bg-blue-400/10 border border-blue-400/20 hover:text-blue-300 hover:bg-blue-400/25`}
+                                text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border)] hover:bg-[var(--az-surface-hover)]`}
                             title="Save File (Ctrl+S)"
                         >
                             <Save size={12} />
@@ -1317,8 +1320,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isFormatting
-                                ? 'text-violet-300 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-violet-500/20 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.25)]'
-                                : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}
+                                ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
+                                : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
                         `}
                         title="Format Document (Shift+Alt+F) — Premium DeepSeek"
                     >
@@ -1326,13 +1329,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             <>
                                 <span className="relative flex items-center justify-center">
                                     <span className="absolute h-3 w-3 rounded-full bg-violet-500/30 animate-ping" />
-                                    <span className="absolute h-2 w-2 rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-400 animate-spin" style={{ borderTopColor: 'transparent', borderWidth: '1.5px', borderStyle: 'solid' }} />
-                                    <Loader2 size={12} className="animate-spin text-violet-300 relative" />
+                                    <span className="absolute h-2 w-2 rounded-full animate-spin" style={{ background: "var(--az-text-muted)", borderTopColor: 'transparent', borderWidth: '1.5px', borderStyle: 'solid' } as React.CSSProperties} />
+                                    <Loader2 size={12} className="animate-spin text-[var(--az-text-muted)] relative" />
                                 </span>
-                                <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-violet-300 bg-clip-text text-transparent animate-pulse">
+                                <span className="text-[var(--az-text-secondary)]">
                                     {toolbarSize === 'full' ? 'Formatting...' : ''}
                                 </span>
-                                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent -translate-x-full animate-[shimmer_1.2s_infinite]" />
+                                <span className="hidden" />
                             </>
                         ) : (
                             <>
@@ -1347,7 +1350,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         onClick={() => updateSettings('editor', { wordWrap: !settings.editor.wordWrap })}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${settings.editor.wordWrap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                            ${settings.editor.wordWrap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
                         title="Toggle Word Wrap"
                     >
                         <WrapText size={12} />
@@ -1359,7 +1362,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         onClick={() => updateSettings('editor', { showMinimap: !settings.editor.showMinimap })}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${settings.editor.showMinimap ? 'text-primary bg-primary/15 border border-primary/30' : 'text-white/60 hover:text-white hover:bg-white/10 border border-transparent'}`}
+                            ${settings.editor.showMinimap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
                         title="Toggle Minimap"
                     >
                         <MapIcon size={12} />
@@ -1368,20 +1371,20 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                     {toolbarSize !== 'mini' && (
                         <>
-                            <div className={`shrink-0 w-px bg-white/10 ${toolbarSize === 'compact' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
+                            <div className={`shrink-0 w-px bg-[var(--az-border)] ${toolbarSize === 'compact' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                             {/* Font Size */}
-                            <div className="shrink-0 flex items-center gap-0.5 bg-white/5 rounded-lg border border-white/10 px-1">
+                            <div className="shrink-0 flex items-center gap-0.5 bg-[var(--az-surface-2)] rounded-md border border-[var(--az-border)] px-1">
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.max(10, settings.editor.fontSize - 1) })}
-                                    className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
+                                    className="p-1 text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-all"
                                 >
                                     <Minus size={12} />
                                 </button>
-                                <span className="text-xs text-white/70 w-5 text-center font-mono">{settings.editor.fontSize}</span>
+                                <span className="text-xs text-[var(--az-text-secondary)] w-5 text-center font-mono">{settings.editor.fontSize}</span>
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.min(24, settings.editor.fontSize + 1) })}
-                                    className="p-1 text-white/50 hover:text-white hover:bg-white/10 rounded transition-all"
+                                    className="p-1 text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-all"
                                 >
                                     <Plus size={12} />
                                 </button>
@@ -1391,7 +1394,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 </div>
 
                 <div className="flex items-center gap-3 relative mr-2 shrink-0">
-                    <span className="text-[10px] text-blue-300 font-bold uppercase tracking-wider bg-blue-500/10 px-2.5 py-1 rounded-md border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]">
+                    <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-1 rounded-md border" style={{ color: "var(--az-text-muted)", background: "var(--az-surface-2)", borderColor: "var(--az-border)"}}>
                         {language}
                     </span>
 
@@ -1400,79 +1403,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {/* AI Sidebar Toggle - Interactive Animated */}
                     {onToggleAi && (
                         <button
-                            onClick={(e) => {
-                                // Add burst animation class
-                                const btn = e.currentTarget;
-                                btn.classList.add('burst');
-
-                                // Create ripple effect — immediate
-                                const rippleContainer = btn.querySelector('.ai-toggle-ripple');
-                                if (rippleContainer) {
-                                    const ripple = document.createElement('span');
-                                    ripple.className = 'ripple';
-                                    rippleContainer.appendChild(ripple);
-                                    setTimeout(() => ripple.remove(), 100);
-                                }
-
-                                // Remove burst class after animation
-                                setTimeout(() => btn.classList.remove('burst'), 100);
-
-                                onToggleAi();
-                            }}
+                            onClick={() => onToggleAi()}
                             className={`
-                                ai-toggle-btn group relative h-8 flex items-center justify-center gap-2 rounded-lg border transition-all duration-300 ease-out
+                                relative h-7 flex items-center justify-center gap-1.5 rounded-md border text-[11px] font-medium tracking-wide transition-colors duration-150
                                 ${isAiOpen
-                                    ? 'active pl-3 pr-3.5 bg-gradient-to-r from-purple-600/25 to-violet-600/20 border-purple-400/40'
-                                    : 'px-3 bg-white/[0.03] border-white/[0.08] text-white/60 hover:bg-purple-500/10 hover:border-purple-400/30 hover:text-purple-100'
+                                    ? 'px-2.5 bg-[var(--az-text)] text-[var(--az-bg)] border-[var(--az-text)]'
+                                    : 'px-2.5 bg-[var(--az-surface-3)] border-[var(--az-border)] hover:bg-[var(--az-surface-hover)] hover:border-[var(--az-border-strong)]'
                                 }
                             `}
+                            style={{ color: isAiOpen ? 'var(--az-bg)' : 'var(--az-text-secondary)'}}
                             title={isAiOpen ? "Close AI Sidebar" : "Open AI Sidebar"}
                         >
-                            {/* Shimmer sweep effect */}
-                            <div className="ai-toggle-shimmer" />
-
-                            {/* Ripple container */}
-                            <div className="ai-toggle-ripple" />
-
-                            {/* Orbiting particles (visible when active) */}
-                            <div className="ai-toggle-particles">
-                                <span className="particle" />
-                                <span className="particle" />
-                                <span className="particle" />
-                            </div>
-
-                            {/* Star burst effect */}
-                            <div className="ai-toggle-stars">
-                                <span className="star" />
-                                <span className="star" />
-                                <span className="star" />
-                                <span className="star" />
-                            </div>
-
-                            {/* Icon with animation class */}
-                            <ModernAILogo className={`
-                                ai-toggle-icon w-4 h-4 shrink-0 relative z-10 transition-all duration-300
-                                ${isAiOpen
-                                    ? "text-purple-200 drop-shadow-[0_0_10px_rgba(168,85,247,0.6)] scale-110"
-                                    : "opacity-60 group-hover:opacity-100 group-hover:scale-110 group-hover:text-purple-300"
-                                }
-                            `} />
-
-                            {/* Label */}
-                            <span className={`
-                                text-[11px] font-semibold tracking-wider whitespace-nowrap transition-all duration-300 relative z-10 uppercase
-                                ${isAiOpen
-                                    ? 'text-purple-100 drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]'
-                                    : 'text-white/70 group-hover:text-purple-200'
-                                }
-                            `}>
-                                AI
-                            </span>
-
-                            {/* Active indicator dot */}
-                            {isAiOpen && (
-                                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-gradient-to-r from-purple-400 to-violet-400 shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
-                            )}
+                            <ModernAILogo className={`w-3.5 h-3.5 shrink-0 ${isAiOpen ? '' : 'opacity-70'}`} />
+                            <span>AI</span>
                         </button>
                     )}
                 </div>
@@ -1492,38 +1435,38 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 />
             </div>
 
-            {/* Glass Status Bar */}
+            {/* Status Bar — neutral, calm */}
             {settings.general.showStatusBar && (
-            <div className="h-7 bg-gradient-to-r from-primary/90 to-primary/70 text-white text-[11px] flex items-center justify-between px-3 shrink-0 select-none font-medium backdrop-blur-sm overflow-hidden">
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
-                        <GitBranch size={11} />
-                        <span>main</span>
+                <div className="h-6 text-[11px] flex items-center justify-between px-3 shrink-0 select-none font-medium overflow-hidden" style={{ background: 'var(--az-surface-2)', color: 'var(--az-text-muted)', borderTop: '1px solid var(--az-border)'}}>
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
+                            <GitBranch size={11} />
+                            <span>main</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
+                            <CheckCircle size={11} />
+                            <span>0</span>
+                            <AlertCircle size={11} className="ml-1" />
+                            <span>0</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1.5 hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
-                        <CheckCircle size={11} />
-                        <span>0</span>
-                        <AlertCircle size={11} className="ml-1" />
-                        <span>0</span>
-                    </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                    <CursorStatus />
-                    <div className="w-px h-3 bg-white/30" />
-                    <div className="hidden sm:flex hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
-                        UTF-8
-                    </div>
-                    <div className="w-px h-3 bg-white/30" />
-                    <div className="hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all font-semibold">
-                        {language.toUpperCase()}
-                    </div>
-                    <div className="w-px h-3 bg-white/30" />
-                    <div className="hidden sm:flex hover:bg-white/10 px-2 py-0.5 rounded-md cursor-pointer transition-all">
-                        Prettier
+                    <div className="flex items-center gap-2">
+                        <CursorStatus />
+                        <div className="w-px h-3" style={{ background: "var(--az-border)"}} />
+                        <div className="hidden sm:flex hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
+                            UTF-8
+                        </div>
+                        <div className="w-px h-3" style={{ background: "var(--az-border)"}} />
+                        <div className="hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors font-semibold">
+                            {language.toUpperCase()}
+                        </div>
+                        <div className="w-px h-3" style={{ background: "var(--az-border)"}} />
+                        <div className="hidden sm:flex hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
+                            Prettier
+                        </div>
                     </div>
                 </div>
-            </div>
             )}
         </div >
     );

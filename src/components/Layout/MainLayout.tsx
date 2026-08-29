@@ -303,65 +303,65 @@ export const MainLayout: React.FC = () => {
     }, []);
 
     return (
-        <div className={`flex app-viewport w-full bg-background text-text overflow-hidden relative ${resizingSide ? 'select-none' : ''}`}>
-            {/* Resizing Overlay to capture mouse events and prevent iframe swallowing */}
+        <div className={`flex app-viewport w-full overflow-hidden relative ${resizingSide ? 'select-none' : ''}`} style={{ background: 'var(--az-bg)', color: 'var(--az-text)' }}>
             {resizingSide && (
                 <div className={`absolute inset-0 z-[100] ${resizingSide === 'bottom' ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
             )}
 
-            {/* Background Glow Effects (static radial gradients, no GPU blur) */}
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                <div className="bg-glow-primary" />
-                <div className="bg-glow-purple" />
-            </div>
-
-            {/* Activity Bar (Explorer + Explanation) */}
-            <div className={`shrink-0 flex flex-col items-center justify-start gap-2 py-3 w-[56px] bg-[#0d1117]/80 border-r border-white/[0.04] ${isDesktop ? 'z-20' : 'z-40'}`}>
-                {/* Brand Identity */}
-                <div className="w-[36px] h-[36px] flex items-center justify-center mb-1" title="Azemax">
-                    <AzemaxLogo size={24} />
+            {/* Activity Bar — neutral, quiet */}
+            <div className={`shrink-0 flex flex-col items-center gap-1 py-3 w-[48px] border-r ${isDesktop ? 'z-20' : 'z-40'}`} style={{ background: 'var(--az-bg)', borderColor: 'var(--az-border)' }}>
+                <div className="w-[32px] h-[32px] flex items-center justify-center mb-2" title="Azemax">
+                    <AzemaxLogo size={20} />
                 </div>
-                <div className="w-5 h-[1px] bg-white/[0.06] mb-1" />
+                <div className="w-6 h-px mb-1" style={{ background: 'var(--az-border)' }} />
 
                 <button
                     onClick={openExplorer}
-                    className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"
+                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center transition-all duration-150"
+                    style={{
+                        background: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-surface-3)' : 'transparent',
+                        color: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-text)' : 'var(--az-text-muted)',
+                        border: `1px solid ${isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-border)' : 'transparent'}`
+                    }}
                     title="Explorer (⌘B)"
                 >
-                    <div className={`w-[32px] h-[32px] rounded-[10px] bg-gradient-to-br from-blue-500/20 via-cyan-500/10 to-blue-600/15 border flex items-center justify-center transition-all duration-200 group-hover/toggle:from-blue-500/30 group-hover/toggle:to-blue-600/25 group-hover/toggle:shadow-[0_2px_12px_rgba(59,130,246,0.25)] group-active/toggle:scale-90 ${isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'border-blue-400/30 shadow-[0_2px_8px_rgba(59,130,246,0.2)]' : 'border-blue-400/15 shadow-[0_2px_8px_rgba(59,130,246,0.12)]'}`}>
-                        <Layers size={16} className="text-blue-400 drop-shadow-[0_0_3px_rgba(59,130,246,0.4)] transition-transform duration-200 group-hover/toggle:scale-110" />
-                    </div>
                     {isLeftSidebarOpen && leftSidebarView === 'explorer' && (
-                        <div className="absolute top-1 right-0.5 w-[7px] h-[7px] rounded-full bg-gradient-to-br from-emerald-400 to-green-500 border-[1.5px] border-[#0d1117] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+                        <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
                     )}
+                    <Layers size={16} strokeWidth={1.75} />
                 </button>
                 <button
                     onClick={openExplanation}
-                    className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"
+                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center transition-all duration-150"
+                    style={{
+                        background: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-surface-3)' : 'transparent',
+                        color: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-text)' : 'var(--az-text-muted)',
+                        border: `1px solid ${isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-border)' : 'transparent'}`
+                    }}
                     title="Code Explanation"
                 >
-                    <div className={`w-[32px] h-[32px] rounded-[10px] bg-gradient-to-br from-[#a371f7]/20 via-[#58a6ff]/10 to-[#a371f7]/15 border flex items-center justify-center transition-all duration-200 group-hover/toggle:from-[#a371f7]/30 group-hover/toggle:to-[#a371f7]/25 group-hover/toggle:shadow-[0_2px_12px_rgba(163,113,247,0.25)] group-active/toggle:scale-90 ${isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'border-[#a371f7]/40 shadow-[0_2px_8px_rgba(163,113,247,0.2)]' : 'border-[#a371f7]/15 shadow-[0_2px_8px_rgba(163,113,247,0.12)]'}`}>
-                        <BookOpen size={16} className="text-[#a371f7] drop-shadow-[0_0_3px_rgba(163,113,247,0.4)] transition-transform duration-200 group-hover/toggle:scale-110" />
-                    </div>
                     {isLeftSidebarOpen && leftSidebarView === 'explanation' && (
-                        <div className="absolute top-1 right-0.5 w-[7px] h-[7px] rounded-full bg-gradient-to-br from-emerald-400 to-green-500 border-[1.5px] border-[#0d1117] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+                        <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
                     )}
+                    <BookOpen size={16} strokeWidth={1.75} />
                 </button>
-                
-                {/* Push settings button to bottom */}
+
                 <div className="flex-1" />
-                
+
                 <button
                     onClick={openSettings}
-                    className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"
+                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center transition-all duration-150"
+                    style={{
+                        background: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-surface-3)' : 'transparent',
+                        color: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-text)' : 'var(--az-text-muted)',
+                        border: `1px solid ${isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-border)' : 'transparent'}`
+                    }}
                     title="Settings"
                 >
-                    <div className={`w-[32px] h-[32px] rounded-[10px] bg-gradient-to-br from-gray-500/20 via-gray-500/10 to-gray-600/15 border flex items-center justify-center transition-all duration-200 group-hover/toggle:from-gray-500/30 group-hover/toggle:to-gray-600/25 group-hover/toggle:shadow-[0_2px_12px_rgba(156,163,175,0.25)] group-active/toggle:scale-90 ${isLeftSidebarOpen && leftSidebarView === 'settings' ? 'border-gray-400/30 shadow-[0_2px_8px_rgba(156,163,175,0.2)]' : 'border-gray-400/15 shadow-[0_2px_8px_rgba(156,163,175,0.12)]'}`}>
-                        <Settings size={16} className="text-gray-400 drop-shadow-[0_0_3px_rgba(156,163,175,0.4)] transition-transform duration-200 group-hover/toggle:scale-110" />
-                    </div>
                     {isLeftSidebarOpen && leftSidebarView === 'settings' && (
-                        <div className="absolute top-1 right-0.5 w-[7px] h-[7px] rounded-full bg-gradient-to-br from-emerald-400 to-green-500 border-[1.5px] border-[#0d1117] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+                        <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
                     )}
+                    <Settings size={16} strokeWidth={1.75} />
                 </button>
             </div>
 
@@ -378,18 +378,19 @@ export const MainLayout: React.FC = () => {
                 />
             )}
 
-            {/* Left Sidebar (Explorer or Explanation) - smooth open/close */}
             <div
                 ref={leftSidebarRef}
                 style={{
                     width: isLeftSidebarOpen ? (isDesktop ? `${Math.max(150, leftSidebarWidth)}px` : `min(${Math.max(150, leftSidebarWidth)}px, calc(100vw - 72px))`) : '0px',
-                    opacity: isLeftSidebarOpen ? 1 : 0
+                    opacity: isLeftSidebarOpen ? 1 : 0,
+                    background: 'var(--az-surface)',
+                    borderColor: 'var(--az-border)'
                 }}
-                className={`glass-panel flex flex-col shrink-0 overflow-hidden
+                className={`flex flex-col shrink-0 overflow-hidden
                     ${isDesktop
-                        ? `relative z-10 ${resizingSide === 'left' ? 'transition-none' : 'transition-all duration-300 ease-in-out'}`
-                        : 'absolute top-0 bottom-0 left-[56px] z-40 transition-all duration-300 ease-in-out'}
-                    ${isLeftSidebarOpen ? 'border-r border-white/5 shadow-2xl' : 'border-none'}`}
+                        ? `relative z-10 ${resizingSide === 'left' ? 'transition-none' : 'transition-all duration-200 ease-out'}`
+                        : 'absolute top-0 bottom-0 left-[48px] z-40 transition-all duration-200 ease-out'}
+                    ${isLeftSidebarOpen ? 'border-r' : 'border-none'}`}
             >
                 <AnimatePresence mode="wait" initial={false}>
                     {leftSidebarView === 'explorer' ? (
@@ -431,13 +432,12 @@ export const MainLayout: React.FC = () => {
                 </AnimatePresence>
             </div>
 
-            {/* Left Resize Handle */}
             <div
                 style={{ display: isDesktop && isLeftSidebarOpen ? 'flex' : 'none' }}
-                className="w-1.5 glass-resize-handle cursor-col-resize z-20 flex items-center justify-center shrink-0 hover:w-2 transition-all"
+                className="w-px cursor-col-resize z-20 shrink-0 hover:w-[2px] transition-all"
                 onMouseDown={startResizingLeft}
             >
-                <div className="h-8 w-0.5 bg-white/10 rounded-full group-hover:bg-primary/50" />
+                <div className="h-full w-full" style={{ background: 'var(--az-border)' }} />
             </div>
 
             {/* Main Content Area (Row) */}
@@ -447,8 +447,7 @@ export const MainLayout: React.FC = () => {
                 <div className="flex-1 flex flex-col min-w-0">
                     {/* Editor Area */}
                     <div className="flex-1 flex min-h-0 relative">
-                        <div className="flex-1 min-w-0 glass-panel-light rounded-none border-0 overflow-hidden">
-
+                        <div className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-surface)', border: 'none' }}>
                             <CodeEditor
                                 isAiOpen={isAiSidebarOpen}
                                 onToggleAi={toggleAiSidebar}
@@ -456,66 +455,62 @@ export const MainLayout: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Bottom Resize Handle (desktop only — resizing is mouse-driven) */}
                     {isDesktop && (
                         <div
-                            className="h-1.5 glass-resize-handle-vertical cursor-row-resize z-20 flex items-center justify-center shrink-0 hover:h-2 transition-all"
+                            className="h-px cursor-row-resize z-20 shrink-0"
+                            style={{ background: 'var(--az-border)' }}
                             onMouseDown={startResizingBottom}
-                        >
-                            <div className="w-20 h-0.5 bg-white/10 rounded-full" />
-                        </div>
+                        />
                     )}
 
-                    {/* Bottom Panel (desktop: docked inline as today) */}
                     {isDesktop && (
                         <div
                             ref={bottomPanelRef}
-                            style={{ height: bottomPanelHeight }}
-                            className="glass-panel shrink-0 border-t border-white/10"
+                            style={{ height: bottomPanelHeight, background: 'var(--az-surface)', borderColor: 'var(--az-border)' }}
+                            className="shrink-0 border-t"
                         >
                             <BottomPanel />
                         </div>
                     )}
                 </div>
 
-                {/* Right Resize Handle */}
                 <div
                     style={{ display: isDesktop && isAiSidebarOpen ? 'flex' : 'none' }}
-                    className="w-1.5 glass-resize-handle cursor-col-resize z-20 flex items-center justify-center shrink-0 hover:w-2 transition-all"
+                    className="w-px cursor-col-resize z-20 shrink-0"
                     onMouseDown={startResizingRight}
                 >
-                    <div className="h-8 w-0.5 bg-white/10 rounded-full" />
+                    <div className="h-full w-full" style={{ background: 'var(--az-border)' }} />
                 </div>
 
-                {/* Right Sidebar (AI Assistant) */}
                 <div
                     ref={rightSidebarRef}
                     style={{
                         width: isAiSidebarOpen ? (isDesktop ? `${aiPanelWidth}px` : `min(${Math.max(200, aiPanelWidth)}px, 92vw)`) : '0px',
                         opacity: isAiSidebarOpen ? 1 : 0,
+                        background: 'var(--az-surface)',
+                        borderColor: 'var(--az-border)'
                     }}
-                    className={`glass-panel flex flex-col shrink-0 overflow-hidden
+                    className={`flex flex-col shrink-0 overflow-hidden
                         ${isDesktop
-                            ? `relative z-10 ${resizingSide === 'right' ? 'transition-none' : 'transition-all duration-300 ease-in-out'}`
-                            : 'absolute top-0 bottom-0 right-0 z-40 transition-all duration-300 ease-in-out'}
-                        ${isAiSidebarOpen ? 'border-l border-white/10' : 'border-none'}`}
+                            ? `relative z-10 ${resizingSide === 'right' ? 'transition-none' : 'transition-all duration-200 ease-out'}`
+                            : 'absolute top-0 bottom-0 right-0 z-40 transition-all duration-200 ease-out'}
+                        ${isAiSidebarOpen ? 'border-l' : 'border-none'}`}
                 >
-                <div className="flex-1 min-h-0 flex flex-col" ref={rightInnerRef} style={isDesktop ? { width: aiPanelWidth } : undefined}>
-                    <AIAssistant isVisible={isAiSidebarOpen} />
-</div>
-            </div>
-
-            {/* Bottom Sheet (mobile/tablet overlay — replaces the docked panel below 1024px) */}
-            {!isDesktop && (
-                <div
-                    className="absolute left-[56px] right-0 bottom-0 z-40 overflow-hidden transition-all duration-300 ease-in-out"
-                    style={{ height: isBottomOpen ? `min(${bottomPanelHeight}px, 75dvh)` : '32px' }}
-                >
-                    <BottomPanel isOverlay isOpen={isBottomOpen} onToggle={toggleBottomPanel} />
+                    <div className="flex-1 min-h-0 flex flex-col" ref={rightInnerRef} style={isDesktop ? { width: aiPanelWidth } : undefined}>
+                        <AIAssistant isVisible={isAiSidebarOpen} />
+                    </div>
                 </div>
-            )}
+
+                {!isDesktop && (
+                    <div
+                        className="absolute left-[48px] right-0 bottom-0 z-40 overflow-hidden transition-all duration-200 ease-out"
+                        style={{ height: isBottomOpen ? `min(${bottomPanelHeight}px, 75dvh)` : '32px' }}
+                    >
+                        <BottomPanel isOverlay isOpen={isBottomOpen} onToggle={toggleBottomPanel} />
+                    </div>
+                )}
+            </div>
+            <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development' && developerDiagnostics} />
         </div>
-        <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development' && developerDiagnostics} />
-    </div>
     );
 };
