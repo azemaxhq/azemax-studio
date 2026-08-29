@@ -222,12 +222,12 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
             )}
 
             {/* Composer container */}
-            <div className="az-composer relative rounded-[12px] overflow-hidden" style={{ background: "var(--az-surface-3)", border: "1px solid var(--az-border)"}}>
+            <div className="az-composer relative rounded-[16px] overflow-hidden" style={{ background: "#171A20", border: "1px solid rgba(255,255,255,0.07)", boxShadow: "0 4px 20px rgba(0,0,0,0.18), 0 1px 0 rgba(255,255,255,0.04) inset" }}>
                 {/* Context chips */}
                 {allChips.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-1">
                         {allChips.map(chip => (
-                            <span key={chip.id} className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-full text-[11px] leading-none" style={{ background: "var(--az-surface-hover)", border: "1px solid var(--az-border)", color: "var(--az-text-secondary)"}}>
+                            <span key={chip.id} className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-full text-[11px] leading-none" style={{ background: "#15181E", border: "1px solid rgba(255,255,255,0.07)", color: "var(--az-text-secondary)"}}>
                                 <span style={{ color: "var(--az-text-muted)"}}>{chip.icon}</span>
                                 <span className="truncate max-w-[140px]" style={{ color: "var(--az-text-secondary)"}}>{chip.label}</span>
                                 {chip.detail && <span className="text-white/30">{chip.detail}</span>}
@@ -286,9 +286,9 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                             <AtSign size={12} />
                             <span className="hidden sm:inline text-[11px]">File</span>
                         </button>
-                        <span className="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "var(--az-surface-2)", border: "1px solid var(--az-border)", color: "var(--az-text-muted)"}}>
-                            <Sparkles size={11} style={{ color: "var(--az-text-faint)"}} /> Agent
-                        </span>
+                        <button className="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium transition-colors hover:bg-[#1C2026]" style={{ background: "#15181E", border: "1px solid rgba(255,255,255,0.07)", color: "var(--az-text-muted)"}}>
+                            Agent <span style={{ opacity: 0.5, fontSize: '10px' }}>▾</span>
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">

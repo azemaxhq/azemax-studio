@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react';
 import {
-    Check, ArrowRight, Edit3, RefreshCw, Zap, Bug, MessageCircle, Code2, Copy,
+    Check, Edit3, RefreshCw, Zap, Bug, MessageCircle, Code2, Copy,
     Plus, MessageSquare, Trash2, X, History, ChevronUp,
     ThumbsUp, ThumbsDown, FileCode, Lightbulb, ChevronDown
 } from 'lucide-react';
@@ -296,29 +296,36 @@ const MessageItem = React.memo(({
     const displayText = isLong && !showFull ? msg.text.slice(0, 1100) : msg.text;
 
     return (
-        <div className={`flex gap-4 w-full message-appear ${msg.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
-            <div className={`flex flex-col gap-2 min-w-0 ${msg.role === 'ai' ? 'items-end max-w-[85%]' : 'items-start flex-1 max-w-full'}`}>
+        <div className={`flex w-full message-appear ${msg.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
+            <div className={`flex flex-col min-w-0 ${msg.role === 'ai' ? 'w-full max-w-full' : 'items-end max-w-[78%] ml-auto'}`}>
                 {isEditing ? (
-                    <div className="w-full space-y-3 bg-[var(--az-surface-2)] p-4 rounded-xl border border-[var(--az-border)]">
+                    <div className="w-full space-y-3 p-3 rounded-[12px] border" style={{ background: '#171A20', borderColor: 'rgba(255,255,255,0.07)' }}>
                         <textarea
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-[var(--az-surface)] border border-[var(--az-border)] text-sm resize-none focus:outline-none focus:border-[#58a6ff] text-[var(--az-text)] placeholder-[#8b949e] transition-colors"
+                            className="w-full p-2.5 rounded-[8px] text-[13px] resize-none focus:outline-none"
+                            style={{ background: '#101217', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text)' }}
                             rows={3}
                         />
-                        <div className="flex gap-2 justify-end">
-                            <button onClick={onCancelEdit} className="px-4 py-2 rounded-lg hover:bg-[#21262d] text-[var(--az-text-muted)] text-xs font-medium transition-colors">Cancel</button>
-                            <button onClick={() => onSaveEdit(msg.id)} className="px-4 py-2 rounded-lg bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-medium transition-colors">Save</button>
+                        <div className="flex gap-1.5 justify-end">
+                            <button onClick={onCancelEdit} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" style={{ color: 'var(--az-text-muted)' }}>Cancel</button>
+                            <button onClick={() => onSaveEdit(msg.id)} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" style={{ background: 'var(--az-text)', color: '#0B0D10' }}>Save</button>
                         </div>
                     </div>
                 ) : (
                     <>
                         <div className={`group relative break-words ${msg.role === 'ai'
                             ? 'w-full bg-transparent'
-                            : 'px-4 py-2.5 bg-[var(--az-surface-3)] text-[var(--az-text)] rounded-xl border border-[var(--az-border)] shadow-sm'
-                            }`}>
+                            : 'px-3.5 py-2 rounded-[14px] rounded-br-[4px] border max-w-full'
+                            }`} style={msg.role !== 'ai' ? { background: '#1E232B', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--az-text)' } : undefined}>
 
-                            <div className={`markdown-content relative z-10 ${msg.role === 'ai' ? 'text-[14px] leading-[1.65] text-[var(--az-text-secondary)]' : 'text-[14px] leading-relaxed'}`}>
+                            {msg.role === 'ai' && (
+                                <div className="flex items-center gap-1.5 mb-2">
+                                    <span className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center text-[9px] font-bold tracking-tight" style={{ background: '#171A20', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text-muted)' }}>A</span>
+                                    <span className="text-[11px] font-medium" style={{ color: 'var(--az-text-muted)' }}>Azemax</span>
+                                </div>
+                            )}
+                            <div className={`markdown-content relative z-10 ${msg.role === 'ai' ? 'text-[13.5px] leading-[1.7] text-[var(--az-text-secondary)]' : 'text-[13.5px] leading-relaxed'}`}>
                                 {msg.role === 'ai' ? (
                                     <>
                                         {parseArtifacts(displayText).segments.map((segment, segIdx) =>
@@ -356,54 +363,57 @@ const MessageItem = React.memo(({
                                 )}
                             </div>
 
-                            {/* Action bar for AI messages - Always visible */}
                             {msg.role === 'ai' && (
-                                <div className="flex items-center justify-between mt-4 mb-2 opacity-60 hover:opacity-100 transition-opacity duration-200 px-1">
-                                    <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1 mt-2.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+                                    <button
+                                        onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
+                                        className="w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
+                                        style={{ color: 'var(--az-text-muted)', border: '1px solid transparent' }}
+                                        title={copiedId === `msg-${msg.id}` ? 'Copied' : 'Copy'}
+                                        aria-label="Copy"
+                                    >
+                                        {copiedId === `msg-${msg.id}` ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                    </button>
+                                    {onRegenerate && (
                                         <button
-                                            onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
-                                            className="flex items-center gap-1.5 text-xs text-[var(--az-text-muted)] hover:text-white transition-colors"
-                                            title="Copy"
+                                            onClick={() => typeof index === 'number' && onRegenerate(index)}
+                                            className="w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
+                                            style={{ color: 'var(--az-text-muted)' }}
+                                            title="Regenerate"
+                                            aria-label="Regenerate"
                                         >
-                                            {copiedId === `msg-${msg.id}` ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                                            <span>{copiedId === `msg-${msg.id}` ? 'Copied' : 'Copy'}</span>
+                                            <RefreshCw size={12} />
                                         </button>
-                                        {onRegenerate && (
-                                            <button
-                                                onClick={() => typeof index === 'number' && onRegenerate(index)}
-                                                className="flex items-center gap-1.5 text-xs text-[var(--az-text-muted)] hover:text-white transition-colors"
-                                                title="Regenerate"
-                                            >
-                                                <RefreshCw size={14} />
-                                                <span>Regenerate</span>
-                                            </button>
-                                        )}
-                                    </div>
-
+                                    )}
                                     {onReaction && (
-                                        <div className="flex items-center gap-2">
+                                        <>
+                                            <div className="w-px h-4 mx-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
                                             <button
                                                 onClick={() => onReaction(msg.id, 'up')}
-                                                className={`text-[var(--az-text-muted)] hover:text-white transition-colors ${reaction === 'up' ? 'text-emerald-400' : ''}`}
+                                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)] ${reaction === 'up' ? 'text-emerald-400' : ''}`}
+                                                style={{ color: reaction === 'up' ? undefined : 'var(--az-text-muted)' }}
                                                 title="Helpful"
+                                                aria-label="Helpful"
                                             >
-                                                <ThumbsUp size={14} />
+                                                <ThumbsUp size={12} />
                                             </button>
                                             <button
                                                 onClick={() => onReaction(msg.id, 'down')}
-                                                className={`text-[var(--az-text-muted)] hover:text-white transition-colors ${reaction === 'down' ? 'text-red-400' : ''}`}
+                                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)] ${reaction === 'down' ? 'text-red-400' : ''}`}
+                                                style={{ color: reaction === 'down' ? undefined : 'var(--az-text-muted)' }}
                                                 title="Not helpful"
+                                                aria-label="Not helpful"
                                             >
-                                                <ThumbsDown size={14} />
+                                                <ThumbsDown size={12} />
                                             </button>
-                                        </div>
+                                        </>
                                     )}
+                                    {copiedId === `msg-${msg.id}` && <span className="text-[10px] ml-1" style={{ color: 'var(--az-text-muted)' }}>Copied</span>}
                                 </div>
                             )}
 
-                            {/* User message hover actions - Enhanced Floating Pill - Compact */}
                             {msg.role === 'user' && (
-                                <div className="absolute -bottom-6 left-0 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center gap-0.5 p-0.5 bg-[#1e1e1e]/90 backdrop-blur-sm rounded-full border border-[var(--az-border)] shadow-lg shadow-black/20 translate-y-2 group-hover:translate-y-0 text-[var(--az-text-muted)]">
+                                <div className="absolute -bottom-5 left-0 opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center gap-0.5 p-0.5 rounded-full border shadow-sm translate-y-1 group-hover:translate-y-0" style={{ background: '#15181E', borderColor: 'rgba(255,255,255,0.07)' }}>
                                     <button
                                         onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
                                         className="p-1 rounded-full hover:bg-white/10 text-[var(--az-text-muted)] hover:text-white transition-all duration-200 group/btn"
@@ -427,7 +437,7 @@ const MessageItem = React.memo(({
                             )}
                         </div>
                         {msg.timestamp && (
-                            <span className="text-[11px] text-[var(--az-text-faint)] px-2 font-medium">
+                            <span className={`text-[10px] font-normal mt-1 px-1 transition-opacity duration-150 ${msg.role === 'ai' ? 'opacity-60 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100 text-right self-end'}`} style={{ color: 'var(--az-text-faint)' }}>
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase()}
                             </span>
                         )}
@@ -598,10 +608,8 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         return "🌙 Good evening";
     };
 
-    const [greeting, setGreeting] = useState(getGreeting());
-
-    // Greeting only changes with the time of day; refresh when the panel
-    // becomes visible instead of keeping a perpetual 60s timer alive.
+    const [_greeting, setGreeting] = useState(getGreeting());
+    void _greeting;
     useEffect(() => {
         if (!isVisible) return;
         setGreeting(getGreeting());
@@ -1273,20 +1281,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
 
     return (
-        <div className="flex flex-col h-full w-full relative overflow-hidden bg-[#0c0c12] min-h-0">
+        <div className="flex flex-col h-full w-full relative overflow-hidden min-h-0" style={{ background: "#101217" }}>
 
-            {/* Rich Background with Gradient Mesh */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                {/* Top-center glow to fix "black area" */}
-                <div className="absolute -top-[20%] left-1/2 -translate-x-1/2 w-[80%] h-[60%] bg-violet-500/[0.03] blur-[120px] rounded-full" />
-
-                {/* Ambient side glows */}
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] hidden rounded-full" />
-                <div className="absolute bottom-0 left-0 w-[500px] h-[500px] hidden rounded-full" />
-
-                {/* Subtle sheen overlay */}
-                <div className="absolute inset-0  pointer-events-none" />
-            </div>
+            {/* Subtle depth — no gradients */}
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'transparent' }} />
 
             {/* Sidebar (History) - Liquid Glass Style */}
             <div
@@ -1298,11 +1296,11 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     }
                 `}
                 style={{
-                    transition: 'transform 400ms cubic-bezier(0.32, 0.72, 0, 1), opacity 300ms ease-out, scale 400ms cubic-bezier(0.32, 0.72, 0, 1)',
+                    transition: 'transform 200ms ease-out, opacity 180ms ease-out',
                     transformOrigin: 'left center'
                 }}
             >
-                <div className="flex flex-col h-full bg-[var(--az-surface)]/95 border-r border-[var(--az-border)]/50">
+                <div className="flex flex-col h-full border-r" style={{ background: "#101217", borderColor: "rgba(255,255,255,0.07)" }}>
                     {/* Sidebar Header */}
                     <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b border-[var(--az-border)]/40 bg-[var(--az-surface-2)]/50">
                         <button
@@ -1473,7 +1471,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 className={`absolute inset-0 z-20 ${showSidebar ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 style={{
                     background: 'linear-gradient(to right, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.4) 50%, rgba(0, 0, 0, 0.3) 100%)',
-                    backdropFilter: showSidebar ? 'blur(4px)' : 'blur(0px)',
+                    backdropFilter: showSidebar ? 'blur(6px)' : 'blur(0px)',
                     transition: 'opacity 400ms cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 400ms cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
                 onClick={() => setShowSidebar(false)}
@@ -1481,59 +1479,53 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full relative z-10">
-                {/* Premium Header - Liquid Glass Style */}
-                <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-[var(--az-border)] bg-[var(--az-surface-2)] backdrop-blur-lg backdrop-saturate-150 z-20 transition-all relative overflow-hidden group/header">
-                    {/* Liquid Glint Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.02] to-transparent pointer-events-none" />
-                    <div className="absolute inset-0  pointer-events-none opacity-50" />
-
-                    {/* Left Section - History Button */}
-                    <div className="flex items-center gap-3 relative z-10">
+                {/* Header — compact premium toolbar */}
+                <div className="h-10 shrink-0 flex items-center justify-between px-2.5 border-b z-20" style={{ background: '#101217', borderColor: 'rgba(255,255,255,0.07)' }}>
+                    <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => setShowSidebar(!showSidebar)}
-                            className={`p-2 rounded-xl transition-all duration-300 ${showSidebar ? 'text-white bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.1)]' : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'}`}
-                            title="Toggle History"
+                            className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
+                            style={{ color: showSidebar ? 'var(--az-text)' : 'var(--az-text-muted)', background: showSidebar ? 'var(--az-surface-3)' : 'transparent', border: showSidebar ? '1px solid var(--az-border)' : '1px solid transparent' }}
+                            title="Chat history"
+                            aria-label="Toggle history"
                         >
-                            <History size={18} strokeWidth={2} className="opacity-80" />
+                            <History size={14} strokeWidth={1.75} />
                         </button>
+                        <div className="w-px h-4 mx-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                        <span className="hidden sm:inline text-[11px] font-medium tracking-wide uppercase" style={{ color: 'var(--az-text-muted)' }}>Azemax</span>
                     </div>
 
-                    {/* Center - Chat Title */}
-                    <div className="flex-1 min-w-0 flex items-center justify-center px-3 relative z-10">
-                        <button
-                            onClick={() => {
-                                if (!currentSessionId) return;
-                                const session = sessions.find(s => s.id === currentSessionId);
-                                const currentTitle = session?.title || 'New Chat';
-                                const newTitle = prompt('Rename chat:', currentTitle);
-                                if (newTitle != null && newTitle.trim() !== '') {
-                                    setSessions(prev =>
-                                        prev.map(s =>
-                                            s.id === currentSessionId ? { ...s, title: newTitle.trim(), updatedAt: Date.now() } : s
-                                        )
-                                    );
-                                }
-                            }}
-                            className="max-w-full w-full px-4 py-2 rounded-xl text-sm font-medium text-zinc-300 hover:text-white hover:bg-white/5 border border-transparent hover:border-[var(--az-border)] transition-all duration-200 text-center truncate"
-                            title={`${currentSession?.title || 'New Chat'} — Click to rename`}
-                        >
-                            <span className="block truncate">{currentSession?.title || 'New Chat'}</span>
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => {
+                            if (!currentSessionId) return;
+                            const session = sessions.find(s => s.id === currentSessionId);
+                            const currentTitle = session?.title || 'New Chat';
+                            const newTitle = prompt('Rename chat:', currentTitle);
+                            if (newTitle != null && newTitle.trim() !== '') {
+                                setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: newTitle.trim(), updatedAt: Date.now() } : s));
+                            }
+                        }}
+                        className="flex-1 min-w-0 mx-3 px-2 py-1 rounded-md text-[12.5px] font-medium truncate text-center transition-colors hover:bg-[var(--az-surface-3)]"
+                        style={{ color: 'var(--az-text-secondary)' }}
+                        title={`${currentSession?.title || 'New Chat'} — Click to rename`}
+                    >
+                        <span className="truncate">{currentSession?.title || 'New Chat'}</span>
+                    </button>
 
-                    {/* Right Section - Context & New Chat */}
-                    <div className="flex items-center gap-3 relative z-10">
+                    <div className="flex items-center gap-1.5">
                         {activeFileMeta && (
-                            <span className="text-[11px] text-zinc-500 truncate font-medium tracking-wide leading-none px-2.5 py-1 rounded-lg bg-white/5 border border-[var(--az-border)] max-w-[140px]">
+                            <span className="hidden lg:inline-flex items-center max-w-[120px] truncate text-[11px] px-2 py-1 rounded-full" style={{ background: '#171A20', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text-muted)' }}>
                                 {activeFileMeta.name}
                             </span>
                         )}
                         <button
                             onClick={handleNewChat}
-                            className="p-2 text-zinc-400 hover:text-zinc-200 transition-colors duration-300 hover:bg-white/5 rounded-xl hover:shadow-[0_0_15px_rgba(255,255,255,0.05)]"
-                            title="New Chat"
+                            className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
+                            style={{ color: 'var(--az-text-muted)', border: '1px solid transparent' }}
+                            title="New chat"
+                            aria-label="New chat"
                         >
-                            <Plus size={20} strokeWidth={2} className="opacity-80" />
+                            <Plus size={14} strokeWidth={1.75} />
                         </button>
                     </div>
                 </div>
@@ -1547,52 +1539,32 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 <div
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
-                    className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 pt-14 pb-10 space-y-6 custom-scrollbar w-full ${messages.length > 0 || streamingText ? 'pb-40' : ''}`}
+                    className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar w-full ${messages.length > 0 || streamingText ? 'pb-32' : ''}`}
                     style={{ overflowAnchor: 'auto' }}
                 >
+                    <div className="mx-auto w-full max-w-[640px] px-3.5 pt-5 pb-6 space-y-5">
                     {messages.length === 0 && !streamingText && settings.general.showWelcomeScreen ? (
-                        <div className="min-h-full flex flex-col items-center justify-center p-4 pb-12 animate-fade-in-up w-full">
-
-                            {/* Hero Section Container */}
-                            <div className="flex flex-col items-center mb-6 cursor-default">
-                                <div className="mb-3 p-3 rounded-2xl bg-[var(--az-surface-2)] border border-[var(--az-border)]">
-                                    <AzemaxLogo size={48} />
-                                </div>
+                        <div className="flex flex-col items-center justify-center px-6 py-10 text-center animate-fade-in-up w-full max-w-[360px] mx-auto">
+                            <div className="mb-4 opacity-90">
+                                <AzemaxLogo size={28} />
                             </div>
-
-                            {/* Greeting & Subtitle */}
-                            <div className="text-center space-y-2 mb-8 max-w-[90%] mx-auto animate-fade-in-up delay-100 opacity-0" style={{ animationFillMode: 'forwards' }}>
-                                <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--az-text)] drop-shadow-sm">
-                                    {greeting}, Creator
-                                </h3>
-                                <p className="text-[13px] sm:text-[14px] text-[var(--az-text-muted)] leading-relaxed font-normal tracking-wide">
-                                    How can I help you today?
-                                </p>
-                            </div>
-
-                            {/* Quick Actions Grid - Premium Layout - Flexible Grid */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl animate-fade-in-up delay-200 opacity-0" style={{ animationFillMode: 'forwards' }}>
-                                {QUICK_ACTIONS.map((action, idx) => (
+                            <h3 className="text-[13px] font-semibold tracking-tight" style={{ color: 'var(--az-text)' }}>Azemax</h3>
+                            <p className="text-[14px] font-medium tracking-tight mt-0.5" style={{ color: 'var(--az-text)' }}>What are you building?</p>
+                            <p className="text-[12px] leading-relaxed mt-2 max-w-[280px]" style={{ color: 'var(--az-text-muted)' }}>
+                                Ask about your code, files, errors, architecture or let Azemax make changes for you.
+                            </p>
+                            <div className="grid grid-cols-2 gap-2 mt-6 w-full">
+                                {QUICK_ACTIONS.map((action) => (
                                     <button
-                                        key={idx}
+                                        key={action.label}
                                         onClick={() => handleQuickAction(action.prompt)}
-                                        className="group/card relative overflow-hidden flex items-center gap-3 p-3 rounded-xl bg-[var(--az-surface-2)] hover:bg-white/[0.08] border border-[var(--az-border)] hover:border-white/[0.15] transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-violet-500/10 text-left w-full"
+                                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-medium transition-colors"
+                                        style={{ background: '#15181E', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text-secondary)' }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = '#1C2026'; e.currentTarget.style.color = 'var(--az-text)'; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = '#15181E'; e.currentTarget.style.color = 'var(--az-text-secondary)'; }}
                                     >
-                                        <div className="absolute inset-0  opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-                                        <div className="relative p-2 rounded-lg bg-[var(--az-surface-3)] text-[var(--az-text-muted)] group-hover/card:text-white group-hover/card:from-violet-500/20 group-hover/card:to-blue-500/20 transition-all duration-300 shrink-0 ring-1 ring-white/5 group-hover/card:ring-white/10">
-                                            <action.icon size={18} strokeWidth={1.5} className="transition-transform duration-300 group-hover/card:scale-110" />
-                                        </div>
-
-                                        <div className="relative min-w-0 flex-1">
-                                            <span className="text-[13px] sm:text-[14px] font-medium text-[var(--az-text-secondary)] group-hover/card:text-white transition-colors block text-left">
-                                                {action.label}
-                                            </span>
-                                        </div>
-
-                                        <div className="relative opacity-0 group-hover/card:opacity-100 -translate-x-2 group-hover/card:translate-x-0 transition-all duration-300 text-[var(--az-text-faint)]">
-                                            <ArrowRight size={14} strokeWidth={2} />
-                                        </div>
+                                        <action.icon size={13} strokeWidth={1.75} style={{ opacity: 0.7 }} />
+                                        {action.label}
                                     </button>
                                 ))}
                             </div>
@@ -1725,6 +1697,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         </div>
                     )}
                     <div ref={messagesEndRef} />
+                    </div>
                 </div>
 
                 {/* Scroll to Bottom Button */}
@@ -1740,7 +1713,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 </button>
 
                 {/* Premium Floating Composer — minimal, quiet, responsive */}
-                <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 z-30 bg-gradient-to-t from-[var(--az-surface)] via-[var(--az-surface)]/90 to-transparent">
+                <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 z-30" style={{ background: "linear-gradient(to top, #101217 70%, transparent)" }}>
                     <div className="max-w-3xl mx-auto">
                         <AIComposer
                             input={input}

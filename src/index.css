@@ -659,3 +659,7 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 
 /* Utility: focus ring for interactive */
 .az-focus:focus-visible{ outline:none; box-shadow: var(--az-focus-ring); border-color: var(--az-accent-border)}
+
+/* Composer placeholder polish */
+.az-composer textarea::placeholder { color: #6F7580; opacity: 0.9; transition: opacity 150ms ease; }
+.az-composer textarea:focus::placeholder { opacity: 0.6; }
