@@ -23,9 +23,21 @@ dist-ssr
 *.sln
 *.sw?
 
-# Security
+# Security - Sensitive items (never commit secrets)
 .env
+.env.*
+!.env.example
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.secret
+secrets/
+.aws/
+.gcp/
+.azure/
 
 # Server data
 data/

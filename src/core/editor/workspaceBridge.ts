@@ -5,7 +5,7 @@
  */
 
 import type { FileNode } from '../../utils/mockFileSystem';
-import { getActiveEditorContext } from './activeEditorStore';
+import { getActiveEditorContext, getActiveEditor } from './activeEditorStore';
 import type { ExecutorDeps } from '../ai/aiToolExecutor';
 
 export interface WorkspaceBridgeActions {
@@ -56,6 +56,7 @@ export function createExecutorDeps(
     activeFileId: string | null,
 ): ExecutorDeps {
     return {
+        getFileTree: actions.getFileTree,
         getFileContent: (path: string): string | null => {
             // Monaco-first for active file: the editor model is the source of truth
             // and is always fresher than the debounced ProjectContext tree.
@@ -89,6 +90,37 @@ export function createExecutorDeps(
         },
         updateFileContent: (fileId: string, content: string) => {
             const res = actions.updateFileContent(fileId, content);
+            // Sync Monaco immediately for active file so verification reads fresh candidate (fileTree update is async via React state)
+            try {
+                const editor = getActiveEditor();
+                const ctx = getActiveEditorContext();
+                const activeId = ctx?.fileId ?? activeFileId;
+                const activePath = ctx?.fileName ?? activeFileName;
+                // Only sync if this is the active file and Monaco is mounted
+                if (editor && activeId === fileId) {
+                    const model = editor.getModel();
+                    if (model && !model.isDisposed() && model.getValue() !== content) {
+                        editor.pushUndoStop();
+                        const fullRange = model.getFullModelRange();
+                        // Use executeEdits to preserve undo stack and avoid flicker
+                        editor.executeEdits('agent-apply', [{ range: fullRange, text: content, forceMoveMarkers: true }]);
+                        editor.pushUndoStop();
+                    }
+                } else if (editor && activePath) {
+                    // Fallback: if IDs don't match but path does (after rename), still sync
+                    const fileNode = findNodeByPath(actions.getFileTree(), activePath);
+                    if (fileNode?.id === fileId) {
+                        const model = editor.getModel();
+                        if (model && !model.isDisposed() && model.getValue() !== content) {
+                            editor.pushUndoStop();
+                            editor.executeEdits('agent-apply', [{ range: model.getFullModelRange(), text: content, forceMoveMarkers: true }]);
+                            editor.pushUndoStop();
+                        }
+                    }
+                }
+            } catch {
+                // best-effort: fileTree already updated, Monaco sync is optional
+            }
             return { success: !res.error, error: errText(res.error) };
         },
         getActiveFilePath: () => getActiveEditorContext()?.fileName ?? activeFileName ?? null,

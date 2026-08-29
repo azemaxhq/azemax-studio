@@ -1,5 +1,40 @@
-/* Premium — single orb + smooth fading dots, 60fps */
+/* Minimal premium loader — no pill, just dot + text, 60fps */
+.ai-loading-minimal {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    transition: opacity 180ms ease;
+    will-change: opacity;
+}
+.ai-loading-minimal-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #a78bfa;
+    box-shadow: 0 0 8px rgba(167,139,250,0.45);
+    opacity: 0.9;
+    animation: minimal-dot-pulse 1.6s ease-in-out infinite;
+    will-change: opacity, transform;
+    flex-shrink: 0;
+}
+@keyframes minimal-dot-pulse {
+    0%,100% { opacity: 0.55; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1); }
+}
+.ai-loading-minimal-text {
+    display: inline-flex;
+    align-items: center;
+    min-height: 16px;
+}
+.ai-loading-minimal .ai-response-status { font-size: 12px; font-weight: 450; letter-spacing: 0.15px; color: rgba(255,255,255,0.62); }
+.ai-loading-minimal .ai-response-status--thinking,
+.ai-loading-minimal .ai-response-status--preparing { color: rgba(199,183,255,0.78); }
+.ai-loading-minimal .ai-response-status--generating,
+.ai-loading-minimal .ai-response-status--streaming { color: rgba(199,183,255,0.78); }
+.ai-loading-minimal .ai-response-status--applying { color: rgba(134,239,172,0.75); }
 
+/* Legacy pill — kept for compact variant only, not used for chat */
 .ai-loading-indicator {
     display: flex;
     align-items: center;
@@ -85,11 +120,64 @@
 .ai-response-container { animation: ai-response-in 200ms ease-out both; will-change: opacity, transform; }
 @keyframes ai-response-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
+/* Premium skeleton — shown while thinking/preparing before first token, shimmer via transform (GPU) */
+.premium-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0 4px;
+}
+.premium-skeleton-line {
+    height: 9px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.04) 40%);
+    background-size: 400px 100%;
+    animation: premium-shimmer 1.4s ease-in-out infinite;
+    will-change: background-position;
+}
+.premium-skeleton-line:nth-child(1) { width: 72%; }
+.premium-skeleton-line:nth-child(2) { width: 88%; animation-delay: 0.15s; }
+.premium-skeleton-line:nth-child(3) { width: 64%; animation-delay: 0.3s; }
+@keyframes premium-shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: 200px 0; }
+}
+
+/* Smooth streaming content — each new chunk fades in via opacity/transform only */
+.smooth-streaming-content {
+    animation: streaming-content-in 160ms ease-out both;
+    will-change: opacity, transform;
+}
+@keyframes streaming-content-in {
+    from { opacity: 0.85; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Streaming word-level pulse for premium feel */
+.streaming-caret-premium {
+    display: inline-block;
+    width: 2px;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: -2px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(199,183,255,1), rgba(99,102,241,1));
+    box-shadow: 0 0 8px rgba(139,92,246,0.45);
+    animation: ai-caret-blink 1.0s step-end infinite, caret-glow 1.8s ease-in-out infinite;
+    will-change: opacity, box-shadow;
+}
+@keyframes caret-glow {
+    0%,100% { box-shadow: 0 0 6px rgba(139,92,246,0.35); }
+    50% { box-shadow: 0 0 10px rgba(139,92,246,0.55); }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-    .ai-thinking-glow, .ai-thinking-dot, .ai-streaming-caret { animation: none !important; }
-    .ai-loading-indicator, .ai-response-container { transition: opacity 120ms ease !important; animation: none !important; }
+    .ai-thinking-glow, .ai-thinking-dot, .ai-streaming-caret, .streaming-caret-premium, .premium-skeleton-line, .ai-loading-minimal-dot { animation: none !important; }
+    .ai-loading-indicator, .ai-loading-minimal, .ai-response-container, .smooth-streaming-content { transition: opacity 120ms ease !important; animation: none !important; }
     .ai-thinking-dot { opacity: 0.65; }
+    .premium-skeleton-line { background: rgba(255,255,255,0.06); }
+    .ai-loading-minimal-dot { opacity: 0.7; }
 }
 
 /* Variants */

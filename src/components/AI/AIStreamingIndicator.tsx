@@ -13,7 +13,7 @@ export const AIStreamingIndicator: React.FC<AIStreamingIndicatorProps> = ({ acti
     if (!active) return null;
     return (
         <span className={`ai-streaming-cursor ${className}`} aria-hidden="true">
-            <span className="ai-streaming-caret" />
+            <span className="streaming-caret-premium" />
         </span>
     );
 };

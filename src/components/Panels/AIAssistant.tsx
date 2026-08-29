@@ -12,6 +12,7 @@ import { buildWorkspaceSnapshot } from '../../core/workspace/workspaceContext';
 import { useAILoading } from '../../hooks/useAILoading';
 import { AILoadingIndicator } from '../AI/AILoadingIndicator';
 import { AIStreamingIndicator } from '../AI/AIStreamingIndicator';
+import { SmoothStreamingBubble } from '../AI/SmoothStreamingBubble';
 import '../AI/ai-loading.css';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -29,6 +30,7 @@ import { cleanResponse } from '../../core/ai/AIResponseParser';
 import type { ChatMessage } from '../../core/ai/types';
 import { parseArtifacts } from './ai/artifactParser';
 import { AI_ERROR_CODES } from '../../core/ai/AIError';
+import type { AgentActivity } from '../../core/ai/agentController';
 
 // Custom Gemini-style Animated Logo
 const GeminiLogo = ({ size = 24, className = "" }: { size?: number, className?: string }) => {
@@ -175,7 +177,8 @@ const MessageItem = React.memo(({
     copiedId,
     reaction,
     onReaction,
-    prismReady
+    prismReady,
+    isStreaming
 }: {
     msg: Message | { text: string; role: 'ai' | 'user'; id: string; timestamp: number };
     index: number | string;
@@ -192,6 +195,7 @@ const MessageItem = React.memo(({
     reaction?: 'up' | 'down' | null;
     onReaction?: (msgId: string, type: 'up' | 'down') => void;
     prismReady: boolean;
+    isStreaming?: boolean;
 }) => {
     // Enhanced markdown renderer using react-markdown
     const components = {
@@ -202,8 +206,8 @@ const MessageItem = React.memo(({
             const codeId = `${msg.id}-${index}-${language}-${code.slice(0, 10)}`;
 
             if (!inline && match) {
-                // Syntax Highlighting (lazy-loaded Prism)
-                const highlightedCode = prismReady ? tryHighlight(code, language) : null;
+                // Syntax Highlighting — skip during streaming (heavy, causes jank)
+                const highlightedCode = prismReady && !isStreaming ? tryHighlight(code, language) : null;
 
                 return (
                     <div className="my-4 rounded-lg overflow-hidden border border-[#30363d] bg-[#161b22] group/code">
@@ -601,6 +605,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const [editText, setEditText] = useState('');
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({}); // msgId -> reaction
+    const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
 
     // Lazy-load Prism so its ~250KB stays out of the initial bundle
     const [prismReady, setPrismReady] = useState(false);
@@ -648,7 +653,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     }, [settings.general.restoreSession]);
 
     // Project Context — single source for file operations via centralized executor
-    const { createFile, updateFileContent, createFolder, deleteNode, renameNode, getActiveFile, getFileTree } = useProjectActions();
+    const { createFile, updateFileContent, createFolder, deleteNode, renameNode, getActiveFile, getFileTree, setActiveFile } = useProjectActions();
     const { activeFileMeta } = useProjectUI();
 
     // Action Execution (legacy — kept for verification, not used in semantic pipeline)
@@ -789,7 +794,8 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             return updated;
         });
         setCurrentSessionId(newSession.id);
-        setStreamingText(''); // Fix: Clear streaming text so home page can show
+        setStreamingText('');
+        setAgentActivities([]);
         if (window.innerWidth < 768) setShowSidebar(false);
     }, [settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
@@ -812,11 +818,12 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         if (window.innerWidth < 768) setShowSidebar(false);
     };
 
-    const handleCopyCode = useCallback((code: string, id: string) => {
+    const _handleCopyCode = useCallback((code: string, id: string) => {
         navigator.clipboard.writeText(code);
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 1000);
     }, []);
+    void _handleCopyCode;
 
     const handleCopyMessage = useCallback((text: string, id: string) => {
         navigator.clipboard.writeText(text);
@@ -950,6 +957,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             return;
         }
         lastSentRef.current = { text: userMessageText, at: Date.now() };
+        setAgentActivities([]);
 
         // Centralized loading: thinking immediately — single requestId for concurrent protection
         const requestId = aiLoading.start('thinking');
@@ -1021,20 +1029,36 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             let responseText = '';
 
             if (wantsModification) {
-                // EDIT PATH — use unified edit pipeline (plan → actions → execute → verify)
+                // EDIT PATH — Cursor-style Agent Controller (Intent → Live Context → Tools → Execute → Verify)
                 aiLoading.setGenerating();
-                const { runEditPipeline } = await import('../../core/ai/editPipeline');
-                const result = await runEditPipeline({
+                setAgentActivities([]);
+                const { runAgentController } = await import('../../core/ai/agentController');
+                const result = await runAgentController({
                     userMessage: userMessageText,
-                    workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent },
+                    workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent, setActiveFile } as unknown as import('../../core/editor/workspaceBridge').WorkspaceBridgeActions & { setActiveFile?: unknown },
                     fileName: fileName || null,
                     fileId: activeFile?.id ?? null,
                     history: historyForPipeline,
                     signal: abortController.signal,
+                    onActivity: (act) => {
+                        setAgentActivities(prev => {
+                            const idx = prev.findIndex(a => a.id === act.id);
+                            if (idx >= 0) { const next = [...prev]; next[idx] = act; return next; }
+                            // also collapse running->done for same tool+path
+                            return [...prev, act].slice(-12);
+                        });
+                        // Drive loading states: interpreting→gathering→executing→verifying
+                        if (act.tool === 'interpret' && act.status === 'running') aiLoading.setThinking();
+                        else if (['read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file'].includes(act.tool) && act.status === 'running') aiLoading.setGenerating();
+                        else if (act.tool === 'apply' && act.status === 'running') aiLoading.setApplying();
+                        else if (act.status === 'done' && act.tool !== 'apply') aiLoading.setGenerating();
+                    },
                 });
 
-                if (import.meta.env.DEV) console.log('[EditPipeline] result:', result);
+                if (import.meta.env.DEV) console.log('[AgentController] result:', result);
                 responseText = result.message || (result.success ? 'Changes applied.' : 'No changes were made.');
+                // Keep final activities for streaming card display, cleared on next send
+                setAgentActivities(result.activities.slice(-8));
 
             } else if (isExplain || plannerResponseMessage.trim().length > 20) {
                 // EXPLAIN PATH — use planner's response or stream explanation
@@ -1095,12 +1119,9 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     const lineCount = fileContent ? fileContent.split('\n').length : 0;
                     const preview = fileContent ? fileContent.slice(0, 200).trim() : '(empty)';
                     responseText = `The current file is **${fileName}** (${language}, ${lineCount} line${lineCount===1?'':'s'}).` + (fileContent && fileContent.trim() ? `\n\nPreview:\n\`\`\`${language}\n${preview}\n\`\`\`` : ' It is currently empty — ask me to generate code like “write a greeting function” and I’ll create it with DeepSeek.');
-                    // Simulate streaming for smooth UI
                     aiLoading.setStreaming();
-                    for (let i = 0; i < responseText.length; i += 8) {
-                        scheduleStreamUpdate(requestId, responseText.slice(0, i + 8));
-                        await new Promise(r => setTimeout(r, 12));
-                    }
+                    scheduleStreamUpdate(requestId, responseText);
+                    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
                 } else {
                     const messagesForChat: ChatMessage[] = [
                         { role: 'system', content: systemPrompt },
@@ -1653,38 +1674,47 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 />
                             ))}
 
-                            {/* Streaming Response — same bubble transitions from thinking → streaming → completed */}
-                            {streamingText && (
-                                <div className="ai-response-container">
-                                    <MessageItem
-                                        msg={{ text: streamingText, role: 'ai', id: 'streaming', timestamp: Date.now() }}
-                                        index="streaming"
-                                        isEditing={false}
-                                        editText=""
-                                        setEditText={() => { }}
-                                        onSaveEdit={() => { }}
-                                        onCancelEdit={() => { }}
-                                        onEditStart={() => { }}
-                                        onCopy={handleCopyCode}
-                                        onRegenerate={undefined}
-                                        onApplyCode={handleApplyCode}
-                                        copiedId={copiedId}
-                                        prismReady={prismReady}
-                                    />
-                                    {aiLoading.status === 'streaming' || aiLoading.status === 'generating' ? (
-                                        <div className="pl-2 pt-1">
-                                            <AIStreamingIndicator active />
+                            {/* Premium smooth streaming — 60fps, rAF coalesced, no layout jump */}
+                            {(streamingText || (isLoading && !streamingText)) && (
+                                <div className="ai-response-container w-full flex gap-4" style={{ contain: 'layout paint' }}>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="w-full bg-transparent">
+                                            <SmoothStreamingBubble
+                                                text={streamingText}
+                                                isStreaming={aiLoading.status === 'streaming' || aiLoading.status === 'generating'}
+                                            />
+                                            {/* Inline caret only when streaming has content */}
+                                            {streamingText && (aiLoading.status === 'streaming' || aiLoading.status === 'generating') && (
+                                                <div className="pl-1 pt-1 flex items-center gap-1 opacity-60">
+                                                    <AIStreamingIndicator active />
+                                                    <span className="text-[11px] text-white/40">Writing…</span>
+                                                </div>
+                                            )}
                                         </div>
-                                    ) : null}
+                                    </div>
                                 </div>
                             )}
                         </>
                     )}
 
-                    {/* Premium centralized AI loading — contextual operation (not internal thinking/generating) */}
-                    {(aiLoading.status === 'thinking' || aiLoading.status === 'preparing' || aiLoading.status === 'generating') && (
+                    {/* Premium centralized AI loading — contextual operation, hidden when streaming has content to avoid duplicate */}
+                    {(aiLoading.status === 'thinking' || aiLoading.status === 'preparing' || aiLoading.status === 'applying' || (aiLoading.status === 'generating' && !streamingText)) && (
                         <div className="pl-2 py-2 message-appear ai-response-container">
                             <AILoadingIndicator status={aiLoading.status} operation={currentOperation} variant="chat" />
+                        </div>
+                    )}
+                    {/* Cursor-style compact activity cards — 60fps, no layout jump */}
+                    {agentActivities.length > 0 && (
+                        <div className="px-2 py-2 space-y-1.5 animate-fade-in">
+                            {agentActivities.slice(-6).map(act => (
+                                <div key={act.id} className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] backdrop-blur-sm text-[12px] leading-none transition-all duration-200 will-change-transform" style={{ contain: 'layout paint' }}>
+                                    <span className={`shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[10px] ${act.status === 'running' ? 'bg-white/10 text-white/60 animate-pulse' : act.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                        {act.status === 'running' ? '◌' : act.status === 'done' ? '✓' : '✕'}
+                                    </span>
+                                    <span className={`truncate ${act.status === 'running' ? 'text-white/70' : act.status === 'done' ? 'text-white/60' : 'text-red-300/80'}`}>{act.message}</span>
+                                    {act.path && <span className="ml-auto shrink-0 text-[11px] text-white/30 truncate max-w-[140px]">{act.path}</span>}
+                                </div>
+                            ))}
                         </div>
                     )}
                     <div ref={messagesEndRef} />

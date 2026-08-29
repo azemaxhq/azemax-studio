@@ -33,7 +33,14 @@ export type SemanticActionType =
     | 'replace_code'
     | 'delete_code'
     | 'refactor'
-    | 'fix';
+    | 'fix'
+    | 'read_file'
+    | 'search_files'
+    | 'list_files'
+    | 'get_diagnostics'
+    | 'get_editor_context'
+    | 'open_file'
+    | 'run_code';
 
 export interface SemanticTarget {
     /** Absolute or workspace-relative path, e.g. "src/hello.c" */
@@ -65,11 +72,11 @@ export interface SemanticAction {
     /** Concrete payload — line numbers, comments, content, etc. Resolved by the model against CURRENT code. */
     payload?: {
         /**
-         * For add_comments / update_comment / remove_comment.
-         * Each entry: 1-based line the model saw, comment text WITHOUT markers,
-         * optional mode ('add'|'replace' → upsert; 'remove'), optional anchor =
-         * exact current content of that line so the executor can validate it.
-         */
+          * For add_comments / update_comment / remove_comment.
+          * Each entry: 1-based line the model saw, comment text WITHOUT markers,
+          * optional mode ('add'|'replace' → upsert; 'remove'), optional anchor =
+          * exact current content of that line so the executor can validate it.
+          */
         comments?: Array<{ line: number; text: string; mode?: string; anchor?: string }>;
         /** For remove_comments: exact comment line numbers to KEEP (preserve) */
         preserveLines?: number[];
@@ -88,6 +95,8 @@ export interface SemanticAction {
         anchor?: string;
         /** For chat/explain immediate answer */
         message?: string;
+        /** For read/search/list/open/diagnostics */
+        query?: string;
     };
     ordering?: number;
 }
@@ -135,6 +144,13 @@ CRITICAL OUTPUT RULES:
 - Decide semantically whether the user wants: an edit to code/comments (operation "edit" with concrete actions), only an explanation (operation "explain"), or conversation (operation "chat").
 - Be conservative: if the request is ambiguous — you cannot identify WHICH lines/file/symbol it targets — return a chat action asking for clarification. Never guess when the target is unclear.
 
+TOOL SELECTION RULES (Cursor-style Agent):
+- You have IDE tools: read_file(path), search_files(query), list_files(path), get_editor_context(), get_diagnostics(path), open_file(path), plus mutation tools below.
+- If the user refers to "this/that/here/that function/this file" resolve via selection → cursor → active file → visible code. You already have that context — no tool needed.
+- If the user asks about ANOTHER file ("in UserService", "that component", "the config") and you don't have its content, emit a read/search action FIRST. Reads are executed locally before any edit, so multi-file tasks work in one turn.
+- Example multi-file: "Create UserService and update controller to use it" → read project structure, read controller, create_file(UserService), replace_code(controller import+usage).
+- Reads/searches are non-mutating and never need anchors.
+
 EDIT DECISION RULES:
 - Choose the smallest sufficient operation set: prefer line/range ops (replace_code, delete_code, insert_code) and comment metadata over full-file rewrites.
 - NEVER output update_file (whole-file content) unless the user explicitly asks to rewrite/regenerate/replace the ENTIRE file.
@@ -167,7 +183,7 @@ SCHEMA (exact keys):
   },
   "actions": [
     {
-      "type": "add_comments" | "remove_comments" | "create_file" | "delete_file" | "rename_file" | "update_file" | "insert_code" | "replace_code" | "delete_code",
+      "type": "add_comments" | "remove_comments" | "create_file" | "delete_file" | "rename_file" | "update_file" | "insert_code" | "replace_code" | "delete_code" | "read_file" | "search_files" | "list_files" | "get_diagnostics" | "get_editor_context" | "open_file",
       "target": {
         "filePath": "string (defaults to the active editor file)",
         "scope": "file" | "selection" | "function" | "block",
@@ -184,7 +200,7 @@ SCHEMA (exact keys):
         "comments": [{"line": number, "text": "string", "mode": "add"|"replace"|"remove", "anchor": "string"}],
         "preserveLines": [number],
         "content": "string (only for create_file/update_file/insert_code/replace_code)",
-        "path": "string", "newPath": "string",
+        "path": "string", "newPath": "string", "query": "string (for search_files)",
         "line": number, "startLine": number, "endLine": number,
         "anchor": "exact current first-target-line content",
         "message": "chat/explain answer"
@@ -254,6 +270,7 @@ export function parseSemanticPlan(raw: string): SemanticPlan | null {
             const type = (a as any).type as SemanticActionType;
             const allowed: SemanticActionType[] = [
                 'chat', 'explain', 'add_comments', 'remove_comments', 'create_file', 'delete_file', 'rename_file', 'update_file', 'insert_code', 'replace_code', 'delete_code', 'refactor', 'fix',
+                'read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file', 'run_code',
             ];
             if (!allowed.includes(type)) continue;
             normalizedActions.push({

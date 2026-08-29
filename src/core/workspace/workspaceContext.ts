@@ -37,14 +37,26 @@ function flattenFileTree(nodes: FileNode[], depth = 0, maxDepth = 3): string {
     return result;
 }
 
-function collectFileMap(nodes: FileNode[], map: Map<string, string>, paths: string[]): void {
+function collectFileMap(
+    nodes: FileNode[],
+    map: Map<string, string>,
+    paths: string[],
+    prefix: string = '',
+): void {
     for (const node of nodes) {
-        if (node.type === 'file' && typeof node.content === 'string') {
-            const key = node.name;
-            map.set(key, node.content);
-            paths.push(key);
+        // Skip the synthetic root node itself
+        if (node.id === 'root' && node.name === 'deep-context-ide') {
+            if (node.children) collectFileMap(node.children, map, paths, '');
+            continue;
         }
-        if (node.children) collectFileMap(node.children, map, paths);
+        const fullPath = prefix ? `${prefix}/${node.name}` : node.name;
+        if (node.type === 'file' && typeof node.content === 'string') {
+            map.set(fullPath, node.content);
+            // also keep bare name for backwards compat (first occurrence wins for map, all for paths)
+            if (!map.has(node.name)) map.set(node.name, node.content);
+            paths.push(fullPath);
+        }
+        if (node.children) collectFileMap(node.children, map, paths, fullPath);
     }
 }
 

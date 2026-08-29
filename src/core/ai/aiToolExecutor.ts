@@ -13,6 +13,7 @@ import { parseStructuredOperations } from './structuredOperationParser';
 import {
     normalizeCommentMode,
 } from './commentApplier';
+import { resolvePath } from '../../utils/safeTree';
 import {
     compilePlan,
     buildCandidates,
@@ -36,7 +37,13 @@ export type AIAction =
     | { action: 'update_file'; path: string; content: string }
     | { action: 'insert_code'; path?: string; line: number; content: string; anchor?: string | null }
     | { action: 'replace_code'; path?: string; startLine: number; endLine: number; content: string; anchor?: string | null }
-    | { action: 'delete_code'; path?: string; startLine: number; endLine: number };
+    | { action: 'delete_code'; path?: string; startLine: number; endLine: number }
+    | { action: 'read_file'; path: string }
+    | { action: 'search_files'; query: string }
+    | { action: 'list_files'; path?: string }
+    | { action: 'get_diagnostics'; path: string }
+    | { action: 'get_editor_context' }
+    | { action: 'open_file'; path: string };
 
 export type AIActionPlan = {
     actions: AIAction[];
@@ -52,6 +59,7 @@ export type ExecutorDeps = {
     updateFileContent: (fileId: string, content: string) => { success: boolean; error?: string };
     getActiveFilePath: () => string | null;
     getActiveFileId: () => string | null;
+    getFileTree?: () => import('../../utils/mockFileSystem').FileNode[];
 };
 
 export type ExecutionResult = {
@@ -191,12 +199,24 @@ function normalizeActionArray(arr: unknown[], fallbackFile?: string): AIAction[]
             out.push({ action: 'rename_file', path: a.path, newPath: a.newPath });
         } else if ((type === 'update_file' || type === 'replace_file') && typeof a.path === 'string') {
             out.push({ action: 'update_file', path: a.path, content: (a.content as string) || '' });
-        } else if ((type === 'insert_code' || type === 'insert') && typeof payload.line === 'number' && typeof payload.content === 'string') {
+        } else if ((type === 'insert_code' || type === 'insert' || type === 'insert_text') && typeof payload.line === 'number' && typeof payload.content === 'string') {
             out.push({ action: 'insert_code', path: (target.filePath as string) || fallbackFile, line: payload.line, content: payload.content });
-        } else if ((type === 'replace_code' || type === 'replace') && typeof payload.startLine === 'number' && typeof payload.endLine === 'number' && typeof payload.content === 'string') {
+        } else if ((type === 'replace_code' || type === 'replace' || type === 'replace_range') && typeof payload.startLine === 'number' && typeof payload.endLine === 'number' && typeof payload.content === 'string') {
             out.push({ action: 'replace_code', path: (target.filePath as string) || fallbackFile, startLine: payload.startLine, endLine: payload.endLine, content: payload.content });
-        } else if ((type === 'delete_code' || type === 'delete_line') && typeof payload.startLine === 'number' && typeof payload.endLine === 'number') {
+        } else if ((type === 'delete_code' || type === 'delete_line' || type === 'delete_range') && typeof payload.startLine === 'number' && typeof payload.endLine === 'number') {
             out.push({ action: 'delete_code', path: (target.filePath as string) || fallbackFile, startLine: payload.startLine, endLine: payload.endLine });
+        } else if (type === 'read_file' && typeof (a.path ?? payload.path) === 'string') {
+            out.push({ action: 'read_file', path: String(a.path ?? payload.path) });
+        } else if (type === 'search_files' && typeof (payload.query ?? (a as { query?: unknown }).query) === 'string') {
+            out.push({ action: 'search_files', query: String(payload.query ?? (a as { query?: unknown }).query) });
+        } else if (type === 'list_files') {
+            out.push({ action: 'list_files', path: (a.path as string) || (payload.path as string) || undefined });
+        } else if (type === 'get_diagnostics' && typeof (a.path ?? payload.path) === 'string') {
+            out.push({ action: 'get_diagnostics', path: String(a.path ?? payload.path) });
+        } else if (type === 'get_editor_context') {
+            out.push({ action: 'get_editor_context' });
+        } else if (type === 'open_file' && typeof (a.path ?? payload.path) === 'string') {
+            out.push({ action: 'open_file', path: String(a.path ?? payload.path) });
         }
     }
     return out.length > 0 ? out : null;
@@ -246,6 +266,17 @@ export function validateActionPlan(plan: AIAction[]): string | null {
                 if (typeof action.startLine !== 'number' || typeof action.endLine !== 'number' || action.startLine < 1 || action.endLine < action.startLine) {
                     return `Invalid ${action.action} range`;
                 }
+                break;
+            case 'read_file':
+            case 'get_diagnostics':
+            case 'open_file':
+                if (!(action as { path?: string }).path) return `${action.action} requires path`;
+                break;
+            case 'search_files':
+                if (!(action as { query?: string }).query) return 'search_files requires query';
+                break;
+            case 'list_files':
+            case 'get_editor_context':
                 break;
         }
     }
@@ -364,10 +395,34 @@ export async function executeActionPlan(
         }
 
         // [7] VERIFY — re-read everything; store must match validated candidates
-        const verifyFail = verifyAppliedCandidates(
+        let verifyFail = verifyAppliedCandidates(
             candidates.filter(c => !c.plan.actions.some(a => ['create_file', 'rename_file'].includes(a.action))),
             readLatest,
         );
+        // Fallback: Monaco model may lag behind fileTree (React state async). If Monaco mismatches
+        // but fileTree matches candidate, treat as success — Monaco will sync via effect.
+        if (verifyFail && deps.getFileTree) {
+            const readFromTreeOnly = (p: string): string | null => {
+                const node = resolvePath(deps.getFileTree!(), p);
+                return node && typeof node.content === 'string' ? node.content : null;
+            };
+            const retryFail = verifyAppliedCandidates(
+                candidates.filter(c => !c.plan.actions.some(a => ['create_file', 'rename_file'].includes(a.action))),
+                readFromTreeOnly,
+            );
+            if (!retryFail) {
+                console.warn('[Verify] Monaco stale but fileTree matches — treating as success for', verifyFail.filePath);
+                verifyFail = null;
+            } else if (retryFail && verifyFail) {
+                // Both failed — keep original but log candidate vs stored diff for debugging
+                if (import.meta.env.DEV) {
+                    const cand = candidates.find(c => c.filePath === verifyFail!.filePath);
+                    const storedViaTree = readFromTreeOnly(verifyFail.filePath);
+                    const storedViaMonaco = readLatest(verifyFail.filePath);
+                    console.warn('[Verify] Failed both reads', { file: verifyFail.filePath, candidateLen: cand?.candidate.length, treeLen: storedViaTree?.length, monacoLen: storedViaMonaco?.length, candidateHead: cand?.candidate.slice(0,200), treeHead: storedViaTree?.slice(0,200) });
+                }
+            }
+        }
         if (verifyFail) {
             throw new Error(`Verification failed for ${verifyFail.filePath}: ${verifyFail.reason}`);
         }
