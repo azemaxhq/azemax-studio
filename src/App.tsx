@@ -7,6 +7,9 @@ import { PerformanceProvider } from './context/PerformanceContext';
 import { ErrorBoundary } from './components/UI/ErrorBoundary';
 import { composeProviders } from './core/composeProviders';
 
+import { AzemaxLogo } from './components/UI/AzemaxLogo';
+import { BRAND } from './core/branding';
+
 const MainLayout = lazy(() => import('./components/Layout/MainLayout').then(m => ({ default: m.MainLayout })));
 
 // Memoized shell around the lazy layout: a SettingsProvider value change would
@@ -23,14 +26,13 @@ const AppContent = memo(function AppContent() {
 
 const AppLoadingFallback = () => (
   <div style={{ display: 'flex', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#0d1117' }}>
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
-      <div style={{ width: 64, height: 64, borderRadius: '50%', border: '4px solid rgba(99,102,241,0.2)', borderTopColor: '#6366f1', animation: 'spin 1s linear infinite' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+      <AzemaxLogo size={44} />
       <div style={{ textAlign: 'center' }}>
-        <p style={{ fontSize: '18px', fontWeight: 500, color: 'rgba(255,255,255,0.8)' }}>DeepContext</p>
-        <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>Loading editor...</p>
+        <p style={{ fontSize: '16px', fontWeight: 600, color: 'rgba(255,255,255,0.9)', letterSpacing: '-0.01em' }}>{BRAND.name}</p>
+        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>Loading workspace...</p>
       </div>
     </div>
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
   </div>
 );
 

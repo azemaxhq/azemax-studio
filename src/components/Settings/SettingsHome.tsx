@@ -4,6 +4,9 @@ import { SETTINGS_CATEGORIES } from '../../settings/settingsSchema';
 import type { CategoryDefinition, CategoryKey } from '../../settings/settingsTypes';
 import { CATEGORY_ICONS } from './settingsIcons';
 
+import { AzemaxLogo } from '../UI/AzemaxLogo';
+import { BRAND } from '../../core/branding';
+
 interface SettingsHomeProps {
   onSelectCategory: (id: CategoryKey) => void;
 }
@@ -30,13 +33,31 @@ const CategoryCard: React.FC<{ category: CategoryDefinition; onSelect: (id: Cate
 
 export const SettingsHome: React.FC<SettingsHomeProps> = ({ onSelectCategory }) => {
   return (
-    <div
-      className="grid gap-2.5 p-4"
-      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 180px), 1fr))' }}
-    >
-      {SETTINGS_CATEGORIES.map((category) => (
-        <CategoryCard key={category.id} category={category} onSelect={onSelectCategory} />
-      ))}
+    <div className="flex flex-col gap-4 p-4">
+      <div
+        className="grid gap-2.5"
+        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 180px), 1fr))' }}
+      >
+        {SETTINGS_CATEGORIES.map((category) => (
+          <CategoryCard key={category.id} category={category} onSelect={onSelectCategory} />
+        ))}
+      </div>
+
+      {/* Product Information */}
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <AzemaxLogo size={28} />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-semibold text-white/90">{BRAND.name}</span>
+              <span className="text-[10px] font-mono text-white/40 bg-white/[0.06] px-1.5 py-0.5 rounded border border-white/[0.06]">
+                v{BRAND.version}
+              </span>
+            </div>
+            <p className="text-[11px] text-white/40 mt-0.5">{BRAND.tagline}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

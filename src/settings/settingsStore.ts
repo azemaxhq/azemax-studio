@@ -118,7 +118,7 @@ registerActionHandler('privacy.exportSettings', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'deepcontext-settings.json';
+  a.download = 'azemax-settings.json';
   a.click();
   URL.revokeObjectURL(url);
 });

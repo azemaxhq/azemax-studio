@@ -1,6 +1,6 @@
-## AI Code Editor – Full Technical Documentation
+## Azemax – Full Technical Documentation
 
-This document consolidates and updates all major documentation for the AI Code Editor project. It reflects the current implementation in the repository, including frontend, backend, AI integration, and execution pipeline.
+This document consolidates and updates all major documentation for the Azemax project. It reflects the current implementation in the repository, including frontend, backend, AI integration, and execution pipeline.
 
 ---
 
@@ -8,7 +8,7 @@ This document consolidates and updates all major documentation for the AI Code E
 
 ### 1.1 Purpose
 
-**AI Code Editor & Analyzer** is a browser‑based IDE that combines:
+**Azemax** is a browser‑based IDE that combines:
 
 - **Monaco editor** for rich code editing.
 - **Virtual file system** stored in the browser.
@@ -796,5 +796,5 @@ npm run preview
 
 ---
 
-This `FULL_DOCUMENTATION.md` is intended as the canonical, up‑to‑date reference for developers working on or integrating with the AI Code Editor project.
+This `FULL_DOCUMENTATION.md` is intended as the canonical, up‑to‑date reference for developers working on or integrating with the Azemax project.
 

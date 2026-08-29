@@ -1,6 +1,6 @@
-# AI Code Editor
+# Azemax
 
-A modern, web-based IDE with integrated AI capabilities, real-time code execution, and smart suggestions.
+A modern, fast web-based IDE with integrated AI capabilities, real-time code execution, and smart suggestions.
 
 ## Documentation
 Detailed documentation for the project's modules can be found in the `docs` directory:

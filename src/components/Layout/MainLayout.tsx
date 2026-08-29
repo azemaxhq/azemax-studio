@@ -11,6 +11,8 @@ import { getSettings } from '../../settings/settingsStore';
 import { useSettingsSelector } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
+import { AzemaxLogo } from '../UI/AzemaxLogo';
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const ExplanationSidebar = lazy(() =>
@@ -315,6 +317,12 @@ export const MainLayout: React.FC = () => {
 
             {/* Activity Bar (Explorer + Explanation) */}
             <div className={`shrink-0 flex flex-col items-center justify-start gap-2 py-3 w-[56px] bg-[#0d1117]/80 border-r border-white/[0.04] ${isDesktop ? 'z-20' : 'z-40'}`}>
+                {/* Brand Identity */}
+                <div className="w-[36px] h-[36px] flex items-center justify-center mb-1" title="Azemax">
+                    <AzemaxLogo size={24} />
+                </div>
+                <div className="w-5 h-[1px] bg-white/[0.06] mb-1" />
+
                 <button
                     onClick={openExplorer}
                     className="relative group/toggle p-1.5 rounded-lg transition-all duration-200 hover:bg-white/[0.06] active:scale-90"

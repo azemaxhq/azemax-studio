@@ -1,6 +1,6 @@
 # Components Documentation
 
-This document describes the key React components in `src/components` that build the user interface of the AI Code Editor.
+This document describes the key React components in `src/components` that build the user interface of Azemax.
 
 ## 1. Core Structure (`Layout/`)
 

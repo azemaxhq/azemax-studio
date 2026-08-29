@@ -38,7 +38,7 @@ lifecycle.listenWithRetry(server, PORT)
             console.log(`[server] Port ${PORT} was released by a previous instance (PID ${siblingPid}); this instance is now serving.`);
         }
         const runtimes = listDetectedRuntimes();
-        console.log(`\n🚀 AI Code Editor API`);
+        console.log(`\n🚀 Azemax API`);
         console.log(`   HTTP:      http://localhost:${PORT}/api`);
         console.log(`   Health:    http://localhost:${PORT}/api/health`);
         console.log(`   WebSocket: ws://localhost:${PORT}`);

@@ -223,7 +223,7 @@ async function postDirect(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${endpoint.apiKey}`,
             'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
-            'X-Title': 'AI Code Editor',
+            'X-Title': 'Azemax',
         },
         signal: options.signal,
         body: buildDirectBody(messages, options, context, endpoint.model, stream),

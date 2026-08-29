@@ -184,7 +184,7 @@ const COMMANDS: Record<string, CommandHandler> = {
   },
   tree: handleTree,
   help: (_a, d) => {
-    d.term.writeln('AI Code Editor - Enhanced Browser Shell');
+    d.term.writeln('Azemax - Enhanced Browser Shell');
     d.term.writeln('Available commands: ls [-a] [-l], cd <path>, cd -, pwd, cat, echo, touch, mkdir, rm, find, grep, tree, clear');
     d.term.writeln('Path examples: cd src/components, cd /src, cd .., cd -, cd ~');
   },

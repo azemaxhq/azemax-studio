@@ -17,8 +17,10 @@ export interface ChatSession {
     updatedAt: number;
 }
 
-const STORAGE_KEY = 'deepcontext-chat-sessions';
-const CURRENT_SESSION_KEY = 'deepcontext-current-session-id';
+const STORAGE_KEY = 'azemax-chat-sessions';
+const LEGACY_STORAGE_KEY = 'deepcontext-chat-sessions';
+const CURRENT_SESSION_KEY = 'azemax-current-session-id';
+const LEGACY_CURRENT_SESSION_KEY = 'deepcontext-current-session-id';
 
 // Hard bounds so persistence can never grow without limit (each save would
 // otherwise re-serialize the entire history on every message).
@@ -74,7 +76,7 @@ const normalizeSession = (raw: unknown): ChatSession | null => {
 
 export const loadSessions = (): ChatSession[] => {
     try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
         if (saved) {
             const sessions = JSON.parse(saved);
             // Defensive: the stored data is untrusted. Keep only well-formed
@@ -152,5 +154,5 @@ export const saveCurrentSessionId = (id: string | null) => {
 };
 
 export const loadCurrentSessionId = (): string | null => {
-    return localStorage.getItem(CURRENT_SESSION_KEY);
+    return localStorage.getItem(CURRENT_SESSION_KEY) || localStorage.getItem(LEGACY_CURRENT_SESSION_KEY);
 };

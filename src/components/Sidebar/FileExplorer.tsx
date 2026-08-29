@@ -836,7 +836,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     // File bookmarks/favorites state
     const [bookmarkedFiles, setBookmarkedFiles] = useState<Set<string>>(() => {
         try {
-            const saved = localStorage.getItem('deepcontext-bookmarked-files');
+            const saved = localStorage.getItem('azemax-bookmarked-files') || localStorage.getItem('deepcontext-bookmarked-files');
             return saved ? new Set(JSON.parse(saved)) : new Set();
         } catch {
             return new Set();
@@ -846,7 +846,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     // Save bookmarks to localStorage
     useEffect(() => {
         try {
-            localStorage.setItem('deepcontext-bookmarked-files', JSON.stringify(Array.from(bookmarkedFiles)));
+            localStorage.setItem('azemax-bookmarked-files', JSON.stringify(Array.from(bookmarkedFiles)));
         } catch (e) {
             console.warn('Failed to save bookmarks:', e);
         }

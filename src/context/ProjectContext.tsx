@@ -22,8 +22,10 @@ import type { RepairResult, TreeOperationResult } from '../core/filesystem';
 import { noopResult } from '../core/filesystem';
 import { findNodeById, resolvePath, isDescendantOf, findChildByName } from '../utils/safeTree';
 
-const STORAGE_KEY = 'deepcontext-file-tree';
-const ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
+const STORAGE_KEY = 'azemax-file-tree';
+const LEGACY_STORAGE_KEY = 'deepcontext-file-tree';
+const ACTIVE_FILE_KEY = 'azemax-active-file-id';
+const LEGACY_ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
 
 // AI error sentinels must never be persisted as file content — if a previous
 // bug wrote an error string into a file, treat it as corruption and reset.
@@ -55,7 +57,7 @@ function sanitizeCorruptTree(tree: FileNode[]): { tree: FileNode[]; hadCorruptio
 // tree is immediately persisted so the bad copy never re-enters the runtime.
 const loadFileTree = (): RepairResult => {
     try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
         if (saved) {
             const repaired = repairFileTree(JSON.parse(saved));
             const sanitized = sanitizeCorruptTree(repaired.tree);
@@ -306,7 +308,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         return set;
     });
     const [activeFile, setActiveFileState] = useState<FileNode | null>(() => {
-        const savedActiveId = localStorage.getItem(ACTIVE_FILE_KEY);
+        const savedActiveId = localStorage.getItem(ACTIVE_FILE_KEY) || localStorage.getItem(LEGACY_ACTIVE_FILE_KEY);
         if (savedActiveId) {
             const node = findNodeById(initial.tree, savedActiveId);
             if (node && node.type === 'file') return node;

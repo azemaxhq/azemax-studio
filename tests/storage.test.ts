@@ -19,7 +19,7 @@ const chat = await import('../src/utils/chatStorage');
 const { flushLocalStorage, debouncedLocalStorageSet } = await import('../src/utils/localStorageDebounce');
 const { PerformanceAlertManager } = await import('../src/utils/performanceAlerts');
 
-const KEY = 'deepcontext-chat-sessions';
+const KEY = 'azemax-chat-sessions';
 
 const makeMessage = (i: number, text = `msg-${i}`, role: 'user' | 'ai' = 'user') => ({
     id: `m-${i}`,

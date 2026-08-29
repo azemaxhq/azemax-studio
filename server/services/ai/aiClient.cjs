@@ -204,7 +204,7 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${apiKey}`,
                     'HTTP-Referer': CORS_ORIGIN,
-                    'X-Title': 'AI Code Editor',
+                    'X-Title': 'Azemax',
                 },
                 body: JSON.stringify(body),
                 signal: requestSignal,

@@ -1,6 +1,6 @@
-# AI Code Editor - Technical Documentation
+# Azemax - Technical Documentation
 
-This document provides a comprehensive technical overview of the AI Code Editor, organized by system modules.
+This document provides a comprehensive technical overview of Azemax, organized by system modules.
 
 ## Module Index
 1.  [Module 1: Services & Utilities](#module-1-services--utilities)

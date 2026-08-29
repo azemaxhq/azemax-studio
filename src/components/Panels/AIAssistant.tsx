@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useDeferredValue } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react';
 import {
     Check, ArrowRight, Edit3, RefreshCw, Zap, Bug, MessageCircle, Code2, Copy,
     Plus, MessageSquare, Trash2, X, History, ChevronUp,
@@ -13,6 +13,7 @@ import { useAILoading } from '../../hooks/useAILoading';
 import { AILoadingIndicator } from '../AI/AILoadingIndicator';
 import { AIStreamingIndicator } from '../AI/AIStreamingIndicator';
 import { SmoothStreamingBubble } from '../AI/SmoothStreamingBubble';
+import { AIComposer } from './AIComposer';
 import '../AI/ai-loading.css';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -32,35 +33,8 @@ import { parseArtifacts } from './ai/artifactParser';
 import { AI_ERROR_CODES } from '../../core/ai/AIError';
 import type { AgentActivity } from '../../core/ai/agentController';
 
-// Custom Gemini-style Animated Logo
-const GeminiLogo = ({ size = 24, className = "" }: { size?: number, className?: string }) => {
-    const id = React.useId();
-    const gradientId = `gemini-gradient-${id.replace(/:/g, '')}`;
-
-    return (
-        <svg width={size} height={size} viewBox="0 0 100 100" className={`${className} overflow-visible`} xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#3b82f6">
-                        <animate attributeName="stop-color" values="#3b82f6;#8b5cf6;#ec4899;#3b82f6" dur="4s" repeatCount="indefinite" />
-                    </stop>
-                    <stop offset="100%" stopColor="#ec4899">
-                        <animate attributeName="stop-color" values="#ec4899;#3b82f6;#8b5cf6;#ec4899" dur="4s" repeatCount="indefinite" />
-                    </stop>
-                </linearGradient>
-            </defs>
-            <path d="M50 5C50 5 65 35 95 50C65 65 50 95 50 95C50 95 35 65 5 50C35 35 50 5 50 5Z"
-                fill={`url(#${gradientId})`}
-                style={{ filter: 'drop-shadow(0 0 6px rgba(139, 92, 246, 0.6))' }}
-            />
-            <path d="M50 25C50 25 60 40 75 50C60 60 50 75 50 75C50 75 40 60 25 50C40 40 50 25 50 25Z"
-                fill="white"
-                opacity="0.6"
-                style={{ mixBlendMode: 'overlay' }}
-            />
-        </svg>
-    );
-};
+import { AzemaxLogo } from '../UI/AzemaxLogo';
+import { BRAND } from '../../core/branding';
 
 // Quick action prompts for empty state
 // Quick action prompts for empty state
@@ -85,73 +59,63 @@ interface ArtifactProps {
 }
 
 const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content, onCopy, copiedId, id = '' }) => {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const isCode = type === 'code' && !!language;
+    const lineCount = content.split('\n').length;
+    const displayContent = isCode && lineCount > 12 && !isExpanded ? content.split('\n').slice(0, 12).join('\n') : content;
+    const highlightedCode = isCode && language ? tryHighlight(displayContent, language) : null;
 
     const getIcon = () => {
         switch (type) {
-            case 'code': return <FileCode size={16} className="text-[#58a6ff]" />;
-            case 'example': return <Lightbulb size={16} className="text-[#f0883e]" />;
-            case 'explanation': return <MessageCircle size={16} className="text-[#a371f7]" />;
-            default: return <Code2 size={16} className="text-[#58a6ff]" />;
+            case 'code': return <FileCode size={14} className="text-white/60" />;
+            case 'example': return <Lightbulb size={14} className="text-amber-300/70" />;
+            case 'explanation': return <MessageCircle size={14} className="text-violet-300/70" />;
+            default: return <Code2 size={14} className="text-white/60" />;
         }
     };
-
-    const getTypeLabel = () => {
-        switch (type) {
-            case 'code': return 'Code';
-            case 'example': return 'Example';
-            case 'explanation': return 'Explanation';
-            case 'diagram': return 'Diagram';
-            default: return 'Artifact';
-        }
-    };
-
-    const highlightedCode = type === 'code' && language ? tryHighlight(content, language) : null;
 
     return (
-        <div className="my-4 rounded-xl overflow-hidden border border-[#30363d] bg-gradient-to-b from-[#1c2128] to-[#161b22] shadow-lg">
-            {/* Artifact Header */}
+        <div className="my-3 rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
             <div
-                className="flex items-center justify-between px-4 py-3 bg-[#21262d] border-b border-[#30363d] cursor-pointer hover:bg-[#262c36] transition-colors"
+                className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer transition-colors"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
-                <div className="flex items-center gap-3">
-                    {getIcon()}
-                    <div>
-                        <span className="text-sm font-medium text-[#e6edf3]">{title}</span>
-                        <span className="ml-2 text-xs text-[#8b949e] bg-[#30363d] px-2 py-0.5 rounded-full">
-                            {getTypeLabel()}
-                        </span>
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="w-6 h-6 rounded-md bg-white/[0.06] border border-white/[0.06] flex items-center justify-center shrink-0">
+                        {getIcon()}
+                    </span>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium text-white/85 truncate">{title}</span>
+                            <span className="hidden sm:inline text-[11px] text-white/30">· {isCode ? `${lineCount} lines` : type}</span>
+                        </div>
+                        {isCode && language && <span className="text-[11px] text-white/30 hidden sm:block">{language}</span>}
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0">
                     <button
                         onClick={(e) => { e.stopPropagation(); onCopy?.(content, id); }}
-                        className="p-1.5 rounded-md text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] transition-colors"
-                        title="Copy content"
+                        className="px-2 py-1 rounded-md text-[11px] text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-colors"
                     >
-                        {copiedId === id ? <Check size={14} className="text-[#3fb950]" /> : <Copy size={14} />}
+                        {copiedId === id ? 'Copied' : 'Copy'}
                     </button>
-                    <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-                        <ChevronDown size={16} className="text-[#8b949e]" />
-                    </div>
+                    <span className={`w-6 h-6 rounded-md bg-white/[0.04] hover:bg-white/[0.08] flex items-center justify-center text-white/40 transition-colors ${isExpanded ? 'rotate-180' : ''}`}>
+                        <ChevronDown size={14} />
+                    </span>
                 </div>
             </div>
-
-            {/* Artifact Content */}
             {isExpanded && (
-                <div className="p-4 bg-[#0d1117]">
-                    {type === 'code' && language ? (
-                        <pre className="text-[13px] font-mono overflow-x-auto custom-scrollbar text-[#e6edf3] leading-relaxed">
-                            {highlightedCode
-                                ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
-                                : <code>{content}</code>}
-                        </pre>
-                    ) : (
-                        <div className="text-[14px] text-[#c9d1d9] leading-relaxed whitespace-pre-wrap">
-                            {content}
-                        </div>
-                    )}
+                <div className="border-t border-white/[0.06] bg-[#0f0f12]">
+                    <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-white/80 leading-relaxed max-h-[320px] overflow-y-auto">
+                        {highlightedCode
+                            ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+                            : <code>{content}</code>}
+                    </pre>
+                </div>
+            )}
+            {!isExpanded && isCode && lineCount > 12 && (
+                <div className="px-3 pb-2">
+                    <button onClick={() => setIsExpanded(true)} className="text-[11px] text-white/30 hover:text-white/60 transition-colors">Show {lineCount - 12} more lines</button>
                 </div>
             )}
         </div>
@@ -204,43 +168,49 @@ const MessageItem = React.memo(({
             const language = match ? match[1] : 'text';
             const code = String(children).replace(/\n$/, '');
             const codeId = `${msg.id}-${index}-${language}-${code.slice(0, 10)}`;
-
+            const isLongBlock = !inline && !!match && code.split('\n').length > 24;
+            const [expanded, setExpanded] = React.useState(!isLongBlock);
             if (!inline && match) {
                 // Syntax Highlighting — skip during streaming (heavy, causes jank)
                 const highlightedCode = prismReady && !isStreaming ? tryHighlight(code, language) : null;
+                const displayCode = !expanded ? code.split('\n').slice(0, 20).join('\n') : code;
 
                 return (
-                    <div className="my-4 rounded-lg overflow-hidden border border-[#30363d] bg-[#161b22] group/code">
-                        <div className="flex items-center justify-between px-4 py-2 bg-[#0d1117] border-b border-[#30363d]">
-                            <span className="text-xs text-[#8b949e] font-medium font-mono">{language}</span>
-                            <div className="flex items-center gap-3">
+                    <div className="my-3 rounded-xl overflow-hidden border border-white/[0.07] bg-white/[0.02]">
+                        <div className="flex items-center justify-between px-3 py-2 bg-white/[0.02] border-b border-white/[0.06]">
+                            <span className="text-[11px] text-white/40 font-mono">{language}</span>
+                            <div className="flex items-center gap-1.5">
                                 <button
-                                    onClick={() => onCopy(code, codeId)}
-                                    className="flex items-center gap-1.5 text-xs text-[#8b949e] hover:text-[#c9d1d9] transition-colors"
-                                    title="Copy Code"
+                                    onClick={() => onCopy(displayCode, codeId)}
+                                    className="px-2 py-1 rounded-md text-[11px] text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-colors"
                                 >
-                                    {copiedId === codeId ? <Check size={13} className="text-[#3fb950]" /> : <Copy size={13} />}
-                                    <span>{copiedId === codeId ? 'Copied!' : 'Copy code'}</span>
+                                    {copiedId === codeId ? 'Copied' : 'Copy'}
                                 </button>
                                 {msg.role === 'ai' && onApplyCode && (
                                     <button
                                         onClick={() => onApplyCode(code)}
-                                        className="flex items-center gap-1.5 text-xs text-[#8b949e] hover:text-[#58a6ff] transition-colors"
-                                        title="Apply to Editor"
+                                        className="px-2 py-1 rounded-md text-[11px] bg-white text-black hover:bg-white/90 transition-colors"
                                     >
-                                        <ArrowRight size={13} />
-                                        <span>Apply</span>
+                                        Apply
                                     </button>
                                 )}
                             </div>
                         </div>
                         <div className="relative">
-                            <pre className="p-4 text-[13px] font-mono overflow-x-auto custom-scrollbar text-[#e6edf3] leading-relaxed bg-[#0d1117]">
-                                {highlightedCode
-                                    ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
-                                    : <code>{code}</code>}
+                            <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-white/80 leading-relaxed bg-[#0f0f12] max-h-[360px] overflow-y-auto">
+                                {highlightedCode && expanded
+                                    ? <code dangerouslySetInnerHTML={{ __html: isLongBlock && !expanded ? tryHighlight(displayCode, language) || '' : highlightedCode }} />
+                                    : <code>{displayCode}</code>}
                             </pre>
+                            {isLongBlock && !expanded && (
+                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0f0f12] to-transparent pointer-events-none" />
+                            )}
                         </div>
+                        {isLongBlock && (
+                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] border-t border-white/[0.06] transition-colors">
+                                {expanded ? 'Show less' : `Show ${code.split('\n').length - 20} more lines`}
+                            </button>
+                        )}
                     </div>
                 );
             }
@@ -255,29 +225,29 @@ const MessageItem = React.memo(({
             );
         },
         h1({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h1 className="text-[22px] font-semibold text-[#e6edf3] mt-8 mb-4 pb-2 border-b border-[#30363d]" {...props}>{children}</h1>;
+            return <h1 className="text-[18px] font-semibold tracking-tight text-white/90 mt-6 mb-3" {...props}>{children}</h1>;
         },
         h2({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h2 className="text-[18px] font-semibold text-[#e6edf3] mt-6 mb-3" {...props}>{children}</h2>;
+            return <h2 className="text-[15px] font-semibold tracking-tight text-white/85 mt-5 mb-2" {...props}>{children}</h2>;
         },
         h3({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h3 className="text-[16px] font-medium text-[#e6edf3] mt-5 mb-2" {...props}>{children}</h3>;
+            return <h3 className="text-[13px] font-medium tracking-wide text-white/75 mt-4 mb-2 uppercase" {...props}>{children}</h3>;
         },
         p({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-            return <p className="leading-[1.7] mb-4 text-[#c9d1d9] last:mb-0" {...props}>{children}</p>;
+            return <p className="leading-[1.65] mb-3 text-[14px] text-white/70 tracking-[-0.01em] last:mb-0" {...props}>{children}</p>;
         },
         ul({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) {
-            return <ul className="list-disc list-outside ml-6 mb-4 space-y-2 text-[#c9d1d9]" {...props}>{children}</ul>;
+            return <ul className="list-disc list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-white/65" {...props}>{children}</ul>;
         },
         ol({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) {
-            return <ol className="list-decimal list-outside ml-6 mb-4 space-y-2 text-[#c9d1d9]" {...props}>{children}</ol>;
+            return <ol className="list-decimal list-outside ml-5 mb-3 space-y-1.5 text-[14px] text-white/65" {...props}>{children}</ol>;
         },
         li({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) {
-            return <li className="pl-1 leading-[1.7]" {...props}>{children}</li>;
+            return <li className="pl-1 leading-[1.6] marker:text-white/20" {...props}>{children}</li>;
         },
         blockquote({ children, ...props }: React.QuoteHTMLAttributes<HTMLQuoteElement>) {
             return (
-                <blockquote className="border-l-3 border-[#58a6ff] bg-[#161b22] pl-4 py-3 my-4 rounded-r-lg text-[#8b949e]" {...props}>
+                <blockquote className="border-l border-white/10 pl-3 py-1 my-3 text-[13px] text-white/50 leading-relaxed" {...props}>
                     {children}
                 </blockquote>
             );
@@ -321,9 +291,13 @@ const MessageItem = React.memo(({
     };
 
 
+    const isLong = msg.role === 'ai' && msg.text.length > 1400;
+    const [showFull, setShowFull] = React.useState(false);
+    const displayText = isLong && !showFull ? msg.text.slice(0, 1100) : msg.text;
+
     return (
         <div className={`flex gap-4 w-full message-appear ${msg.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
-            <div className={`flex flex-col gap-2 min-w-0 ${msg.role === 'user' ? 'items-end max-w-[85%]' : 'items-start flex-1 max-w-full'}`}>
+            <div className={`flex flex-col gap-2 min-w-0 ${msg.role === 'ai' ? 'items-end max-w-[85%]' : 'items-start flex-1 max-w-full'}`}>
                 {isEditing ? (
                     <div className="w-full space-y-3 bg-[#161b22] p-4 rounded-xl border border-[#30363d]">
                         <textarea
@@ -344,11 +318,10 @@ const MessageItem = React.memo(({
                             : 'px-4 py-2.5 bg-[#1f6feb] text-white rounded-2xl shadow-sm'
                             }`}>
 
-                            <div className={`markdown-content relative z-10 ${msg.role === 'ai' ? 'text-[15px] leading-[1.8] text-[#c9d1d9]' : 'text-[15px] leading-relaxed'}`}>
+                            <div className={`markdown-content relative z-10 ${msg.role === 'ai' ? 'text-[14px] leading-[1.65] text-white/70' : 'text-[14px] leading-relaxed'}`}>
                                 {msg.role === 'ai' ? (
-                                    // Parse and render artifacts for AI messages
                                     <>
-                                        {parseArtifacts(msg.text).segments.map((segment, segIdx) =>
+                                        {parseArtifacts(displayText).segments.map((segment, segIdx) =>
                                             segment.type === 'artifact' && segment.artifact ? (
                                                 <ArtifactBlock
                                                     key={`artifact-${msg.id}-${segIdx}`}
@@ -364,10 +337,16 @@ const MessageItem = React.memo(({
                                                 <MarkdownRenderer
                                                     key={`text-${msg.id}-${segIdx}`}
                                                     components={components}
+                                                    isStreaming={!!isStreaming}
                                                 >
                                                     {segment.content}
                                                 </MarkdownRenderer>
                                             )
+                                        )}
+                                        {isLong && (
+                                            <button onClick={() => setShowFull(!showFull)} className="mt-2 text-[11px] text-white/30 hover:text-white/60 transition-colors">
+                                                {showFull ? 'Show less' : `Show ${msg.text.length - 1100} more characters`}
+                                            </button>
                                         )}
                                     </>
                                 ) : (
@@ -481,16 +460,7 @@ const MessageItem = React.memo(({
     return true;
 });
 
-const PLACEHOLDER_TEXT = "💬 Ask DeepContext anything...";
 
-const StaticPlaceholder: React.FC = () => {
-    return (
-        <span className="text-[15px] text-white/40 font-normal tracking-wide leading-relaxed">
-            {PLACEHOLDER_TEXT}
-            <span className="ml-[1px] inline-block w-[1.5px] h-[15px] align-middle bg-violet-400 animate-cursor-blink" />
-        </span>
-    );
-};
 
 export const useAutoScroll = (active: boolean = true) => {
         const containerRef = useRef<HTMLDivElement>(null);
@@ -565,10 +535,10 @@ export const useAutoScroll = (active: boolean = true) => {
                 ro.observe(el);
             }
 
-            // MutationObserver: catches added/removed message nodes (childList) and subtree changes from streaming.
-            // CharacterData alone is noisy, but coalesced via rAF it is cheap and ensures no missed frames.
+            // MutationObserver: only for added/removed message nodes. CharacterData is handled by ResizeObserver
+            // (height change) to avoid per-character overhead during streaming.
             const mo = new MutationObserver(schedule);
-            mo.observe(el, { childList: true, subtree: true, characterData: true });
+            mo.observe(el, { childList: true, subtree: false });
 
             return () => {
                 if (rafIdRef.current !== null) {
@@ -606,6 +576,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({}); // msgId -> reaction
     const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
+    const [lastDiffs, setLastDiffs] = useState<Array<{ file: string; added: number; removed: number; summary: string }>>([]);
 
     // Lazy-load Prism so its ~250KB stays out of the initial bundle
     const [prismReady, setPrismReady] = useState(false);
@@ -706,6 +677,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     // Derived state: Current Session
     const currentSession = sessions.find(s => s.id === currentSessionId);
     const messages = currentSession?.messages || [];
+    const lastUserMessage = useMemo(() => [...messages].reverse().find(m => m.role === 'user')?.text ?? '', [messages]);
 
     // Use robust auto-scroll hook
     // We pass [messages, streamingText] as dependencies so the observer re-attaches/checks when content structure changes
@@ -958,6 +930,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         }
         lastSentRef.current = { text: userMessageText, at: Date.now() };
         setAgentActivities([]);
+        setLastDiffs([]);
 
         // Centralized loading: thinking immediately — single requestId for concurrent protection
         const requestId = aiLoading.start('thinking');
@@ -1058,7 +1031,8 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                 if (import.meta.env.DEV) console.log('[AgentController] result:', result);
                 responseText = result.message || (result.success ? 'Changes applied.' : 'No changes were made.');
                 // Keep final activities for streaming card display, cleared on next send
-                setAgentActivities(result.activities.slice(-8));
+                setAgentActivities(result.activities.slice(-4));
+                setLastDiffs(result.success && (result as { diffs?: typeof lastDiffs }).diffs ? (result as { diffs: typeof lastDiffs }).diffs : []);
 
             } else if (isExplain || plannerResponseMessage.trim().length > 20) {
                 // EXPLAIN PATH — use planner's response or stream explanation
@@ -1104,8 +1078,8 @@ Provide a warm, concise explanation. Keep to 2-4 bullets or short paragraphs. Do
                 const isFastChat = isGreetingOnly && !isFileQuery;
                 const isCodeRelated = /code|function|bug|error|fix|refactor|explain|comment|file|project|hello\.py|javascript|python/i.test(userMessageText);
                 const systemPrompt = isFastChat
-                    ? 'You are DeepContext — a warm, natural coding buddy. Greet briefly and offer help. 1-2 sentences, friendly, no file talk.'
-                    : `You are DeepContext — minimax-m3, warm and efficient. Be conversational, concise, and genuinely helpful.
+                    ? `You are ${BRAND.name} AI — a warm, natural coding buddy. Greet briefly and offer help. 1-2 sentences, friendly, no file talk.`
+                    : `You are ${BRAND.name} AI — warm and efficient. Be conversational, concise, and genuinely helpful.
 Natural: Talk like a friendly teammate, not a formal doc. Use contractions, a little warmth, an emoji when fitting.
 Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Code only when needed.`;
                 const fileContext = isCodeRelated && fileContent && fileContent.length > 10
@@ -1245,13 +1219,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
         }
     }, [currentSessionId, settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    }, [handleSend]);
-
     // Powerful EVERYWHERE: Listen for editor context-menu / shortcut prefill
     useEffect(() => {
         const onPrefill = (e: Event) => {
@@ -1299,9 +1266,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
         return () => window.removeEventListener('keydown', handleGlobalKeyDown);
     }, [handleNewChat, isLoading, handleStop]);
 
-    // Character count with status
-    const charCount = input.length;
-    const charCountStatus = charCount > 6000 ? 'danger' : charCount > 4000 ? 'warning' : '';
+
 
 
 
@@ -1589,28 +1554,9 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         <div className="min-h-full flex flex-col items-center justify-center p-4 pb-12 animate-fade-in-up w-full">
 
                             {/* Hero Section Container */}
-                            <div className="relative mb-8 group cursor-default">
-                                {/* Ambient Glow Background (static: no perpetual pulse on blurred surfaces) */}
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[180px] h-[180px] sm:w-[220px] sm:h-[220px] bg-violet-500/20 rounded-full blur-[50px] sm:blur-[70px] opacity-40 mix-blend-screen pointer-events-none" />
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140px] h-[140px] sm:w-[160px] sm:h-[160px] bg-blue-500/15 rounded-full blur-[30px] sm:blur-[50px] opacity-10 delay-300 mix-blend-screen pointer-events-none" />
-
-                                {/* Main Logo - Floating with Aura */}
-                                <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center animate-float-slow group/orb cursor-pointer" onClick={() => handleQuickAction("Hello AI")}>
-                                    {/* Ambient Aura - static rotating-gradient look (no per-frame rotation of blurred layers) */}
-                                    <div className="absolute inset-0 bg-[conic-gradient(from_0deg,transparent_0deg,rgba(139,92,246,0.15)_120deg,rgba(59,130,246,0.15)_240deg,transparent_360deg)] opacity-60 blur-2xl scale-150" />
-                                    <div className="absolute inset-0 bg-[conic-gradient(from_180deg,transparent_0deg,rgba(139,92,246,0.1)_120deg,rgba(59,130,246,0.1)_240deg,transparent_360deg)] opacity-40 blur-xl mix-blend-screen scale-125" />
-
-                                    {/* Central Pulse Glow - static */}
-                                    <div className="absolute inset-0 bg-violet-500/10 rounded-full blur-xl" />
-
-                                    {/* Logo Itself */}
-                                    <div className="relative z-10 transition-transform duration-500 group-hover/orb:scale-110 group-hover/orb:rotate-12">
-                                        <div className="absolute inset-0 bg-white/20 blur-lg rounded-full" />
-                                        <GeminiLogo
-                                            size={64}
-                                            className="sm:w-[72px] sm:h-[72px] text-white drop-shadow-[0_0_15px_rgba(139,92,246,0.6)] filter brightness-110"
-                                        />
-                                    </div>
+                            <div className="flex flex-col items-center mb-6 cursor-default">
+                                <div className="mb-3 p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
+                                    <AzemaxLogo size={48} />
                                 </div>
                             </div>
 
@@ -1653,26 +1599,43 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         </div>
                     ) : (
                         <>
-                            {messages.map((msg, index) => (
-                                <MessageItem
-                                    key={msg.id || index}
-                                    msg={msg}
-                                    index={index}
-                                    isEditing={editingMessageId === msg.id}
-                                    editText={editText}
-                                    setEditText={setEditText}
-                                    onSaveEdit={handleSaveEdit}
-                                    onCancelEdit={handleCancelEdit}
-                                    onEditStart={handleEditMessage}
-                                    onCopy={handleCopyMessage}
-                                    onRegenerate={handleRegenerate}
-                                    onApplyCode={handleApplyCode}
-                                    copiedId={copiedId}
-                                    reaction={reactions[msg.id] || null}
-                                    onReaction={handleReaction}
-                                    prismReady={prismReady}
-                                />
-                            ))}
+                            {messages.map((msg, index) => {
+                                const isError = msg.role === 'ai' && /^(No AI providers|AI is|Verification failed|Edit failed|Could not|Failed to|The file changed)/i.test(msg.text);
+                                if (isError) {
+                                    return (
+                                        <div key={msg.id || index} className="w-full rounded-xl border border-amber-500/15 bg-amber-500/[0.06] px-3 py-2.5 flex items-start gap-2.5 message-appear">
+                                            <span className="mt-0.5 text-amber-300/70 text-[13px]">⚠</span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-[13px] leading-[1.5] text-amber-100/80 whitespace-pre-wrap break-words">{msg.text.slice(0, 400)}</div>
+                                                <div className="flex gap-2 mt-2">
+                                                    <button onClick={() => handleSend(lastUserMessage)} className="px-2.5 py-1 rounded-md bg-white text-black text-[11px] font-medium hover:bg-white/90 transition-colors">Retry</button>
+                                                    <button onClick={() => navigator.clipboard.writeText(msg.text)} className="px-2.5 py-1 rounded-md bg-white/[0.06] border border-white/[0.08] text-[11px] text-white/60 hover:text-white/80 transition-colors">Copy details</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <MessageItem
+                                        key={msg.id || index}
+                                        msg={msg}
+                                        index={index}
+                                        isEditing={editingMessageId === msg.id}
+                                        editText={editText}
+                                        setEditText={setEditText}
+                                        onSaveEdit={handleSaveEdit}
+                                        onCancelEdit={handleCancelEdit}
+                                        onEditStart={handleEditMessage}
+                                        onCopy={handleCopyMessage}
+                                        onRegenerate={handleRegenerate}
+                                        onApplyCode={handleApplyCode}
+                                        copiedId={copiedId}
+                                        reaction={reactions[msg.id] || null}
+                                        onReaction={handleReaction}
+                                        prismReady={prismReady}
+                                    />
+                                );
+                            })}
 
                             {/* Premium smooth streaming — 60fps, rAF coalesced, no layout jump */}
                             {(streamingText || (isLoading && !streamingText)) && (
@@ -1703,16 +1666,60 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             <AILoadingIndicator status={aiLoading.status} operation={currentOperation} variant="chat" />
                         </div>
                     )}
-                    {/* Cursor-style compact activity cards — 60fps, no layout jump */}
+                    {/* Subtle AI activity — minimal, quiet */}
                     {agentActivities.length > 0 && (
-                        <div className="px-2 py-2 space-y-1.5 animate-fade-in">
-                            {agentActivities.slice(-6).map(act => (
-                                <div key={act.id} className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] backdrop-blur-sm text-[12px] leading-none transition-all duration-200 will-change-transform" style={{ contain: 'layout paint' }}>
-                                    <span className={`shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[10px] ${act.status === 'running' ? 'bg-white/10 text-white/60 animate-pulse' : act.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                        <div className="px-1 py-1 space-y-0.5">
+                            {agentActivities.slice(-4).map(act => (
+                                <div key={act.id} className="flex items-center gap-2 px-2 py-1 text-[11px] leading-none transition-opacity duration-200" style={{ contain: 'layout paint' }}>
+                                    <span className={`shrink-0 text-[11px] ${act.status === 'running' ? 'text-white/30 animate-pulse' : act.status === 'done' ? 'text-emerald-300/60' : 'text-red-300/60'}`}>
                                         {act.status === 'running' ? '◌' : act.status === 'done' ? '✓' : '✕'}
                                     </span>
-                                    <span className={`truncate ${act.status === 'running' ? 'text-white/70' : act.status === 'done' ? 'text-white/60' : 'text-red-300/80'}`}>{act.message}</span>
-                                    {act.path && <span className="ml-auto shrink-0 text-[11px] text-white/30 truncate max-w-[140px]">{act.path}</span>}
+                                    <span className={`truncate ${act.status === 'running' ? 'text-white/45' : 'text-white/35'}`}>{act.message}</span>
+                                    {act.path && <span className="ml-auto shrink-0 text-[10px] text-white/20 truncate max-w-[120px]">{act.path}</span>}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {/* Premium diff artifacts — compact */}
+                    {lastDiffs.length > 0 && (
+                        <div className="px-1 py-1 space-y-2">
+                            {lastDiffs.map(d => (
+                                <div key={d.file} className="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+                                    <div className="flex items-center justify-between px-3 py-2.5">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="w-6 h-6 rounded-md bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center text-emerald-300/70 shrink-0">✓</span>
+                                            <div className="min-w-0">
+                                                <div className="text-[13px] font-medium text-white/80 truncate">{d.file}</div>
+                                                <div className="text-[11px] text-white/30">{d.summary}</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            <span className="text-[11px] text-emerald-300/60">+{d.added}</span>
+                                            {d.removed > 0 && <span className="text-[11px] text-red-300/60">-{d.removed}</span>}
+                                            <button
+                                                onClick={() => {
+                                                    const find = (nodes: ReturnType<typeof getFileTree>, target: string): unknown => {
+                                                        for (const n of nodes) {
+                                                            if (n.name === target) return n;
+                                                            // @ts-ignore
+                                                            if (n.children) { const f = find(n.children as never, target); if (f) return f; }
+                                                        }
+                                                        return null;
+                                                    };
+                                                    const node = find(getFileTree(), d.file) as { id: string; name: string } | null;
+                                                    if (node) {
+                                                        // Use setActiveFile via workspaceBridgeActions
+                                                        const fromTree = getFileTree().find(n => n.id === node.id) || node;
+                                                        // @ts-ignore
+                                                        setActiveFile(fromTree as never);
+                                                    }
+                                                }}
+                                                className="px-2 py-1 rounded-md text-[11px] text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
+                                            >
+                                                Open
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -1732,79 +1739,18 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     </div>
                 </button>
 
-                {/* Apple Intelligence Style Input */}
-                <div className="absolute bottom-6 left-0 right-0 px-4 z-30">
-                    <div className="max-w-3xl mx-auto relative group">
-                        {/* Apple Glow Effect - Subtler & Toned Down (static gradient: no continuous animation of a blurred layer) */}
-                        <div className="absolute -inset-[2px] bg-gradient-to-r from-blue-500/30 via-purple-500/30 via-pink-500/30 to-blue-500/30 rounded-[26px] opacity-0 group-focus-within:opacity-100 blur-md transition-all duration-700" style={{ backgroundSize: '400% 400%' }} />
-
-                        {/* Subtle ambient glow always visible */}
-                        <div className="absolute -inset-[1px] bg-white/5 rounded-[26px] blur-sm opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
-
-                        {/* Main Input Container */}
-                        <div className="relative flex items-end gap-2 bg-[#18181b] backdrop-blur-lg border border-white/10 rounded-[26px] shadow-lg shadow-black/20 overflow-hidden ring-1 ring-white/5 group-focus-within:ring-white/20 transition-all duration-300 input-focus-glow">
-
-                            {/* Input Shimmer Overlay */}
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.04] to-transparent -translate-x-full group-focus-within:animate-shimmer-fast pointer-events-none" />
-
-                            {/* Custom Placeholder Overlay with Blinking Cursor */}
-                            {!input && (
-                                <div className="absolute inset-0 flex items-center pointer-events-none pl-5 py-[14px] z-0">
-                                    <StaticPlaceholder />
-                                </div>
-                            )}
-
-                            <textarea
-                                ref={inputRef}
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                className="flex-1 bg-transparent text-white placeholder-transparent text-[15px] pl-5 pr-2 py-[14px] min-h-[52px] max-h-[200px] resize-none focus:outline-none font-normal tracking-wide leading-relaxed z-10"
-                                rows={1}
-                                style={{ height: '52px' }}
-                                onInput={(e) => {
-                                    const target = e.target as HTMLTextAreaElement;
-                                    target.style.height = '52px';
-                                    target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
-                                }}
-                            />
-
-                            {/* Action Button with Character Counter */}
-                            <div className="flex items-center gap-3 pb-2 pr-2 z-10">
-                                {/* Character Counter */}
-                                {charCount > 0 && (
-                                    <span className={`ai-char-counter ${charCountStatus}`}>
-                                        {charCount.toLocaleString()}
-                                    </span>
-                                )}
-                                {isLoading ? (
-                                    <button
-                                        onClick={handleStop}
-                                        className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 ring-1 ring-white/10 transition-all duration-200"
-                                        title="Stop (Esc)"
-                                    >
-                                        <div className="w-2.5 h-2.5 bg-white rounded-[2px]" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={handleSend}
-                                        disabled={!input.trim() || !settings.ai.enabled}
-                                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 ${input.trim() && settings.ai.enabled
-                                            ? 'bg-white text-black hover:scale-105 active:scale-95 shadow-md shadow-white/10'
-                                            : 'bg-white/10 text-white/30 cursor-not-allowed'
-                                            }`}
-                                        title={settings.ai.enabled ? "Send (Enter)" : "AI is disabled in settings"}
-                                    >
-                                        <ArrowRight
-                                            size={18}
-                                            strokeWidth={2.5}
-                                            className={`transition-transform duration-300 ${input.trim() ? '-rotate-90' : 'rotate-0'
-                                                }`}
-                                        />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
+                {/* Premium Floating Composer — minimal, quiet, responsive */}
+                <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-2 z-30 bg-gradient-to-t from-[#0c0c12] via-[#0c0c12]/90 to-transparent">
+                    <div className="max-w-3xl mx-auto">
+                        <AIComposer
+                            input={input}
+                            setInput={setInput}
+                            onSend={handleSend}
+                            onStop={handleStop}
+                            isLoading={isLoading}
+                            inputRef={inputRef}
+                            disabled={!settings.ai.enabled}
+                        />
                     </div>
                 </div>
 

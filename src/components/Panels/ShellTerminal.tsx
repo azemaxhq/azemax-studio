@@ -269,7 +269,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         const findNode = (path: string) => shellFindNode(path, shellDeps);
 
         // Welcome message and first prompt
-        term.writeln('\x1b[1;36mWelcome to AI Code Editor Terminal\x1b[0m');
+        term.writeln('\x1b[1;36mWelcome to Azemax Terminal\x1b[0m');
         term.writeln('Type \x1b[1;32mhelp\x1b[0m to see available commands.');
         writePrompt();
 

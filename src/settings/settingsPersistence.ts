@@ -3,7 +3,8 @@ import { createDefaultSettings } from './settingsDefaults';
 import type { Settings } from './settingsTypes';
 import { sanitizeSettings } from './settingsValidation';
 
-export const SETTINGS_STORAGE_KEY = 'deepcontext-settings-v3';
+export const SETTINGS_STORAGE_KEY = 'azemax-settings-v3';
+const LEGACY_V3_STORAGE_KEY = 'deepcontext-settings-v3';
 const V2_STORAGE_KEY = 'deepcontext-settings-v2';
 const LEGACY_STORAGE_KEY = 'editor-settings';
 export const SETTINGS_SCHEMA_VERSION = 3;
@@ -120,7 +121,7 @@ const loadRaw = (key: string): unknown => {
 };
 
 export const loadSettings = (): Settings => {
-  const v3 = loadRaw(SETTINGS_STORAGE_KEY);
+  const v3 = loadRaw(SETTINGS_STORAGE_KEY) ?? loadRaw(LEGACY_V3_STORAGE_KEY);
   if (v3 !== undefined) {
     const settings = sanitizeSettings(v3);
     if (settings) return settings;
@@ -152,6 +153,7 @@ export const saveSettings = (settings: Settings): void => {
 export const clearSettingsStorage = (): void => {
   try {
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_V3_STORAGE_KEY);
     localStorage.removeItem(V2_STORAGE_KEY);
     localStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch {

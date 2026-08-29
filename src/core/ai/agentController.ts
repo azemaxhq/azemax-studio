@@ -39,6 +39,7 @@ export interface AgentControllerResult extends ExecutionResult {
     chatResponse?: string;
     activities: AgentActivity[];
     planSummary: string;
+    diffs?: Array<{ file: string; added: number; removed: number; summary: string }>;
 }
 
 function makeActivity(tool: string, status: AgentToolStatus, message: string, path?: string): AgentActivity {
@@ -314,6 +315,27 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     applying.detail = result.success ? undefined : result.message.slice(0, 200);
     push({ ...applying });
 
+    // Generate compact diff summary for artifact UI
+    let diffs: Array<{ file: string; added: number; removed: number; summary: string }> | undefined;
+    if (result.success && result.appliedCount > 0) {
+        const newContent = deps.getFileContent(fileName) ?? '';
+        if (newContent && fileContent) {
+            const origSet = new Set(fileContent.split('\n').map(l => l.trim()).filter(Boolean));
+            const newLines = newContent.split('\n').map(l => l.trim()).filter(Boolean);
+            const newSet = new Set(newLines);
+            let added = 0, removed = 0;
+            for (const l of newLines) if (!origSet.has(l)) added++;
+            for (const l of origSet) if (!newSet.has(l)) removed++;
+            // For comment-only, added is number of comments
+            if (added === 0 && firstAction.action === 'add_comments') added = firstAction.comments?.length ?? result.appliedCount;
+            diffs = [{ file: fileName, added, removed, summary: `${added} added, ${removed} removed` }];
+        } else if (firstAction.action === 'create_file' && firstAction.path) {
+            const createdContent = deps.getFileContent(firstAction.path) ?? '';
+            const lines = createdContent ? createdContent.split('\n').length : 0;
+            diffs = [{ file: firstAction.path as string, added: lines, removed: 0, summary: `Created · ${lines} lines` }];
+        }
+    }
+
     // Record recent edits for live context history
     if (result.success && result.appliedCount > 0) {
         for (const a of actions) {
@@ -323,7 +345,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     }
 
     // [8] Natural response is result.message (brief, verified)
-    return { ...result, activities, planSummary: plan.analysis.summary };
+    return { ...result, activities, planSummary: plan.analysis.summary, diffs };
 }
 
 type ToolRegistryDeps = import('./toolRegistry').ToolRegistryDeps;

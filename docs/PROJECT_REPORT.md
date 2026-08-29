@@ -1,8 +1,8 @@
 # Title
-**AI Code Editor & Analyzer **
+**Azemax**
 
 # Abstract
-The AI Code Editor is a next-generation, browser-based Integrated Development Environment (IDE) designed to democratize coding assistance. By integrating advanced Large Language Models (LLMs) directly into the editing workflow, it offers real-time code suggestions, intelligent debugging, and automated refactoring. Unlike traditional text editors, this system understands the context of the user's project, enabling features like "Chat with Codebase" and "Smart Comments" (e.g., `/// fix this function`). The platform includes a secure, sandboxed execution environment that supports multiple programming languages, allowing users to write, run, and test code instantly without local setup.
+Azemax is a next-generation, browser-based Integrated Development Environment (IDE) designed to democratize coding assistance. By integrating advanced Large Language Models (LLMs) directly into the editing workflow, it offers real-time code suggestions, intelligent debugging, and automated refactoring. Unlike traditional text editors, this system understands the context of the user's project, enabling features like "Chat with Codebase" and "Smart Comments" (e.g., `/// fix this function`). The platform includes a secure, sandboxed execution environment that supports multiple programming languages, allowing users to write, run, and test code instantly without local setup.
 
 # Domain
 **Software Engineering / Artificial Intelligence**

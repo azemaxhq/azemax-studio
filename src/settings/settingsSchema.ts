@@ -8,6 +8,13 @@ export const registerActionHandler = (id: string, handler: () => void): void => 
 };
 
 const APP_STORAGE_KEYS = [
+  'azemax-chat-sessions',
+  'azemax-current-session-id',
+  'azemax-file-tree',
+  'azemax-active-file-id',
+  'azemax-bookmarked-files',
+  'azemax-active-terminal-id',
+  'azemax-terminals-v3',
   'deepcontext-chat-sessions',
   'deepcontext-current-session-id',
   'deepcontext-file-tree',
@@ -550,6 +557,8 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
         description: 'Delete all saved AI conversations from this device.',
         keywords: ['clear', 'chat', 'sessions', 'history', 'delete', 'data'],
         handler: () => {
+          localStorage.removeItem('azemax-chat-sessions');
+          localStorage.removeItem('azemax-current-session-id');
           localStorage.removeItem('deepcontext-chat-sessions');
           localStorage.removeItem('deepcontext-current-session-id');
           window.location.reload();
@@ -564,6 +573,7 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
         description: 'Remove bookmarks, layout preferences and analysis history.',
         keywords: ['clear', 'cache', 'bookmarks', 'layout', 'analysis', 'data'],
         handler: () => {
+          localStorage.removeItem('azemax-bookmarked-files');
           localStorage.removeItem('deepcontext-bookmarked-files');
           localStorage.removeItem('codeAnalysis_history');
           for (const key of APP_STORAGE_KEYS) {
@@ -703,6 +713,7 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
           for (const key of APP_STORAGE_KEYS) {
             localStorage.removeItem(key);
           }
+          localStorage.removeItem('azemax-settings-v3');
           localStorage.removeItem('deepcontext-settings-v3');
           window.location.reload();
         },

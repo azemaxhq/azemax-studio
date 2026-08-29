@@ -50,12 +50,15 @@ interface TerminalContextType {
 }
 
 const TerminalContext = createContext<TerminalContextType | undefined>(undefined);
-const TERMINALS_STORAGE_KEY = 'deepcontext-terminals-v3'; // Bumped version to clear old state
+const TERMINALS_STORAGE_KEY = 'azemax-terminals-v3';
+const LEGACY_TERMINALS_STORAGE_KEY = 'deepcontext-terminals-v3';
+const ACTIVE_TERMINAL_KEY = 'azemax-active-terminal-id';
+const LEGACY_ACTIVE_TERMINAL_KEY = 'deepcontext-active-terminal-id';
 
 export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({ children }) => {
     const [terminals, setTerminals] = useState<TerminalSession[]>(() => {
         try {
-            const saved = localStorage.getItem(TERMINALS_STORAGE_KEY);
+            const saved = localStorage.getItem(TERMINALS_STORAGE_KEY) || localStorage.getItem(LEGACY_TERMINALS_STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
                 // Defensive: stored terminals are untrusted. Keep only
@@ -75,7 +78,7 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     });
 
     const [activeTerminalId, setActiveTerminalId] = useState<string | null>(() => {
-        return localStorage.getItem('deepcontext-active-terminal-id') || '1';
+        return localStorage.getItem(ACTIVE_TERMINAL_KEY) || localStorage.getItem(LEGACY_ACTIVE_TERMINAL_KEY) || '1';
     });
 
     const [isRunning, setIsRunning] = useState(false);
@@ -133,7 +136,7 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
 
     useEffect(() => {
         if (activeTerminalId) {
-            localStorage.setItem('deepcontext-active-terminal-id', activeTerminalId);
+            localStorage.setItem(ACTIVE_TERMINAL_KEY, activeTerminalId);
         }
     }, [activeTerminalId]);
 

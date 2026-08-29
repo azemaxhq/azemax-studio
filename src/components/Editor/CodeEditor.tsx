@@ -9,8 +9,10 @@ import { getCodeSuggestion, cancelPendingRequest, getInlineCompletion } from '..
 import { sanitizeAiCodeOutputForLanguage } from '../../utils/aiSanitizer';
 import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
 import { checkCodeErrors } from '../../utils/diagnosticsService';
-import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map as MapIcon, WrapText, Code, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map as MapIcon, WrapText, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
 import { ModernAILogo } from '../Icons/ModernAILogo';
+import { AzemaxLogo } from '../UI/AzemaxLogo';
+import { BRAND } from '../../core/branding';
 import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
 import { setCursorPosition, useCursorPosition } from '../../core/runtime/cursorPositionStore';
@@ -1198,22 +1200,33 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         densityPadding,
     ]);
 
+    useEffect(() => {
+        if (activeFile?.name) {
+            document.title = `${activeFile.name} — ${BRAND.name}`;
+        } else {
+            document.title = BRAND.name;
+        }
+    }, [activeFile?.name]);
+
     if (!activeFile) {
         return (
-            <div className="w-full h-full bg-transparent flex flex-col items-center justify-center text-muted glass-panel-light relative group">
-                <div className="relative mb-6">
-                    <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full" style={{ opacity: 0.65 }} />
-                    <div className="relative p-8 rounded-full bg-gradient-to-br from-white/5 to-transparent border border-white/10">
-                        <Code size={64} className="text-white/20" />
-                    </div>
+            <div className="w-full h-full bg-transparent flex flex-col items-center justify-center text-muted glass-panel-light relative select-none">
+                <div className="flex flex-col items-center gap-3 mb-6">
+                    <AzemaxLogo size={56} />
+                    <span className="text-xl font-semibold text-white/90 tracking-tight">{BRAND.name}</span>
+                    <p className="text-xs text-white/40 max-w-sm text-center">
+                        Select a file from the explorer or use quick shortcuts to get started.
+                    </p>
                 </div>
-                <p className="text-lg font-medium text-white/40">Select a file to start coding</p>
-                <div className="mt-6 text-sm text-white/30 flex gap-6">
-                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
-                        <kbd className="text-xs bg-white/10 px-1.5 py-0.5 rounded">⌘P</kbd> Search files
+                <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-white/40">
+                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
+                        <kbd className="text-[11px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-white/70">⌘P</kbd> Search files
                     </span>
-                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
-                        <kbd className="text-xs bg-white/10 px-1.5 py-0.5 rounded">⌘⇧F</kbd> Search code
+                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
+                        <kbd className="text-[11px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-white/70">⌘⇧F</kbd> Search code
+                    </span>
+                    <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
+                        <kbd className="text-[11px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-white/70">⌘B</kbd> Toggle sidebar
                     </span>
                 </div>
             </div>
