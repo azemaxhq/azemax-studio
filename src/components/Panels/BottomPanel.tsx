@@ -714,8 +714,8 @@ Apply the fix while preserving all other code exactly as-is.`;
 
     return (
         <div className={`h-full flex flex-col bg-transparent ${isOverlay && !isOpen ? 'overflow-hidden' : ''}`}>
-            {/* Glass Tab Bar */}
-            <div className="flex items-center px-2 border-b border-white/5 bg-white/[0.02] shrink-0 h-8">
+            {/* Tab Bar — 32px stable, centered */}
+            <div className="flex items-center gap-1 px-2 border-b shrink-0 h-8 min-h-8 overflow-hidden" style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
                 <button
                     className={`glass-tab flex items-center gap-2 ${activeTab === 'performance' ? 'active' : ''}`}
                     onClick={() => setActiveTab('performance')}

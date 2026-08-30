@@ -308,67 +308,77 @@ export const MainLayout: React.FC = () => {
                 <div className={`absolute inset-0 z-[100] ${resizingSide === 'bottom' ? 'cursor-row-resize' : 'cursor-col-resize'}`} />
             )}
 
-            {/* Activity Bar — neutral, quiet */}
-            <div className={`shrink-0 flex flex-col items-center gap-1 py-3 w-[48px] border-r ${isDesktop ? 'z-20' : 'z-40'}`} style={{ background: 'var(--az-bg)', borderColor: 'var(--az-border)' }}>
-                <div className="w-[32px] h-[32px] flex items-center justify-center mb-2" title="Azemax">
+            {/* Activity Bar — neutral, quiet, optically centered */}
+            <div className={`shrink-0 flex flex-col items-center gap-1.5 py-2.5 w-[48px] border-r ${isDesktop ? 'z-20' : 'z-40'}`} style={{ background: 'var(--az-bg)', borderColor: 'var(--az-border)' }}>
+                <div className="h-10 w-full flex items-center justify-center shrink-0" title="Azemax">
                     <AzemaxLogo size={20} />
                 </div>
-                <div className="w-6 h-px mb-1" style={{ background: 'var(--az-border)' }} />
+                <div className="w-6 h-px mb-0.5 shrink-0" style={{ background: 'var(--az-divider)' }} />
 
                 <button
                     onClick={openExplorer}
-                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center transition-all duration-150"
+                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center shrink-0 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]"
                     style={{
                         background: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-surface-3)' : 'transparent',
                         color: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-text)' : 'var(--az-text-muted)',
-                        border: `1px solid ${isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-border)' : 'transparent'}`
+                        border: '1px solid transparent',
+                        borderColor: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-border)' : 'transparent'
                     }}
                     title="Explorer (⌘B)"
+                    aria-label="Explorer"
+                    aria-pressed={isLeftSidebarOpen && leftSidebarView === 'explorer'}
                 >
                     {isLeftSidebarOpen && leftSidebarView === 'explorer' && (
                         <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
                     )}
-                    <Layers size={16} strokeWidth={1.75} />
+                    <Layers size={16} strokeWidth={1.75} className="shrink-0" />
                 </button>
                 <button
                     onClick={openExplanation}
-                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center transition-all duration-150"
+                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center shrink-0 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]"
                     style={{
                         background: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-surface-3)' : 'transparent',
                         color: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-text)' : 'var(--az-text-muted)',
-                        border: `1px solid ${isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-border)' : 'transparent'}`
+                        border: '1px solid transparent',
+                        borderColor: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-border)' : 'transparent'
                     }}
                     title="Code Explanation"
+                    aria-label="Code Explanation"
+                    aria-pressed={isLeftSidebarOpen && leftSidebarView === 'explanation'}
                 >
                     {isLeftSidebarOpen && leftSidebarView === 'explanation' && (
                         <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
                     )}
-                    <BookOpen size={16} strokeWidth={1.75} />
+                    <BookOpen size={16} strokeWidth={1.75} className="shrink-0" />
                 </button>
 
                 <div className="flex-1" />
 
                 <button
                     onClick={openSettings}
-                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center transition-all duration-150"
+                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center shrink-0 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]"
                     style={{
                         background: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-surface-3)' : 'transparent',
                         color: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-text)' : 'var(--az-text-muted)',
-                        border: `1px solid ${isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-border)' : 'transparent'}`
+                        border: '1px solid transparent',
+                        borderColor: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-border)' : 'transparent'
                     }}
                     title="Settings"
+                    aria-label="Settings"
+                    aria-pressed={isLeftSidebarOpen && leftSidebarView === 'settings'}
                 >
                     {isLeftSidebarOpen && leftSidebarView === 'settings' && (
                         <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
                     )}
-                    <Settings size={16} strokeWidth={1.75} />
+                    <Settings size={16} strokeWidth={1.75} className="shrink-0" />
                 </button>
             </div>
 
             {/* Overlay backdrop (only when side panels render as drawers below 1024px) */}
             {!isDesktop && (isLeftSidebarOpen || isAiSidebarOpen || isBottomOpen) && (
                 <div
-                    className="absolute inset-0 z-30 bg-black/50 backdrop-blur-[2px]"
+                    className="absolute inset-0 z-30 bg-black/50 backdrop-blur-[1px]"
+                    style={{ willChange: 'opacity' }}
                     onClick={() => {
                         if (isLeftSidebarOpen) setIsLeftSidebarOpen(false);
                         if (isAiSidebarOpen) setIsAiSidebarOpen(false);
@@ -382,15 +392,14 @@ export const MainLayout: React.FC = () => {
                 ref={leftSidebarRef}
                 style={{
                     width: isLeftSidebarOpen ? (isDesktop ? `${Math.max(150, leftSidebarWidth)}px` : `min(${Math.max(150, leftSidebarWidth)}px, calc(100vw - 72px))`) : '0px',
-                    opacity: isLeftSidebarOpen ? 1 : 0,
                     background: 'var(--az-surface)',
                     borderColor: 'var(--az-border)'
                 }}
                 className={`flex flex-col shrink-0 overflow-hidden
                     ${isDesktop
-                        ? `relative z-10 ${resizingSide === 'left' ? 'transition-none' : 'transition-all duration-200 ease-out'}`
-                        : 'absolute top-0 bottom-0 left-[48px] z-40 transition-all duration-200 ease-out'}
-                    ${isLeftSidebarOpen ? 'border-r' : 'border-none'}`}
+                        ? `relative z-10 ${resizingSide === 'left' ? 'transition-none' : 'transition-[width] duration-200 ease-out' }`
+                        : 'absolute top-0 bottom-0 left-[48px] z-40 transition-[width] duration-200 ease-out'}
+                    ${isLeftSidebarOpen ? 'border-r' : 'border-0'}`}
             >
                 <AnimatePresence mode="wait" initial={false}>
                     {leftSidebarView === 'explorer' ? (
@@ -434,10 +443,11 @@ export const MainLayout: React.FC = () => {
 
             <div
                 style={{ display: isDesktop && isLeftSidebarOpen ? 'flex' : 'none' }}
-                className="w-px cursor-col-resize z-20 shrink-0 hover:w-[2px] transition-all"
+                className="w-[4px] -mx-[1.5px] cursor-col-resize z-20 shrink-0 group flex justify-center"
                 onMouseDown={startResizingLeft}
+                aria-hidden="true"
             >
-                <div className="h-full w-full" style={{ background: 'var(--az-border)' }} />
+                <div className="h-full w-px group-hover:w-[2px] transition-all" style={{ background: 'var(--az-border)' }} />
             </div>
 
             {/* Main Content Area (Row) */}
@@ -457,10 +467,12 @@ export const MainLayout: React.FC = () => {
 
                     {isDesktop && (
                         <div
-                            className="h-px cursor-row-resize z-20 shrink-0"
-                            style={{ background: 'var(--az-border)' }}
+                            className="h-[4px] -my-[1.5px] cursor-row-resize z-20 shrink-0 group flex flex-col justify-center"
                             onMouseDown={startResizingBottom}
-                        />
+                            aria-hidden="true"
+                        >
+                            <div className="w-full h-px group-hover:h-[2px] transition-all" style={{ background: 'var(--az-border)' }} />
+                        </div>
                     )}
 
                     {isDesktop && (
@@ -476,25 +488,25 @@ export const MainLayout: React.FC = () => {
 
                 <div
                     style={{ display: isDesktop && isAiSidebarOpen ? 'flex' : 'none' }}
-                    className="w-px cursor-col-resize z-20 shrink-0"
+                    className="w-[4px] -mx-[1.5px] cursor-col-resize z-20 shrink-0 group flex justify-center"
                     onMouseDown={startResizingRight}
+                    aria-hidden="true"
                 >
-                    <div className="h-full w-full" style={{ background: 'var(--az-border)' }} />
+                    <div className="h-full w-px group-hover:w-[2px] transition-all" style={{ background: 'var(--az-border)' }} />
                 </div>
 
                 <div
                     ref={rightSidebarRef}
                     style={{
                         width: isAiSidebarOpen ? (isDesktop ? `${aiPanelWidth}px` : `min(${Math.max(200, aiPanelWidth)}px, 92vw)`) : '0px',
-                        opacity: isAiSidebarOpen ? 1 : 0,
                         background: 'var(--az-surface)',
                         borderColor: 'var(--az-border)'
                     }}
                     className={`flex flex-col shrink-0 overflow-hidden
                         ${isDesktop
-                            ? `relative z-10 ${resizingSide === 'right' ? 'transition-none' : 'transition-all duration-200 ease-out'}`
-                            : 'absolute top-0 bottom-0 right-0 z-40 transition-all duration-200 ease-out'}
-                        ${isAiSidebarOpen ? 'border-l' : 'border-none'}`}
+                            ? `relative z-10 ${resizingSide === 'right' ? 'transition-none' : 'transition-[width] duration-200 ease-out'}`
+                            : 'absolute top-0 bottom-0 right-0 z-40 transition-[width] duration-200 ease-out'}
+                        ${isAiSidebarOpen ? 'border-l' : 'border-0'}`}
                 >
                     <div className="flex-1 min-h-0 flex flex-col" ref={rightInnerRef} style={isDesktop ? { width: aiPanelWidth } : undefined}>
                         <AIAssistant isVisible={isAiSidebarOpen} />

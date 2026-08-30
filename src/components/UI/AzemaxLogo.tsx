@@ -21,24 +21,26 @@ export const AzemaxLogo: React.FC<AzemaxLogoProps> = ({
   alt = BRAND.name,
 }) => {
   return (
-    <div className={`inline-flex items-center gap-2 select-none shrink-0 ${className}`}>
+    <div className={`flex items-center gap-2 select-none shrink-0 ${className}`}>
       <img
         src={BRAND.logoSrc}
         alt={alt}
         width={size}
         height={size}
-        className="object-contain shrink-0"
+        className="object-contain shrink-0 antialiased"
         style={{
           width: size,
           height: size,
-          display: 'inline-block',
+          display: 'block',
+          imageRendering: 'auto' as const,
         }}
         loading="eager"
         decoding="async"
+        draggable={false}
       />
       {showWordmark && (
         <span
-          className={`font-semibold tracking-tight text-white/90 text-sm ${wordmarkClassName}`}
+          className={`font-semibold tracking-tight text-white/90 text-sm leading-none antialiased ${wordmarkClassName}`}
         >
           {BRAND.name}
         </span>

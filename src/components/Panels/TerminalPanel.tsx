@@ -121,11 +121,11 @@ export const TerminalPanel: React.FC = () => {
         <div className="h-full flex flex-col relative overflow-hidden group" style={{ background: "var(--az-surface)"}}>
 
 
-            {/* Header Bar */}
-            <div className="h-9 flex items-center justify-between px-3 shrink-0 z-10" style={{ background: "var(--az-surface-2)", borderBottom: "1px solid var(--az-border)"}}>
+            {/* Header Bar — 36px stable */}
+            <div className="h-9 min-h-9 flex items-center justify-between px-3 shrink-0 z-10 overflow-hidden" style={{ background: "var(--az-surface-2)", borderBottom: "1px solid var(--az-border)"}}>
 
-                {/* Tabs Area */}
-                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar mask-gradient-right flex-1 min-w-0">
+                {/* Tabs Area — stable height, no wrap */}
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar mask-gradient-right flex-1 min-w-0 h-full py-1">
                     {terminals.map((term) => (
                         <div
                             key={term.id}

@@ -104,16 +104,14 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onC
 
     return (
         <motion.div
-            initial={{ opacity: 0, x: -12, scale: 0.95, filter: 'blur(4px)' }}
-            animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, x: -8, scale: 0.95, filter: 'blur(4px)' }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, x: -6 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -6 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
             className={cn(
-                "flex items-center gap-2 py-2 px-2.5 mx-2 mt-1.5 rounded-xl backdrop-blur-md creation-shimmer-border",
-                isFolder
-                    ? "bg-[var(--az-surface-3)] border border-[var(--az-border)]"
-                    : "bg-[var(--az-surface-3)] border border-[var(--az-border)]"
+                "flex items-center gap-2 py-1.5 px-2.5 mx-1.5 mt-1.5 rounded-lg border",
+                "bg-[var(--az-surface-3)] border-[var(--az-border)]"
             )}
         >
             {/* Chevron placeholder */}
@@ -140,13 +138,11 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onC
                     onBlur={handleBlur}
                     onFocus={() => setIsFocused(true)}
                     className={cn(
-                        "bg-white/[0.03] text-white text-sm w-full px-2.5 py-1 rounded-lg font-medium transition-all duration-300",
-                        "placeholder:text-white/25 focus:outline-none",
+                        "text-sm w-full px-2.5 py-1 rounded-md font-medium transition-colors duration-150 antialiased",
+                        "placeholder:text-white/25 focus:outline-none border",
                         isFocused
-                            ? isFolder
-                                ? "ring-1 ring-[var(--az-border-strong)] bg-[var(--az-surface-3)]"
-                                : "ring-1 ring-[var(--az-border-strong)] bg-[var(--az-surface-3)]"
-                            : "ring-1 ring-white/[0.06]"
+                            ? "bg-[var(--az-surface-3)] border-[var(--az-border-strong)] text-white ring-1 ring-[var(--az-border-strong)]"
+                            : "bg-white/[0.03] border-white/[0.06] text-white"
                     )}
                     placeholder={isFolder ? "Folder name..." : "File name..."}
                 />
@@ -407,7 +403,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
         <div className={isNewlyCreated ? 'animate-creation-success rounded-lg' : ''}>
             <div
                 className={cn(
-                    "flex items-center gap-2 py-[6px] px-2 cursor-pointer transition-colors duration-120 text-[13px] select-none group relative rounded-md mx-1.5 border",
+                    "flex items-center gap-1.5 py-0 px-2 cursor-pointer transition-colors duration-120 text-[13px] leading-none select-none group relative rounded-md mx-1 border min-h-[28px] h-7 antialiased",
                     isActive
                         ? "bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)]"
                         : isFocused
@@ -442,7 +438,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 </span>
 
                 {/* File/Folder Icon */}
-                <div className="shrink-0 transition-transform duration-200 group-hover:scale-110">
+                <div className="shrink-0 flex items-center justify-center w-4 h-4">
                     <FileIcon name={node.name} isOpen={isOpen} isFolder={isFolder} />
                 </div>
 
@@ -513,11 +509,11 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                         transition={{ duration: 0.2, ease: "easeInOut" }}
                         className="overflow-hidden relative"
                     >
-                        {/* Indent Guide Line */}
+                        {/* Indent Guide Line — crisp 1px, no subpixel */}
                         {depth >= 0 && (
                             <div
-                                className="absolute top-0 bottom-0 w-px transition-colors"
-                                style={{ background: "var(--az-border)", left: `${(depth * indentStep) + indentBase + 6}px` } as React.CSSProperties}
+                                className="absolute top-0 bottom-0 w-px"
+                                style={{ background: "var(--az-border)", left: `${(depth * indentStep) + indentBase + 7}px`, transform: 'translateZ(0)' } as React.CSSProperties}
                             />
                         )}
 
@@ -1336,7 +1332,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Search files... (⌘F)"
-                                className="w-full pl-9 pr-20 py-2 text-sm bg-white/[0.04] border border-white/[0.08] rounded-xl text-white placeholder:text-white/25 focus:outline-none focus:border-blue-500/40 focus:bg-white/[0.06] focus:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition-all duration-200"
+                                className="w-full pl-9 pr-20 py-2 h-8 text-[13px] leading-none bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder:text-white/30 placeholder:text-[12px] focus:outline-none focus:border-[var(--az-accent-border)] focus:bg-white/[0.06] focus:shadow-[var(--az-focus-ring)] transition-colors duration-150 antialiased"
                             />
                             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                                 {getActiveFilterCount() > 0 && (

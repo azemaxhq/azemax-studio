@@ -26,7 +26,7 @@ import type { FileNode } from '../../utils/mockFileSystem';
 const CursorStatus: React.FC = React.memo(() => {
     const pos = useCursorPosition();
     return (
-        <div className="hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
+        <div className="hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors leading-none tabular-nums">
             Ln {pos.lineNumber}, Col {pos.column}
         </div>
     );
@@ -43,7 +43,7 @@ const RunButton: React.FC<{ activeFile: FileNode | null; language: string }> = (
                 }
             }}
             disabled={isRunning || !activeFile}
-            className="glass-run-button py-1 px-3 text-[11px] h-7"
+            className="glass-run-button py-1 px-3 text-[11px] h-7 leading-none inline-flex items-center justify-center gap-1.5 antialiased"
         >
             {isRunning ? (
                 <>
@@ -1191,6 +1191,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             formatOnPaste: settings.code.formatOnPaste,
             formatOnType: settings.code.formatOnType,
         });
+
+        // Geometry fix: after web-font loads the glyph width changes so guide x drifts onto text.
+        // Remeasure once fonts are ready and on every mount/resize.
+        try {
+            if (document.fonts?.ready) {
+                document.fonts.ready.then(() => {
+                    try { (monaco as any).editor?.remeasureFonts?.(); editor.layout(); } catch {}
+                });
+            }
+            // Immediate remeasure to ensure initial mount aligns after CSS isolation
+            requestAnimationFrame(() => { try { (monaco as any).editor?.remeasureFonts?.(); editor.layout(); } catch {} });
+        } catch {}
     };
 
     const language = getLanguage(activeFile?.name || '');
@@ -1208,6 +1220,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         wordWrap: settings.editor.wordWrap ? 'on' : 'off',
         fontSize: settings.editor.fontSize,
         fontFamily: settings.editor.fontFamily,
+        // Force geometric precision & no letter-spacing so char width matches guide math
+        letterSpacing: 0,
         padding: densityPadding,
         inlineSuggest: { enabled: settings.ai.inlineSuggestions, mode: 'subwordSmart' },
         quickSuggestions: settings.code.quickSuggestions,
@@ -1229,10 +1243,32 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         detectIndentation: false,
         autoIndent: 'advanced',
         lineNumbers: settings.editor.lineNumbers ? 'on' : 'off',
+        lineNumbersMinChars: 3,
+        lineDecorationsWidth: 10,
+        glyphMargin: true,
         bracketPairColorization: { enabled: settings.editor.bracketPairColorization },
         renderWhitespace: settings.editor.renderWhitespace,
         stickyScroll: { enabled: settings.editor.stickyScroll },
         folding: settings.editor.codeFolding,
+        // Explicit guide configuration — guides must live in indentation whitespace, not over glyphs
+        guides: {
+            indentation: true,
+            bracketPairs: true,
+            bracketPairsHorizontal: false,
+            highlightActiveIndentation: true,
+            highlightActiveBracketPair: false,
+        },
+        // Prevent layout shifts and ensure guides track glyph metrics
+        automaticLayout: true,
+        scrollbar: {
+            verticalScrollbarSize: 8,
+            horizontalScrollbarSize: 8,
+            useShadows: false,
+            verticalHasArrows: false,
+            horizontalHasArrows: false,
+        },
+        overviewRulerBorder: false,
+        overviewRulerLanes: 3,
     }), [
         settings.editor.showMinimap,
         settings.editor.wordWrap,
@@ -1256,6 +1292,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         densityPadding,
     ]);
 
+    // When editor geometry deps change, force Monaco to remeasure character grid so guides stay in whitespace
+    useEffect(() => {
+        if (!editorRef.current || !monacoRef.current) return;
+        try { (monacoRef.current as any).editor?.remeasureFonts?.(); editorRef.current.layout(); } catch {}
+    }, [settings.editor.fontFamily, settings.editor.fontSize, settings.editor.tabSize, settings.editor.lineNumbers]);
+
     useEffect(() => {
         if (activeFile?.name) {
             document.title = `${activeFile.name} — ${BRAND.name}`;
@@ -1269,8 +1311,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             <div className="w-full h-full flex flex-col items-center justify-center relative select-none" style={{ background: "var(--az-surface)", color: "var(--az-text-muted)"}}>
                 <div className="flex flex-col items-center gap-3 mb-6">
                     <AzemaxLogo size={40} />
-                    <span className="text-[13px] font-semibold tracking-tight" style={{ color: "var(--az-text)"}}>{BRAND.name}</span>
-                    <p className="text-[11px] max-w-sm text-center" style={{ color: "var(--az-text-muted)"}}>
+                    <span className="text-[13px] font-semibold tracking-tight leading-none" style={{ color: "var(--az-text)"}}>{BRAND.name}</span>
+                    <p className="text-[11px] leading-relaxed max-w-sm text-center antialiased" style={{ color: "var(--az-text-muted)"}}>
                         Select a file from the explorer or create a new one to get started.
                     </p>
                 </div>
@@ -1289,13 +1331,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     return (
         <div className="w-full h-full bg-transparent flex flex-col relative group">
             {/* Toolbar — neutral minimal */}
-            <div className="h-10 flex items-center justify-between px-3 shrink-0" style={{ background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)'}}>
-                <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden transition-all duration-200 ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
+            <div className="h-[40px] min-h-[40px] flex items-center justify-between px-3 shrink-0 overflow-hidden" style={{ background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)'}}>
+                <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
                     {/* Check Errors — Premium AI DeepCheck */}
                     <button
                         onClick={runDiagnostics}
                         disabled={isChecking}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95 overflow-hidden relative
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-3 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isChecking
                                 ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
@@ -1310,7 +1352,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         {isChecking ? (
                             <>
                                 <span className="relative flex items-center justify-center">
-                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/30 animate-ping" />
+                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/20 animate-ping" />
                                     <Loader2 size={12} className="animate-spin text-[var(--az-text-muted)] relative" />
                                 </span>
                                 {toolbarSize === 'full' && <span className="text-[var(--az-text-secondary)]">Checking...</span>}
@@ -1353,7 +1395,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {!settings.editor.autoSave && (
                         <button
                             onClick={handleSave}
-                            className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                            className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90
                                 ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                                 text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border)] hover:bg-[var(--az-surface-hover)]`}
                             title="Save File (Ctrl+S)"
@@ -1367,7 +1409,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     <button
                         onClick={handleFormat}
                         disabled={isFormatting}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95 overflow-hidden relative
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isFormatting
                                 ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
@@ -1378,7 +1420,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         {isFormatting ? (
                             <>
                                 <span className="relative flex items-center justify-center">
-                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/30 animate-ping" />
+                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/20 animate-ping" />
                                     <span className="absolute h-2 w-2 rounded-full animate-spin" style={{ background: "var(--az-text-muted)", borderTopColor: 'transparent', borderWidth: '1.5px', borderStyle: 'solid' } as React.CSSProperties} />
                                     <Loader2 size={12} className="animate-spin text-[var(--az-text-muted)] relative" />
                                 </span>
@@ -1398,7 +1440,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {/* Word Wrap */}
                     <button
                         onClick={() => updateSettings('editor', { wordWrap: !settings.editor.wordWrap })}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${settings.editor.wordWrap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
                         title="Toggle Word Wrap"
@@ -1410,7 +1452,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {/* Minimap */}
                     <button
                         onClick={() => updateSettings('editor', { showMinimap: !settings.editor.showMinimap })}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:scale-95
+                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${settings.editor.showMinimap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
                         title="Toggle Minimap"
@@ -1424,19 +1466,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             <div className={`shrink-0 w-px bg-[var(--az-border)] ${toolbarSize === 'compact' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                             {/* Font Size */}
-                            <div className="shrink-0 flex items-center gap-0.5 bg-[var(--az-surface-2)] rounded-md border border-[var(--az-border)] px-1">
+                            <div className="shrink-0 flex items-center gap-0.5 bg-[var(--az-surface-2)] rounded-md border border-[var(--az-border)] px-1 h-7">
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.max(10, settings.editor.fontSize - 1) })}
-                                    className="p-1 text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-all"
+                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-colors shrink-0"
+                                    aria-label="Decrease font size"
                                 >
-                                    <Minus size={12} />
+                                    <Minus size={12} className="shrink-0" />
                                 </button>
-                                <span className="text-xs text-[var(--az-text-secondary)] w-5 text-center font-mono">{settings.editor.fontSize}</span>
+                                <span className="text-[11px] text-[var(--az-text-secondary)] w-5 text-center font-mono leading-none tabular-nums">{settings.editor.fontSize}</span>
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.min(24, settings.editor.fontSize + 1) })}
-                                    className="p-1 text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-all"
+                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-colors shrink-0"
+                                    aria-label="Increase font size"
                                 >
-                                    <Plus size={12} />
+                                    <Plus size={12} className="shrink-0" />
                                 </button>
                             </div>
                         </>
@@ -1488,16 +1532,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
             {/* Status Bar — neutral, calm */}
             {settings.general.showStatusBar && (
-                <div className="h-6 text-[11px] flex items-center justify-between px-3 shrink-0 select-none font-medium overflow-hidden" style={{ background: 'var(--az-surface-2)', color: 'var(--az-text-muted)', borderTop: '1px solid var(--az-border)'}}>
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
-                            <GitBranch size={11} />
+                <div className="h-6 min-h-6 text-[11px] leading-none flex items-center justify-between px-3 shrink-0 select-none font-medium overflow-hidden antialiased" style={{ background: 'var(--az-surface-2)', color: 'var(--az-text-muted)', borderTop: '1px solid var(--az-border)'}}>
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none">
+                            <GitBranch size={11} className="shrink-0" />
                             <span>main</span>
                         </div>
-                        <div className="flex items-center gap-1.5 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-2 py-0.5 rounded-md cursor-pointer transition-colors">
-                            <CheckCircle size={11} />
+                        <div className="flex items-center gap-1 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none">
+                            <CheckCircle size={11} className="shrink-0" />
                             <span>0</span>
-                            <AlertCircle size={11} className="ml-1" />
+                            <AlertCircle size={11} className="ml-1 shrink-0" />
                             <span>0</span>
                         </div>
                     </div>

@@ -65,28 +65,27 @@ export const ExplanationSidebar: React.FC = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="h-full flex flex-col min-h-0 bg-transparent"
         >
-            {/* Header */}
+            {/* Header — 40px aligned with explorer */}
             <div className="shrink-0 relative z-10">
-                <div className="absolute top-0 left-0 right-0 h-[1px]  z-20" />
-                <div className="h-11 px-3 flex items-center justify-between border-b border-white/[0.04]">
+                <div className="h-[40px] px-2.5 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid var(--az-border)' }}>
                     <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center shrink-0">
-                            <BookOpen size={14} className="text-[#a371f7]" />
+                        <div className="w-7 h-7 rounded-md bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center shrink-0">
+                            <BookOpen size={14} className="text-[#a371f7] shrink-0" />
                         </div>
-                        <span className="text-[11px] font-medium tracking-wider text-white/70 uppercase truncate">
+                        <span className="text-[11px] font-medium tracking-[0.08em] text-white/70 uppercase truncate leading-none antialiased">
                             Explanation
                         </span>
                     </div>
                 </div>
             </div>
 
-            {/* Toolbar */}
-            <div className="shrink-0 p-2.5 flex flex-wrap items-center gap-2 border-b border-white/[0.06] bg-gradient-to-r from-[#a371f7]/[0.07] to-transparent">
+            {/* Toolbar — stable height */}
+            <div className="shrink-0 p-2.5 flex flex-wrap items-center gap-2 border-b border-white/[0.04] bg-[var(--az-surface-2)]">
                 <button
                     onClick={handleExplain}
                     disabled={isExplaining}
                     title="Explain the entire active file"
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[#a371f7]/25 bg-[#a371f7]/10 text-[#c9a8ff] hover:bg-[#a371f7]/20 hover:border-[#a371f7]/35 text-xs font-medium transition-all disabled:opacity-50 disabled:pointer-events-none shadow-sm"
+                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#a371f7]/25 bg-[#a371f7]/10 text-[#c9a8ff] hover:bg-[#a371f7]/20 hover:border-[#a371f7]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
                 >
                     <FileText size={14} className="shrink-0" />
                     Explain File
@@ -95,7 +94,7 @@ export const ExplanationSidebar: React.FC = () => {
                     onClick={handleExplainSelection}
                     disabled={isExplaining}
                     title="Select code in the editor, then click"
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[#58a6ff]/25 bg-[#58a6ff]/10 text-[#58a6ff] hover:bg-[#58a6ff]/20 hover:border-[#58a6ff]/35 text-xs font-medium transition-all disabled:opacity-50 disabled:pointer-events-none shadow-sm"
+                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#58a6ff]/25 bg-[#58a6ff]/10 text-[#58a6ff] hover:bg-[#58a6ff]/20 hover:border-[#58a6ff]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
                 >
                     <MousePointer size={14} className="shrink-0" />
                     Explain Selection

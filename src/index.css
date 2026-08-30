@@ -9,10 +9,20 @@
    ============================================ */
 
 :root {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  font-variant-ligatures: common-ligatures;
+  font-feature-settings: 'cv01','cv02','cv03','ss01';
+  /* Prevent font-size inflation on mobile rotation */
+  -webkit-font-feature-settings: 'cv01','cv02','cv03','ss01';
 
   /* ---- Surfaces (graphite progression) ---- */
   --az-bg: #0B0D10;
@@ -66,30 +76,72 @@
   --az-r-xl: 12px;
   --az-r-full: 999px;
 
-  /* ---- Spacing / motion ---- */
+  /* ---- Spacing scale (8pt) ---- */
+  --az-s-1: 4px;
+  --az-s-2: 8px;
+  --az-s-3: 12px;
+  --az-s-4: 16px;
+  --az-s-5: 20px;
+  --az-s-6: 24px;
+
+  /* ---- Typography scale ---- */
+  --az-text-2xs: 10px;
+  --az-text-xs: 11px;
+  --az-text-sm: 12px;
+  --az-text-base: 13px;
+  --az-text-md: 14px;
+  --az-lh-tight: 1.35;
+  --az-lh-base: 1.5;
+  --az-lh-relaxed: 1.65;
+
+  /* ---- Motion ---- */
   --az-ease: cubic-bezier(0.2,0,0,1);
   --az-ease-out: cubic-bezier(0.16,1,0.3,1);
+  --az-dur-fast: 120ms;
+  --az-dur-base: 150ms;
+  --az-dur-slow: 220ms;
 
   color: var(--az-text);
   background-color: var(--az-bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Global box model + scrollbar stability — scoped to not break Monaco's content-box layout */
+*, *::before, *::after { box-sizing: border-box; }
 * { scrollbar-width: thin; scrollbar-color: var(--az-border-strong) transparent; }
+html { scrollbar-gutter: stable; -webkit-font-smoothing: antialiased; }
+/* Monaco isolation: Monaco renders guides by character-cell math assuming content-box + 0 letter-spacing.
+   Global border-box / -0.011em letter-spacing would shift guides onto glyphs. */
+.monaco-editor,
+.monaco-editor .overflow-guard,
+.monaco-editor .monaco-scrollable-element,
+.monaco-editor .lines-content,
+.monaco-editor .view-lines,
+.monaco-editor .view-line,
+.monaco-editor .view-overlays,
+.monaco-editor .margin-view-overlays,
+.monaco-editor .margin-view-background,
+.monaco-editor .glyph-margin,
+.monaco-editor .line-numbers {
+  box-sizing: content-box !important;
+  letter-spacing: 0 !important;
+  font-variant-ligatures: none !important;
+  text-rendering: geometricPrecision !important;
+  -webkit-font-smoothing: antialiased;
+}
+.monaco-editor .view-line span { letter-spacing: 0 !important; }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
   width: 100%;
   overflow: hidden;
   background: var(--az-bg);
+  font-family: inherit;
+  line-height: var(--az-lh-base);
+  letter-spacing: -0.011em;
+  text-rendering: optimizeLegibility;
 }
 
 #root {
@@ -99,11 +151,12 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--az-bg);
+  isolation: isolate;
 }
 
 .app-viewport { height: 100vh; height: 100dvh; }
 
-/* Scrollbars — subtle neutral */
+/* Scrollbars — subtle neutral, stable gutter prevents 1px jumps */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -113,8 +166,10 @@ body {
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: #2E3440; background-clip: padding-box; }
-.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #232831; border-radius: 999px; }
+::-webkit-scrollbar-corner { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #232831; border-radius: 999px; background-clip: padding-box; border: 1px solid transparent; }
+.custom-scrollbar { scrollbar-gutter: stable; }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -158,13 +213,15 @@ body {
 .az-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 7px 12px; border-radius: var(--az-r-md);
-  font-size: 13px; font-weight: 500; line-height: 1;
+  font-size: 13px; font-weight: 500; line-height: 1; letter-spacing: -0.01em;
   border: 1px solid transparent;
-  transition: background 140ms var(--az-ease), border-color 140ms var(--az-ease), color 140ms var(--az-ease), opacity 140ms var(--az-ease), transform 140ms var(--az-ease);
+  transition: background var(--az-dur-base) var(--az-ease), border-color var(--az-dur-base) var(--az-ease), color var(--az-dur-base) var(--az-ease), opacity var(--az-dur-base) var(--az-ease);
   user-select: none; cursor: pointer;
+  -webkit-font-smoothing: antialiased;
 }
-.az-btn:active { transform: scale(0.98); }
-.az-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.az-btn:active { opacity: 0.96; }
+.az-btn:focus-visible { outline: none; box-shadow: var(--az-focus-ring); border-color: var(--az-accent-border); }
+.az-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .az-btn-primary {
   background: var(--az-text);
@@ -194,11 +251,16 @@ body {
 .az-btn-ghost:hover { background: var(--az-surface-hover); color: var(--az-text); }
 
 .az-btn-icon {
-  padding: 6px; border-radius: var(--az-r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border-radius: var(--az-r-sm);
   background: transparent; color: var(--az-text-muted);
   border: 1px solid transparent;
+  transition: background var(--az-dur-fast) var(--az-ease), color var(--az-dur-fast) var(--az-ease), border-color var(--az-dur-fast) var(--az-ease);
+  line-height: 0;
 }
 .az-btn-icon:hover { background: var(--az-surface-hover); color: var(--az-text); border-color: var(--az-border); }
+.az-btn-icon:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
+.az-btn-icon svg, .glass-tab svg, .az-composer button svg, .file-explorer-node svg { display: block; flex-shrink: 0; }
 
 .az-btn-danger {
   background: var(--az-surface-3); color: var(--az-text-secondary); border-color: var(--az-border);
@@ -233,10 +295,13 @@ body {
   border-radius: var(--az-r-md);
   padding: 8px 12px;
   color: var(--az-text);
-  transition: border-color 140ms var(--az-ease), box-shadow 140ms var(--az-ease), background 140ms var(--az-ease);
+  font-size: var(--az-text-base);
+  line-height: var(--az-lh-base);
+  letter-spacing: -0.01em;
+  transition: border-color var(--az-dur-base) var(--az-ease), box-shadow var(--az-dur-base) var(--az-ease), background var(--az-dur-base) var(--az-ease);
 }
 .glass-input:focus { outline: none; border-color: var(--az-accent-border); box-shadow: var(--az-focus-ring); background: var(--az-surface-2); }
-.glass-input::placeholder { color: var(--az-text-muted); }
+.glass-input::placeholder { color: var(--az-text-muted); font-weight: 400; }
 .input-focus-glow:focus-within { box-shadow: var(--az-focus-ring); border-color: var(--az-accent-border); background: var(--az-surface-2); }
 
 /* ============================================
@@ -244,16 +309,19 @@ body {
    ============================================ */
 
 .glass-tab {
-  background: transparent; border: none;
-  padding: 6px 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; border: 1px solid transparent;
+  padding: 5px 10px; min-height: 28px;
   color: var(--az-text-muted);
-  font-size: 12.5px; font-weight: 500;
+  font-size: 12.5px; font-weight: 500; line-height: 1; letter-spacing: -0.01em;
   cursor: pointer; position: relative;
-  transition: color 140ms var(--az-ease), background 140ms var(--az-ease);
+  transition: color var(--az-dur-fast) var(--az-ease), background var(--az-dur-fast) var(--az-ease);
   border-radius: var(--az-r-sm);
+  white-space: nowrap;
 }
-.glass-tab:hover { color: var(--az-text-secondary); background: var(--az-surface-hover); }
-.glass-tab.active { color: var(--az-text); background: transparent; }
+.glass-tab:hover { color: var(--az-text-secondary); background: var(--az-surface-hover); border-color: transparent; }
+.glass-tab:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
+.glass-tab.active { color: var(--az-text); background: transparent; border-color: transparent; }
 .glass-tab.active::after {
   content: ''; position: absolute; bottom: -1px; left: 8px; right: 8px; height: 2px;
   background: var(--az-text); border-radius: 999px; opacity: 0.9;
@@ -266,19 +334,22 @@ body {
 .glass-header {
   background: var(--az-surface);
   border-bottom: 1px solid var(--az-border);
-  padding: 8px 12px;
-  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; min-height: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .glass-header::after { display: none; }
 
-/* Resize handles — hairline neutral */
+/* Resize handles — hairline neutral, stable hover (use box-shadow to avoid layout) */
 .glass-resize-handle, .glass-resize-handle-vertical {
   background: transparent;
-  transition: background 140ms var(--az-ease);
+  transition: background var(--az-dur-fast) var(--az-ease);
+  position: relative;
+  z-index: 10;
 }
 .glass-resize-handle:hover, .glass-resize-handle-vertical:hover {
-  background: var(--az-border);
+  background: var(--az-border-strong);
 }
+.glass-resize-handle:active, .glass-resize-handle-vertical:active { background: var(--az-accent-soft); }
 
 /* ============================================
    CODE / EDITOR
@@ -290,7 +361,7 @@ body {
   border-radius: var(--az-r-md);
   overflow: hidden;
 }
-.glass-code-block pre { margin: 0; padding: 14px; overflow-x: auto; }
+.glass-code-block pre { margin: 0; padding: 12px 14px; overflow-x: auto; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
 .glass-code-header {
   background: var(--az-surface-3);
   border-bottom: 1px solid var(--az-border);
@@ -308,6 +379,8 @@ body {
   color: rgba(167,172,181,0.55) !important;
   font-style: italic !important;
   text-shadow: none !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  letter-spacing: 0 !important;
 }
 .ai-comment-decoration {
   color: var(--az-text-muted) !important;
@@ -506,9 +579,12 @@ body {
   background: var(--az-overlay);
   border: 1px solid var(--az-border);
   border-radius: var(--az-r-sm);
-  padding: 6px 10px; font-size: 12px; color: var(--az-text);
+  padding: 6px 10px; font-size: 12px; line-height: 1.4; font-weight: 500; letter-spacing: -0.01em;
+  color: var(--az-text);
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   backdrop-filter: none;
+  white-space: nowrap; max-width: 320px;
+  will-change: transform, opacity;
 }
 
 /* ============================================
@@ -517,6 +593,10 @@ body {
 
 .text-glass-muted { color: var(--az-text-muted); }
 .text-glass-gradient { background: none; -webkit-text-fill-color: var(--az-text); color: var(--az-text); }
+/* Normalized typography — prevents inconsistent fallback fonts */
+h1, h2, h3, h4, h5, h6 { font-family: 'Inter', system-ui, sans-serif; letter-spacing: -0.015em; font-weight: 600; line-height: var(--az-lh-tight); -webkit-font-smoothing: antialiased; }
+p, span, label, button, input, textarea { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+code, pre, kbd, .font-mono, .glass-terminal-body { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-ligatures: none; -webkit-font-smoothing: antialiased; }
 
 /* ============================================
    AI COMPOSER — premium neutral elevated
@@ -552,11 +632,12 @@ body {
 /* AI pill / loading — muted */
 .ai-loading-pill {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 8px 12px;
+  padding: 7px 12px; min-height: 32px;
   background: var(--az-surface-2);
   border: 1px solid var(--az-border);
   border-radius: var(--az-r-full);
   box-shadow: none; backdrop-filter: none;
+  line-height: 1;
 }
 .ai-thinking-label {
   font-size: 12px; font-weight: 500; letter-spacing: 0.02em;
@@ -736,5 +817,29 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 .az-focus:focus-visible{ outline:none; box-shadow: var(--az-focus-ring); border-color: var(--az-accent-border)}
 
 /* Composer placeholder polish */
-.az-composer textarea::placeholder { color: #6F7580; opacity: 0.9; transition: opacity 150ms ease; }
-.az-composer textarea:focus::placeholder { opacity: 0.6; }
+.az-composer textarea::placeholder { color: #6F7580; opacity: 0.9; font-weight: 400; transition: opacity var(--az-dur-fast) ease; }
+.az-composer textarea:focus::placeholder { opacity: 0.55; }
+.az-composer textarea { font-family: 'Inter', system-ui, sans-serif; letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; }
+
+/* === POLISH PASS: global fixes === */
+button, [role="button"] { -webkit-font-smoothing: antialiased; }
+img { display: block; max-width: 100%; }
+/* Prevent horizontal scroll where it shouldn't exist */
+.overflow-hidden { scrollbar-gutter: auto; }
+/* Ensure activity bar icons optically centered */
+.lucide, [data-lucide] { display: block; flex-shrink: 0; }
+/* Consistent focus ring for any interactive */
+*:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
+*:focus:not(:focus-visible) { box-shadow: none; }
+/* Stabilize Monaco container dimensions during async + correct guide placement */
+.monaco-editor .margin-view-overlays, .monaco-editor .margin-view-background { will-change: auto; }
+.monaco-editor .view-overlays .core-guide-indent,
+.monaco-editor .view-overlays .core-guide-bracket { will-change: transform; }
+/* Ensure editor content never overlays gutter — guides stay in indentation whitespace */
+.monaco-editor .editor-container { overflow: hidden !important; }
+.monaco-editor .overflow-guard { z-index: 1; }
+/* Prevent tooltip/content jumping during loading: reserve space */
+.ai-loading-spinner { min-height: 16px; contain: layout; }
+/* File explorer indent guide: ensure 1px crisp */
+.file-explorer-indent-guide { width: 1px !important; }
+

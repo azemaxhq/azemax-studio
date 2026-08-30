@@ -87,18 +87,18 @@ const HeaderActionBtn = ({
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
                 className={`
-                    relative p-1.5 rounded-md transition-all duration-150 group/abtn
+                    relative w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150 group/abtn shrink-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)]
                     ${isActive
                         ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
                         : danger
-                            ? 'text-[var(--az-text-muted)] hover:text-[var(--az-error)] hover:bg-[var(--az-error-soft)]'
-                            : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] active:scale-[0.97]'
+                            ? 'text-[var(--az-text-muted)] hover:text-[var(--az-error)] hover:bg-[var(--az-error-soft)] border border-transparent'
+                            : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'
                     }
                 `}
             >
-                <Icon size={iconSize} className="relative z-10 transition-transform duration-150 group-hover/abtn:scale-110" />
+                <Icon size={iconSize} className="relative z-10 shrink-0" />
                 {isActive && (
-                    <div className="absolute inset-0 rounded-md bg-blue-500/5" />
+                    <div className="absolute inset-0 rounded-md bg-white/[0.04]" />
                 )}
             </button>
             <ActionTooltip text={tooltip} shortcut={shortcut} show={showTooltip} anchorRect={anchorRect} />
@@ -174,15 +174,15 @@ export const Sidebar: React.FC = () => {
     return (
         <div className="h-full flex flex-col relative overflow-hidden group/sidebar" style={{ background: 'var(--az-surface)' }}>
             <div className="shrink-0 relative z-10">
-                <div className={`${isDesktop ? 'h-10 flex-nowrap overflow-hidden' : 'min-h-10 flex-wrap'} flex items-center justify-between px-2 relative`} style={{ borderBottom: '1px solid var(--az-border)' }}>
-                    <div className="flex items-center min-w-0 flex-1 mr-2 px-1">
-                        <span className="text-[11px] font-medium tracking-wider uppercase truncate select-none" style={{ color: 'var(--az-text-muted)' }}>
+                <div className={`${isDesktop ? 'h-[40px] flex-nowrap overflow-hidden' : 'min-h-[40px] flex-wrap'} flex items-center justify-between px-2.5 relative`} style={{ borderBottom: '1px solid var(--az-border)' }}>
+                    <div className="flex items-center min-w-0 flex-1 mr-2">
+                        <span className="text-[11px] font-medium tracking-[0.08em] uppercase truncate select-none leading-none antialiased" style={{ color: 'var(--az-text-muted)' }}>
                             Explorer
                         </span>
                     </div>
 
-                    {/* Action buttons */}
-                    <div className={`flex items-center justify-end ${isDesktop ? 'flex-nowrap gap-[2px] overflow-hidden' : 'flex-wrap gap-x-1 gap-y-0.5'} shrink min-w-0`}>
+                    {/* Action buttons — consistent gap, no wrap jitter */}
+                    <div className={`flex items-center justify-end ${isDesktop ? 'flex-nowrap gap-0.5 overflow-hidden' : 'flex-wrap gap-x-1 gap-y-0.5'} shrink-0 min-w-0`}>
                         <HeaderActionBtn
                             onClick={toggleSearch}
                             icon={Search}
@@ -233,16 +233,16 @@ export const Sidebar: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="h-7 px-3 flex items-center gap-2 overflow-hidden" style={{ borderBottom: '1px solid var(--az-border)', background: 'var(--az-surface-2)' }}>
-                    <span className="text-[10px] tabular-nums truncate" style={{ color: 'var(--az-text-muted)' }}>
+                <div className="h-7 min-h-7 px-3 flex items-center gap-2 overflow-hidden shrink-0" style={{ borderBottom: '1px solid var(--az-border)', background: 'var(--az-surface-2)' }}>
+                    <span className="text-[10px] tabular-nums truncate leading-none antialiased" style={{ color: 'var(--az-text-muted)' }}>
                         <span style={{ color: 'var(--az-text-secondary)', fontWeight: 600 }}>{files}</span> file{files !== 1 ? 's' : ''}
                     </span>
-                    <span className="text-[10px] shrink-0" style={{ color: 'var(--az-border-strong)' }}>·</span>
-                    <span className="text-[10px] tabular-nums truncate" style={{ color: 'var(--az-text-muted)' }}>
+                    <span className="text-[10px] shrink-0 leading-none" style={{ color: 'var(--az-border-strong)' }}>·</span>
+                    <span className="text-[10px] tabular-nums truncate leading-none antialiased" style={{ color: 'var(--az-text-muted)' }}>
                         <span style={{ color: 'var(--az-text-secondary)', fontWeight: 600 }}>{folderCount}</span> folder{folderCount !== 1 ? 's' : ''}
                     </span>
                     <div className="flex-1" />
-                    <span className="text-[10px] font-medium truncate" style={{ color: 'var(--az-text-faint)' }}>{anyFolderOpenFlag ? 'Expanded' : 'Collapsed'}</span>
+                    <span className="text-[10px] font-medium truncate leading-none" style={{ color: 'var(--az-text-faint)' }}>{anyFolderOpenFlag ? 'Expanded' : 'Collapsed'}</span>
                 </div>
             </div>
 

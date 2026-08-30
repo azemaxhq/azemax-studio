@@ -1397,45 +1397,64 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
             {/* Subtle depth — no gradients */}
             <div className="absolute inset-0 pointer-events-none" style={{ background: 'transparent' }} />
 
-            {/* Sidebar (History) - Liquid Glass Style */}
+            {/* Sidebar (History) — premium minimal */}
             <div
                 className={`
-                    absolute top-0 left-0 z-30 h-full w-64
+                    absolute top-0 left-0 z-30 h-full w-[280px]
                     ${showSidebar
-                        ? 'translate-x-0 opacity-100 scale-100'
-                        : '-translate-x-full opacity-0 scale-[0.98]'
+                        ? 'translate-x-0 opacity-100'
+                        : '-translate-x-full opacity-0'
                     }
                 `}
                 style={{
-                    transition: 'transform 200ms ease-out, opacity 180ms ease-out',
+                    transition: 'transform 220ms cubic-bezier(0.2,0,0,1), opacity 180ms ease-out',
                     transformOrigin: 'left center'
                 }}
             >
-                <div className="flex flex-col h-full border-r" style={{ background: "#101217", borderColor: "rgba(255,255,255,0.07)" }}>
-                    {/* Sidebar Header */}
-                    <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b border-[var(--az-border)]/40 bg-[var(--az-surface-2)]/50">
+                <div className="flex flex-col h-full border-r shadow-[4px_0_24px_rgba(0,0,0,0.32)]" style={{ background: "#0E1116", borderColor: "rgba(255,255,255,0.06)" }}>
+                    {/* Sidebar Header — premium */}
+                    <div className="h-[52px] shrink-0 flex items-center justify-between px-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                         <button
                             onClick={() => { handleNewChat(); setShowSidebar(false); }}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[#21262d] text-[var(--az-text)]/80 hover:text-[var(--az-text)] text-sm font-medium transition-all duration-200"
+                            className="inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-[8px] text-[13px] font-medium tracking-tight transition-colors duration-150 hover:bg-white/[0.06] active:bg-white/[0.08]"
+                            style={{ color: 'var(--az-text)' }}
                         >
-                            <Plus size={16} className="text-[#58a6ff]" />
+                            <Plus size={14} strokeWidth={2} style={{ color: '#3B82F6' }} />
                             New chat
                         </button>
                         <button
                             onClick={() => setShowSidebar(false)}
-                            className="p-1.5 hover:bg-[#21262d] rounded-lg text-[var(--az-text-muted)] hover:text-[var(--az-text)] transition-colors duration-200"
+                            aria-label="Close history"
+                            className="w-7 h-7 inline-flex items-center justify-center rounded-[7px] transition-colors duration-150 hover:bg-white/[0.06] active:bg-white/[0.08]"
+                            style={{ color: 'var(--az-text-muted)' }}
                         >
-                            <X size={16} />
+                            <X size={14} strokeWidth={1.75} />
                         </button>
                     </div>
 
-                    {/* Search Bar */}
-                    <div className="px-2 py-2">
-                        <div className="relative">
+                    {/* Search Bar — refined */}
+                    <div className="px-3 pt-3 pb-2">
+                        <div className="relative group">
                             <input
                                 type="text"
-                                placeholder="Search conversations..."
-                                className="w-full px-3 py-2 pl-9 text-sm bg-[var(--az-surface)] border border-[var(--az-border)]/60 rounded-lg text-[var(--az-text)] placeholder-[#8b949e]/50 focus:outline-none focus:border-[#58a6ff]/50 focus:ring-1 focus:ring-[#58a6ff]/20 transition-all duration-200"
+                                placeholder="Search conversations"
+                                aria-label="Search conversations"
+                                className="w-full h-8 pl-8 pr-3 text-[13px] rounded-[8px] outline-none transition-all duration-150"
+                                style={{
+                                    background: 'rgba(255,255,255,0.04)',
+                                    border: '1px solid rgba(255,255,255,0.07)',
+                                    color: 'var(--az-text)',
+                                }}
+                                onFocus={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.45)';
+                                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.12)';
+                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                }}
+                                onBlur={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
+                                    e.currentTarget.style.boxShadow = 'none';
+                                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                }}
                                 onChange={(e) => {
                                     const searchTerm = e.target.value.toLowerCase();
                                     document.querySelectorAll('[data-session-title]').forEach((el) => {
@@ -1444,21 +1463,23 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     });
                                 }}
                             />
-                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--az-text-muted)]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: 'rgba(255,255,255,0.32)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                         </div>
                     </div>
 
-                    {/* Sessions List */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2">
+                    {/* Sessions List — compact premium */}
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-2 py-1">
                         {sessions.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">
-                                <MessageSquare size={24} className="text-[var(--az-text-muted)]/30 mb-3" />
-                                <p className="text-sm text-[var(--az-text-muted)]/60">No conversations yet</p>
+                            <div className="flex flex-col items-center justify-center h-full text-center px-4 py-12">
+                                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center mb-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                    <MessageSquare size={16} style={{ color: 'rgba(255,255,255,0.28)' }} />
+                                </div>
+                                <p className="text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.55)' }}>No conversations yet</p>
+                                <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.30)' }}>Your chats will appear here</p>
                             </div>
                         ) : (() => {
-                            // Group sessions by time period
                             const today = new Date();
                             today.setHours(0, 0, 0, 0);
                             const todayMs = today.getTime();
@@ -1490,13 +1511,14 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             });
 
                             return groups.filter(g => g.sessions.length > 0).map(group => (
-                                <div key={group.label} className="mb-4">
-                                    {/* Group Label */}
-                                    <div className="px-2 py-1.5">
-                                        <span className="text-[11px] font-semibold text-[var(--az-text-muted)]/60 uppercase tracking-wider">{group.label}</span>
+                                <div key={group.label} className="mb-5">
+                                    {/* Group Label — secondary */}
+                                    <div className="px-2.5 pt-2 pb-1.5">
+                                        <span className="text-[10px] font-medium uppercase" style={{ color: 'rgba(255,255,255,0.32)', letterSpacing: '0.08em' }}>{group.label}</span>
                                     </div>
 
-                                    {/* Sessions in Group */}
+                                    {/* Sessions in Group — compact list */}
+                                    <div className="space-y-0.5">
                                     {group.sessions.map(session => {
                                         const isActive = currentSessionId === session.id;
 
@@ -1505,21 +1527,22 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                 key={session.id}
                                                 data-session-title={session.title || 'New Chat'}
                                                 onClick={() => handleSelectSession(session.id)}
-                                                className={`group relative px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-200 mb-0.5
-                                                    ${isActive
-                                                        ? 'bg-[#21262d] border-l-2 border-[#58a6ff]'
-                                                        : 'hover:bg-[#21262d]/50 border-l-2 border-transparent'
-                                                    }`}
+                                                className={`group relative flex items-center gap-2.5 pl-2.5 pr-2 py-2 rounded-[8px] cursor-pointer transition-colors duration-150 ${isActive ? 'is-active' : ''}`}
+                                                style={{
+                                                    background: isActive ? 'rgba(59,130,246,0.09)' : 'transparent',
+                                                    border: isActive ? '1px solid rgba(59,130,246,0.14)' : '1px solid transparent',
+                                                }}
                                             >
-                                                <div className="flex items-center gap-2.5 pr-12">
-                                                    <MessageSquare size={14} className={`shrink-0 ${isActive ? 'text-[#58a6ff]' : 'text-[var(--az-text-muted)]/50'}`} />
-                                                    <span className={`text-[13px] truncate ${isActive ? 'text-[var(--az-text)]' : 'text-[var(--az-text-muted)]'}`}>
-                                                        {session.title || 'New Chat'}
-                                                    </span>
-                                                </div>
+                                                {isActive && (
+                                                    <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ background: '#3B82F6' }} />
+                                                )}
+                                                <MessageSquare size={14} className="shrink-0 transition-colors duration-150" style={{ color: isActive ? '#3B82F6' : 'rgba(255,255,255,0.28)' }} />
+                                                <span className="text-[13px] leading-none truncate pr-14 flex-1 min-w-0 transition-colors duration-150" style={{ color: isActive ? '#E6EDF3' : 'rgba(255,255,255,0.62)', fontWeight: isActive ? 500 : 400 }}>
+                                                    {session.title || 'New Chat'}
+                                                </span>
 
-                                                {/* Hover Actions */}
-                                                <div className={`absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-[#21262d] rounded-md px-0.5 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-150`}>
+                                                {/* Hover Actions — reveal on hover/focus */}
+                                                <div className={`absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-[6px] p-0.5 transition-all duration-150 ${isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0'}`} style={{ background: isActive ? 'rgba(19,27,42,0.96)' : 'rgba(20,23,28,0.96)', border: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(6px)' }}>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -1530,49 +1553,55 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                                 ));
                                                             }
                                                         }}
-                                                        className="p-1.5 rounded-md hover:bg-[#30363d] text-[var(--az-text-muted)] hover:text-[var(--az-text)] transition-colors"
+                                                        aria-label="Rename conversation"
+                                                        className="w-6 h-6 inline-flex items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-white/[0.08]"
+                                                        style={{ color: 'rgba(255,255,255,0.55)' }}
                                                         title="Rename"
                                                     >
-                                                        <Edit3 size={13} />
+                                                        <Edit3 size={12} strokeWidth={1.75} />
                                                     </button>
                                                     <button
                                                         onClick={(e) => handleDeleteSession(e, session.id)}
-                                                        className="p-1.5 rounded-md hover:bg-red-500/20 text-[var(--az-text-muted)] hover:text-red-400 transition-colors"
+                                                        aria-label="Delete conversation"
+                                                        className="w-6 h-6 inline-flex items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-red-500/10"
+                                                        style={{ color: 'rgba(255,255,255,0.45)' }}
+                                                        onMouseEnter={(e) => (e.currentTarget.style.color = '#F87171')}
+                                                        onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.45)')}
                                                         title="Delete"
                                                     >
-                                                        <Trash2 size={13} />
+                                                        <Trash2 size={12} strokeWidth={1.75} />
                                                     </button>
                                                 </div>
                                             </div>
                                         );
                                     })}
+                                    </div>
                                 </div>
                             ));
                         })()}
                     </div>
 
-                    {/* Sidebar Footer */}
-                    <div className="px-3 py-2.5 border-t border-[var(--az-border)]/40 bg-[var(--az-surface)]/50">
-                        <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-[var(--az-text-muted)]/60">{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
-                            <button
-                                onClick={() => {
-                                    const doClear = () => {
-                                        setSessions([]);
-                                        saveSessions([]);
-                                        handleNewChat();
-                                    };
-                                    if (settings.ai.confirmClearConversation) {
-                                        if (confirm('Clear all conversations?')) doClear();
-                                    } else {
-                                        doClear();
-                                    }
-                                }}
-                                className="text-[var(--az-text-muted)]/60 hover:text-red-400 transition-colors duration-200"
-                            >
-                                Clear all
-                            </button>
-                        </div>
+                    {/* Sidebar Footer — pinned, subtle */}
+                    <div className="shrink-0 px-3 py-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.01)' }}>
+                        <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.32)' }}>{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
+                        <button
+                            onClick={() => {
+                                const doClear = () => {
+                                    setSessions([]);
+                                    saveSessions([]);
+                                    handleNewChat();
+                                };
+                                if (settings.ai.confirmClearConversation) {
+                                    if (confirm('Clear all conversations? This cannot be undone.')) doClear();
+                                } else {
+                                    doClear();
+                                }
+                            }}
+                            className="text-[11px] font-medium transition-colors duration-150 hover:text-white/80"
+                            style={{ color: 'rgba(255,255,255,0.38)' }}
+                        >
+                            Clear all
+                        </button>
                     </div>
                 </div>
             </div>

@@ -176,7 +176,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
         <div className="relative w-full">
             {/* Mentions popup */}
             {showMentions && filteredFiles.length > 0 && (
-                <div className="absolute bottom-full mb-2 left-0 right-0 mx-0 rounded-lg overflow-hidden z-50 animate-fade-in" style={{ background: "var(--az-overlay)", border: "1px solid var(--az-border)", boxShadow: "0 12px 32px rgba(0,0,0,0.4)", contain: 'layout paint' } as React.CSSProperties}>
+                <div className="absolute bottom-full mb-2 left-0 right-0 mx-0 rounded-lg overflow-hidden z-50 animate-fade-in max-w-full" style={{ background: "var(--az-overlay)", border: "1px solid var(--az-border)", boxShadow: "0 12px 32px rgba(0,0,0,0.4)", contain: 'layout paint' } as React.CSSProperties}>
                     <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
                         {filteredFiles.map((file, idx) => (
                             <button
@@ -241,7 +241,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                     </div>
                 )}
 
-                {/* Textarea */}
+                {/* Textarea — stable min-height, no layout jump */}
                 <textarea
                     ref={inputRef}
                     value={input}
@@ -249,8 +249,9 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                     onKeyDown={handleKeyDown}
                     placeholder="Ask Azemax..."
                     rows={1}
-                    className="w-full bg-transparent text-[14px] leading-[1.5] px-4 pt-3 pb-2 min-h-[44px] max-h-[160px] resize-none focus:outline-none"
+                    className="w-full bg-transparent text-[14px] leading-[1.5] px-4 pt-3 pb-2 min-h-[44px] max-h-[160px] resize-none focus:outline-none antialiased"
                     style={{ color: "var(--az-text)", height: '44px' } as React.CSSProperties}
+                    spellCheck={false}
                 />
 
                 {/* Bottom bar */}
@@ -298,19 +299,21 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                         {isLoading ? (
                             <button
                                 onClick={onStop}
-                                className="w-7 h-7 rounded-full flex items-center justify-center transition-colors" style={{ background: "var(--az-surface-hover)", color: "var(--az-text)", border: "1px solid var(--az-border)"}}
+                                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]" style={{ background: "var(--az-surface-hover)", color: "var(--az-text)", border: "1px solid var(--az-border)"}}
                                 title="Stop (Esc)"
+                                aria-label="Stop"
                             >
-                                <Square size={12} fill="currentColor" />
+                                <Square size={12} fill="currentColor" className="shrink-0" />
                             </button>
                         ) : (
                             <button
                                 onClick={onSend}
                                 disabled={disabled || !input.trim()}
-                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${input.trim() && !disabled ? 'active:scale-[0.97]' : 'cursor-not-allowed'}`} style={input.trim() && !disabled ? { background: 'var(--az-accent)', color: 'white', border: '1px solid var(--az-accent)'} : { background: 'var(--az-surface-2)', color: 'var(--az-text-disabled)', border: '1px solid var(--az-border)'}}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)] ${input.trim() && !disabled ? '' : 'cursor-not-allowed'}`} style={input.trim() && !disabled ? { background: 'var(--az-accent)', color: 'white', border: '1px solid var(--az-accent)'} : { background: 'var(--az-surface-2)', color: 'var(--az-text-disabled)', border: '1px solid var(--az-border)'}}
                                 title="Send (Enter)"
+                                aria-label="Send"
                             >
-                                <ArrowUp size={14} strokeWidth={2.5} />
+                                <ArrowUp size={14} strokeWidth={2.5} className="shrink-0" />
                             </button>
                         )}
                     </div>
