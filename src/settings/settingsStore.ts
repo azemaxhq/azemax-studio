@@ -131,13 +131,14 @@ registerActionHandler('privacy.importSettings', () => {
     const file = input.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = parseImportedSettings(String(reader.result));
+      const { dialogAlert } = await import('../components/UI/dialogService');
       if (result.ok) {
         setSettings(result.settings);
-        window.alert('Settings imported successfully.');
+        dialogAlert({ title: 'Settings imported', message: 'Your settings have been imported successfully.' });
       } else {
-        window.alert(`Import failed: ${result.error}`);
+        dialogAlert({ title: 'Import failed', message: result.error });
       }
     };
     reader.readAsText(file);

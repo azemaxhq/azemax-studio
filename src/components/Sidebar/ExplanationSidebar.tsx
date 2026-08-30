@@ -65,9 +65,9 @@ export const ExplanationSidebar: React.FC = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="h-full flex flex-col min-h-0 bg-transparent"
         >
-            {/* Header — 40px aligned with explorer */}
+            {/* Header — shares --az-topbar-height with Explorer/Editor for alignment */}
             <div className="shrink-0 relative z-10">
-                <div className="h-[40px] px-2.5 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid var(--az-border)' }}>
+                <div className="flex items-center justify-between px-2.5 shrink-0" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', borderBottom: '1px solid var(--az-border)', background: 'var(--az-surface)' }}>
                     <div className="flex items-center gap-2 min-w-0">
                         <div className="w-7 h-7 rounded-md bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center shrink-0">
                             <BookOpen size={14} className="text-[#a371f7] shrink-0" />

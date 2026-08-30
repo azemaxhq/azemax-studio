@@ -10,30 +10,25 @@ import {
     collectFiles,
     isDescendantOf,
     childrenOf,
-    sortTree,
     pathOf,
 } from '../../utils/safeTree';
 import {
-    Folder, FolderOpen, ChevronRight,
-    Search, X, Settings, FileCode,
-    Trash2, Hash
+    Folder,
+    ChevronRight,
+    Search, X, Settings,
+    Trash2
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ContextMenu } from '../UI/ContextMenu';
+import { useDialog } from '../UI/DialogProvider';
 import { useSettingsSelector } from '../../context/SettingsContext';
 import { getSettings } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { loadSortState, sortTreeWithState, type ExplorerSortState } from '../../utils/explorerSort';
+import { fuzzyMatch, fuzzyHighlight } from '../../utils/fuzzySearch';
 
-// Programming language icons
-import {
-    SiTypescript, SiJavascript, SiPython, SiCplusplus, SiC,
-    SiGo, SiRust, SiRuby, SiPhp, SiSwift, SiKotlin, SiHtml5,
-    SiCss3, SiSass, SiMarkdown, SiGnubash, SiDocker, SiGit,
-    SiReact, SiVuedotjs, SiSvelte, SiNodedotjs, SiGraphql
-} from 'react-icons/si';
-import { FaJava, FaDatabase, FaImage, FaLock } from 'react-icons/fa';
-import { VscJson } from 'react-icons/vsc';
+import { ExplorerFileIcon, ExplorerFolderIcon } from './ExplorerIcons';
 
 // Render recursion is bounded so a pathologically deep (but still valid) tree
 // can never render an unbounded component chain. Beyond this depth the node is
@@ -46,41 +41,80 @@ interface InputNodeProps {
     initialValue?: string;
     indentStep: number;
     indentBase: number;
+    parentId?: string | null;
+    excludeId?: string | null;
     onCommit: (name: string) => void;
     onCancel: () => void;
 }
 
-const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onCommit, onCancel }: InputNodeProps) => {
+const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, parentId = null, excludeId = null, onCommit, onCancel }: InputNodeProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
     const [value, setValue] = useState(initialValue);
-    const [isFocused, setIsFocused] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const isSubmitting = useRef(false);
+    const { fileTree } = useProjectFile();
 
     useEffect(() => {
         const timer = setTimeout(() => {
             if (inputRef.current) {
                 inputRef.current.focus();
+                // Smart selection: select filename without extension
                 if (initialValue) {
                     const lastDotIndex = initialValue.lastIndexOf('.');
-                    if (lastDotIndex > 0) {
+                    // Don't select extension, keep it visible but unselected
+                    if (lastDotIndex > 0 && lastDotIndex < initialValue.length - 1) {
                         inputRef.current.setSelectionRange(0, lastDotIndex);
                     } else {
                         inputRef.current.select();
                     }
                 }
             }
-        }, 10);
+        }, 16);
         return () => clearTimeout(timer);
     }, [initialValue]);
+
+    const validate = useCallback((name: string): string | null => {
+        const trimmed = name.trim();
+        if (!trimmed) return null; // empty handled as cancel, not error
+        if (trimmed.length > 255) return 'Name too long';
+        if (trimmed === '.' || trimmed === '..') return 'Invalid name';
+        if (/[\/\\]/.test(trimmed)) return 'Name cannot contain / or \\';
+        if (/[*?"<>|:;\x00-\x1F]/.test(trimmed)) return 'Invalid character';
+        if (trimmed.endsWith('.') || trimmed.endsWith(' ')) return 'Name cannot end with space or dot';
+        // Duplicate check — scoped to parent folder when known
+        if (parentId !== null && parentId !== undefined) {
+            const parentNode = findNodeById(fileTree, parentId);
+            const siblings = parentNode?.children ?? (parentId === ROOT_NODE_ID ? fileTree.filter(n => n.parentId === ROOT_NODE_ID) : []);
+            const toCheck = siblings.length ? siblings : (parentNode?.children ?? []);
+            // Fallback: for root, check top-level
+            const effective = parentId === ROOT_NODE_ID ? fileTree.filter(n => n.parentId === ROOT_NODE_ID || n.id === ROOT_NODE_ID) : toCheck;
+            const list = effective.length ? effective : siblings;
+            const dup = list.some(c => c.id !== excludeId && c.name.toLowerCase() === trimmed.toLowerCase());
+            if (dup) return type === 'folder' ? 'A folder with this name already exists' : 'A file with this name already exists';
+        } else if (parentId === null) {
+            // Root creation without explicit parentId — check top-level
+            const dup = fileTree.some(c => c.id !== excludeId && c.name.toLowerCase() === trimmed.toLowerCase() && c.parentId === ROOT_NODE_ID);
+            if (dup) return type === 'folder' ? 'A folder with this name already exists' : 'A file with this name already exists';
+        }
+        return null;
+    }, [fileTree, parentId, excludeId, type]);
+
+    const handleCommit = useCallback(() => {
+        if (isSubmitting.current) return;
+        const trimmed = value.trim();
+        if (!trimmed) { isSubmitting.current = true; onCancel(); return; }
+        const err = validate(trimmed);
+        if (err) { setError(err); return; }
+        isSubmitting.current = true;
+        setError(null);
+        onCommit(trimmed);
+    }, [value, validate, onCommit, onCancel]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             e.stopPropagation();
-            if (isSubmitting.current) return;
-            isSubmitting.current = true;
-            if (value.trim()) onCommit(value.trim());
-            else onCancel();
+            handleCommit();
         } else if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
@@ -92,11 +126,26 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onC
 
     const handleBlur = () => {
         if (isSubmitting.current) return;
-        isSubmitting.current = true;
-        if (value.trim()) {
-            onCommit(value.trim());
-        } else {
-            onCancel();
+        // Allow click on error to not immediately commit — slight delay
+        setTimeout(() => {
+            if (isSubmitting.current) return;
+            const trimmed = value.trim();
+            if (!trimmed) { isSubmitting.current = true; onCancel(); return; }
+            const err = validate(trimmed);
+            if (err) { setError(err); return; }
+            isSubmitting.current = true;
+            onCommit(trimmed);
+        }, 120);
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setValue(e.target.value);
+        if (error) {
+            const nextErr = validate(e.target.value.trim());
+            // Clear error as user types, or update message for still-invalid
+            if (!nextErr || nextErr !== error) setError(null);
+            if (nextErr && e.target.value.trim().length > 0) setError(nextErr);
+            else if (!nextErr) setError(null);
         }
     };
 
@@ -104,138 +153,69 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, onC
 
     return (
         <motion.div
-            initial={{ opacity: 0, x: -6 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -6 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
-            className={cn(
-                "flex items-center gap-2 py-1.5 px-2.5 mx-1.5 mt-1.5 rounded-lg border",
-                "bg-[var(--az-surface-3)] border-[var(--az-border)]"
-            )}
+            initial={{ opacity: 0, y: -2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
+            className="mx-1.5 relative"
         >
-            {/* Chevron placeholder */}
-            <span className="opacity-70 shrink-0 w-4 flex justify-center">
-                {isFolder ? <ChevronRight size={14} className="invisible" /> : <span className="w-3" />}
-            </span>
-
-            {/* Animated icon */}
-            <div className="shrink-0 animate-creation-icon-bounce">
-                {isFolder
-                    ? <Folder size={16} className="text-purple-400 drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]" />
-                    : <FileCode size={16} className="text-cyan-400 drop-shadow-[0_0_6px_rgba(34,211,238,0.5)]" />
-                }
-            </div>
-
-            {/* Input field with glow */}
-            <div className="flex-1 flex items-center relative">
+            <div
+                style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
+                className={cn(
+                    "flex items-center gap-2 py-0 pr-3 min-h-[34px] h-[34px] rounded-[6px] border text-[13px] leading-none select-none transition-colors duration-150",
+                    "bg-[var(--az-surface-2)] border-[var(--az-border)] focus-within:bg-[var(--az-surface-3)] focus-within:border-[var(--az-border-strong)] focus-within:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+                )}
+            >
+                {/* Chevron placeholder — fixed 16px slot, preserves tree geometry */}
+                <span className="shrink-0 w-4 h-4 flex items-center justify-center opacity-0 select-none" aria-hidden>
+                    <ChevronRight size={12} strokeWidth={1.75} className="invisible" />
+                </span>
+                {/* Icon — fixed 16px container, 14px visual, vertically centered */}
+                <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 leading-none">
+                    {isFolder
+                        ? <ExplorerFolderIcon isOpen={false} />
+                        : <ExplorerFileIcon name={value.trim() || 'file.txt'} />
+                    }
+                </span>
+                {/* Inline input — flex-1, full width, comfortable padding, Azemax-native focus */}
                 <input
                     ref={inputRef}
                     type="text"
                     value={value}
-                    onChange={(e) => setValue(e.target.value)}
+                    onChange={handleChange}
                     onKeyDown={handleKeyDown}
                     onBlur={handleBlur}
-                    onFocus={() => setIsFocused(true)}
-                    className={cn(
-                        "text-sm w-full px-2.5 py-1 rounded-md font-medium transition-colors duration-150 antialiased",
-                        "placeholder:text-white/25 focus:outline-none border",
-                        isFocused
-                            ? "bg-[var(--az-surface-3)] border-[var(--az-border-strong)] text-white ring-1 ring-[var(--az-border-strong)]"
-                            : "bg-white/[0.03] border-white/[0.06] text-white"
-                    )}
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    aria-label={isFolder ? 'Folder name' : 'File name'}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? 'explorer-input-error' : undefined}
                     placeholder={isFolder ? "Folder name..." : "File name..."}
+                    className={cn(
+                        "flex-1 min-w-0 w-full bg-transparent border-0 px-1 py-1 m-0 h-7 leading-none truncate",
+                        "text-[13px] font-[450] antialiased tracking-[-0.01em]",
+                        "placeholder:text-white/25 placeholder:font-normal placeholder:text-[12px] text-[var(--az-text)] selection:bg-white/[0.12] caret-[var(--az-text)]",
+                        "outline-none !outline-none focus:outline-none focus-visible:outline-none focus:!outline-none focus-visible:!outline-none focus:ring-0 focus-visible:ring-0 focus:!ring-0 focus-visible:!ring-0 focus:shadow-none focus-visible:shadow-none focus:!shadow-none focus-visible:!shadow-none"
+                    )}
                 />
-
-                {/* Typing indicator dot */}
-                {isFocused && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className={cn(
-                            "absolute right-2 w-1.5 h-1.5 rounded-full",
-                            isFolder ? "bg-purple-400" : "bg-cyan-400"
-                        )}
-                    />
-                )}
             </div>
-
-            {/* Hint badge */}
-            <motion.span
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.3, duration: 0.2 }}
-                className="text-[9px] text-white/30 font-mono shrink-0 select-none"
-            >
-                ↵
-            </motion.span>
+            {error && (
+                <div
+                    id="explorer-input-error"
+                    className="mt-1 px-2 py-1 rounded-[4px] border text-[11px] leading-snug"
+                    style={{ marginLeft: `${depth * indentStep + indentBase + 24}px`, marginRight: '8px', background: 'rgba(218,54,51,0.08)', borderColor: 'rgba(218,54,51,0.16)', color: '#E85D5D' } as React.CSSProperties}
+                    role="alert"
+                >
+                    {error}
+                </div>
+            )}
         </motion.div>
     )
 }
 
-// Neutral folder color — subtle, single muted tone (quiet confidence)
-const getFolderColor = (_name: string): string => {
-    return 'text-[#8B90A0]';
-};
-
-const FileIcon = ({ name, isOpen, isFolder }: { name: string; isOpen?: boolean; isFolder?: boolean }) => {
-    if (isFolder) {
-        const color = getFolderColor(name);
-        return isOpen
-            ? <FolderOpen size={16} className={cn(color, "drop-shadow-sm")} />
-            : <Folder size={16} className={cn(color, "drop-shadow-sm")} />;
-    }
-
-    // React/Vue/Svelte components
-    if (name.endsWith('.tsx') || name.endsWith('.jsx')) return <SiReact size={14} className="text-cyan-400 drop-shadow-sm" />;
-    if (name.endsWith('.ts')) return <SiTypescript size={14} className="text-blue-400 drop-shadow-sm" />;
-    if (name.endsWith('.js') || name.endsWith('.mjs') || name.endsWith('.cjs')) return <SiJavascript size={14} className="text-yellow-400 drop-shadow-sm" />;
-    if (name.endsWith('.vue')) return <SiVuedotjs size={14} className="text-emerald-400 drop-shadow-sm" />;
-    if (name.endsWith('.svelte')) return <SiSvelte size={14} className="text-orange-500 drop-shadow-sm" />;
-
-    // Config files
-    if (name === 'package.json' || name === 'package-lock.json') return <SiNodedotjs size={14} className="text-green-500 drop-shadow-sm" />;
-    if (name === 'tsconfig.json' || name.startsWith('tsconfig')) return <SiTypescript size={14} className="text-blue-400 drop-shadow-sm" />;
-    if (name.endsWith('.json')) return <VscJson size={15} className="text-yellow-500 drop-shadow-sm" />;
-    if (name === 'Dockerfile' || name.startsWith('docker')) return <SiDocker size={14} className="text-blue-500 drop-shadow-sm" />;
-    if (name === '.gitignore' || name === '.gitattributes') return <SiGit size={14} className="text-orange-500 drop-shadow-sm" />;
-    if (name.startsWith('.env')) return <FaLock size={13} className="text-yellow-600 drop-shadow-sm" />;
-    if (name.endsWith('.graphql') || name.endsWith('.gql')) return <SiGraphql size={14} className="text-pink-500 drop-shadow-sm" />;
-
-    // Languages
-    if (name.endsWith('.py')) return <SiPython size={14} className="text-green-400 drop-shadow-sm" />;
-    if (name.endsWith('.java')) return <FaJava size={14} className="text-orange-500 drop-shadow-sm" />;
-    if (name.endsWith('.cs')) return <Hash size={14} className="text-[#178600] drop-shadow-sm" />;
-    if (name.endsWith('.c') || name.endsWith('.h')) return <SiC size={14} className="text-blue-500 drop-shadow-sm" />;
-    if (name.endsWith('.cpp') || name.endsWith('.cc') || name.endsWith('.hpp')) return <SiCplusplus size={14} className="text-blue-600 drop-shadow-sm" />;
-    if (name.endsWith('.go')) return <SiGo size={14} className="text-cyan-400 drop-shadow-sm" />;
-    if (name.endsWith('.rs')) return <SiRust size={14} className="text-orange-400 drop-shadow-sm" />;
-    if (name.endsWith('.rb')) return <SiRuby size={14} className="text-red-400 drop-shadow-sm" />;
-    if (name.endsWith('.php')) return <SiPhp size={14} className="text-purple-400 drop-shadow-sm" />;
-    if (name.endsWith('.swift')) return <SiSwift size={14} className="text-orange-500 drop-shadow-sm" />;
-    if (name.endsWith('.kt') || name.endsWith('.kts')) return <SiKotlin size={14} className="text-purple-500 drop-shadow-sm" />;
-
-    // Styles
-    if (name.endsWith('.css')) return <SiCss3 size={14} className="text-blue-400 drop-shadow-sm" />;
-    if (name.endsWith('.scss') || name.endsWith('.sass')) return <SiSass size={14} className="text-pink-400 drop-shadow-sm" />;
-
-    // Markup & docs
-    if (name.endsWith('.md') || name.endsWith('.mdx')) return <SiMarkdown size={14} className="text-white/60 drop-shadow-sm" />;
-    if (name.endsWith('.html') || name.endsWith('.htm')) return <SiHtml5 size={14} className="text-orange-500 drop-shadow-sm" />;
-
-    // Shell & scripts
-    if (name.endsWith('.sh') || name.endsWith('.bash') || name.endsWith('.zsh')) return <SiGnubash size={14} className="text-green-500 drop-shadow-sm" />;
-
-    // Data
-    if (name.endsWith('.sql')) return <FaDatabase size={13} className="text-[var(--az-text)] drop-shadow-sm" />;
-    if (name.endsWith('.yml') || name.endsWith('.yaml')) return <Settings size={14} className="text-red-300 drop-shadow-sm" />;
-
-    // Images
-    if (name.match(/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i)) return <FaImage size={13} className="text-purple-400 drop-shadow-sm" />;
-
-    // Default
-    return <FileCode size={15} className="text-gray-400 drop-shadow-sm" />;
-};
+// Premium icon system now centralized in ExplorerIcons.tsx — consistent 18px optical box
 
 interface FileTreeNodeProps {
     node: FileNode;
@@ -270,22 +250,24 @@ interface FileTreeNodeProps {
     onBookmark?: (nodeId: string) => void;
     isBookmarked?: boolean;
     newlyCreatedNodes?: Set<string>;
+    isDirty?: boolean;
+    gitStatus?: 'M' | 'A' | 'U' | null;
+    hasError?: boolean;
+    hasWarning?: boolean;
 }
 
-// Highlight matching text in search
-const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
+// Highlight matching text — uses fuzzy subsequence indices for premium search feel
 const HighlightText = ({ text, query }: { text: string; query: string }) => {
     if (!query || !query.trim()) return <span>{text}</span>;
-    // The query is a literal search string; escape it so special characters
-    // (e.g. `[`, `(`, `.`) never crash the regex or match unintended text.
-    const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, 'gi'));
+    const { matched, indices } = fuzzyMatch(text, query);
+    if (!matched) return <span>{text}</span>;
+    const parts = fuzzyHighlight(text, indices);
     return (
         <span>
-            {parts.map((part, i) =>
-                part.toLowerCase() === query.toLowerCase()
-                    ? <mark key={i} className="bg-amber-500/25 text-amber-200 rounded-sm px-0.5 py-0 ring-1 ring-amber-500/30">{part}</mark>
-                    : part
+            {parts.map((p, i) =>
+                p.highlight
+                    ? <mark key={i} className="bg-amber-500/20 text-amber-200 rounded-[2px] px-[1px] py-0 ring-1 ring-amber-500/25 font-medium">{p.text}</mark>
+                    : <span key={i}>{p.text}</span>
             )}
         </span>
     );
@@ -323,7 +305,11 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     onSetSelectedNode,
     onStartCreating,
     onCommitCreation,
-    onCancelCreation
+    onCancelCreation,
+    isDirty = false,
+    gitStatus = null,
+    hasError = false,
+    hasWarning = false,
 }) => {
     const isFolder = node.type === 'folder';
     // A folder is open when the UI expansion set includes it, or when search
@@ -335,6 +321,11 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     const isRenaming = renamingNodeId === node.id;
     const isDragOver = dragOverNodeId === node.id && isFolder;
     const isNewlyCreated = newlyCreatedNodes?.has(node.id) ?? false;
+    // Dirty state kept for future use; yellow modification dots removed per design (Image 1)
+    void isDirty;
+    void hasWarning;
+    const { modifiedFiles: _dirtySet } = useProjectFile();
+    void _dirtySet;
 
     const isCreatingHere = creationState.isActive && (
         creationState.parentId === node.id ||
@@ -343,6 +334,13 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
 
     const handleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
+        // Ignore the second click of a double-click — dblclick handles folder toggle once
+        if (isFolder && e.detail > 1) {
+            onFocus(node.id);
+            onSetSelectedNode(node.id);
+            onSetSelectedFolder(node.id);
+            return;
+        }
         onFocus(node.id);
         onSetSelectedNode(node.id);
         if (isFolder) {
@@ -352,6 +350,22 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
             onSetActiveFile(node);
             onSetSelectedFolder(node.parentId ?? ROOT_NODE_ID);
         }
+    };
+
+    const handleChevronClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!isFolder) return;
+        // Chevron toggles without changing selection — premium IDE behavior
+        onToggleFolder(node.id);
+    };
+
+    const handleDoubleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        // Folders are toggled on single click; double-click would otherwise
+        // cause a second toggle and appear not to open. Keep dblclick no-op for folders.
+        if (isFolder) return;
+        onSetActiveFile(node);
     };
 
     const handleDeleteClick = (e: React.MouseEvent) => {
@@ -392,6 +406,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 depth={depth}
                 indentStep={indentStep}
                 indentBase={indentBase}
+                parentId={node.parentId ?? ROOT_NODE_ID}
+                excludeId={node.id}
                 initialValue={node.name}
                 onCommit={onRenameCommit}
                 onCancel={onRenameCancel}
@@ -400,21 +416,27 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     }
 
     return (
-        <div className={isNewlyCreated ? 'animate-creation-success rounded-lg' : ''}>
+        <div className={isNewlyCreated ? 'animate-creation-success rounded-[6px]' : ''}>
             <div
+                role="treeitem"
+                aria-expanded={isFolder ? isOpen : undefined}
+                aria-selected={isActive || isSelected}
+                aria-label={`${isFolder ? 'Folder' : 'File'} ${node.name}${isActive ? ' active' : ''}`}
+                tabIndex={isFocused ? 0 : -1}
                 className={cn(
-                    "flex items-center gap-1.5 py-0 px-2 cursor-pointer transition-colors duration-120 text-[13px] leading-none select-none group relative rounded-md mx-1 border min-h-[28px] h-7 antialiased",
+                    "flex items-center gap-1.5 py-0 pr-2 cursor-pointer transition-colors duration-100 text-[13px] leading-none select-none group relative rounded-[6px] mx-1.5 border min-h-[28px] h-[28px] antialiased outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)]",
                     isActive
-                        ? "bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)]"
+                        ? "bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)] font-[500] after:absolute after:left-0 after:top-[5px] after:bottom-[5px] after:w-[2px] after:rounded-full after:bg-[var(--az-accent)] after:opacity-[0.85]"
                         : isFocused
-                            ? "bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border-strong)]"
+                            ? "bg-[var(--az-surface-2)] text-[var(--az-text)] border-[var(--az-border)] font-[450]"
                             : isSelected
-                                ? "bg-[var(--az-surface-2)] text-[var(--az-text-secondary)] border-[var(--az-border)]"
-                                : "text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border-transparent",
-                    isDragOver && "bg-[var(--az-accent-soft)] border-[var(--az-accent-border)]"
+                                ? "bg-[var(--az-surface-2)] text-[var(--az-text)] border-[var(--az-border)] font-[450]"
+                                : "text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-white/[0.04] border-transparent font-[400] hover:border-white/[0.03]",
+                    isDragOver && "bg-[var(--az-accent-soft)] border-[var(--az-accent-border)] shadow-[0_0_0_1px_var(--az-accent-border)]",
                 )}
                 style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
                 onClick={handleClick}
+                onDoubleClick={handleDoubleClick}
                 onContextMenu={(e) => onContextMenu(e, node)}
                 draggable
                 onDragStart={handleDragStart}
@@ -423,38 +445,48 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 onDragEnd={onDragEnd}
                 data-node-id={node.id}
             >
-                {/* Chevron for folders */}
-                <span
+                {/* Chevron — 20px hit area, 12px glyph, fixed slot for reliable toggle */}
+                <button
+                    aria-label={isFolder ? (isOpen ? 'Collapse folder' : 'Expand folder') : undefined}
+                    tabIndex={-1}
+                    onClick={handleChevronClick}
                     className={cn(
-                        "opacity-60 shrink-0 w-4 flex justify-center transition-transform duration-150",
-                        isOpen && "rotate-90"
+                        "shrink-0 w-5 h-5 flex items-center justify-center rounded-[4px] transition-[transform,background,opacity,color] duration-150 ease-out focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)]",
+                        isFolder ? "opacity-45 hover:opacity-100 hover:bg-white/[0.06] text-[var(--az-text-muted)] hover:text-[var(--az-text)] cursor-pointer" : "opacity-0 pointer-events-none",
+                        isOpen && isFolder && "rotate-90 opacity-60"
                     )}
                 >
-                    {isFolder ? (
-                        <ChevronRight size={12} strokeWidth={2.5} />
-                    ) : (
-                        <span className="w-3" />
-                    )}
-                </span>
+                    {isFolder ? <ChevronRight size={12} strokeWidth={1.75} /> : <span className="w-2.5" />}
+                </button>
 
-                {/* File/Folder Icon */}
+                {/* File/Folder Icon — fixed 16px container, 14px visual */}
                 <div className="shrink-0 flex items-center justify-center w-4 h-4">
-                    <FileIcon name={node.name} isOpen={isOpen} isFolder={isFolder} />
+                    {isFolder ? <ExplorerFolderIcon isOpen={!!isOpen} /> : <ExplorerFileIcon name={node.name} />}
                 </div>
 
-                {/* File/Folder Name */}
-                <span className="truncate flex-1 font-medium">
+                {/* File/Folder Name — 13px, truncates, same column for all file types */}
+                <span className={cn("truncate flex-1 min-w-0 tracking-[-0.01em] leading-none text-[13px]", isActive ? "font-[500]" : isFolder ? "font-[450]" : "font-[400]")} title={node.name} style={{ fontWeight: isActive ? 500 : isFolder ? 450 : 400 }}>
                     <HighlightText text={node.name} query={searchQuery} />
                 </span>
 
+                {/* Status — kept for errors only; yellow modification dots removed per design */}
+                {hasError && !isFolder && (
+                    <span className="shrink-0 ml-2 w-2 h-2 flex items-center justify-center" aria-hidden>
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#DA3633]" title="Error" />
+                    </span>
+                )}
+                {gitStatus && !isFolder && (
+                    <span className="text-[9px] font-bold tracking-widest shrink-0 w-3 text-center leading-none ml-1" style={{ color: gitStatus === 'M' ? '#D29922' : gitStatus === 'A' ? '#2EA043' : '#707680' }} title={gitStatus === 'M' ? 'Modified' : gitStatus === 'A' ? 'Added' : 'Untracked'}>{gitStatus}</span>
+                )}
+
                 {/* File Count Badge for Folders */}
                 {isFolder && Array.isArray(node.children) && node.children.length > 0 && !isOpen && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/50 font-semibold tabular-nums border border-white/[0.05]">
+                    <span className="ml-1 text-[10px] px-1 py-0 rounded-full bg-white/[0.06] text-white/45 font-medium tabular-nums border border-white/[0.04] leading-none shrink-0">
                         {node.children.length}
                     </span>
                 )}
 
-                {/* Bookmark Button (Visible on Hover for Files) */}
+                {/* Bookmark — subtle, 14px hit */}
                 {!isFolder && (
                     <button
                         onClick={(e) => {
@@ -463,26 +495,26 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                 onBookmark(node.id);
                             }
                         }}
-                        className={`opacity-0 group-hover:opacity-100 p-1 rounded-md transition-all duration-150 ${isBookmarked
-                                ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/25'
-                                : 'text-white/40 hover:text-yellow-400 hover:bg-yellow-500/15'
+                        className={`opacity-0 group-hover:opacity-100 p-1 rounded-[4px] transition-colors duration-100 ${isBookmarked
+                                ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                                : 'text-white/30 hover:text-amber-400 hover:bg-white/[0.06]'
                             }`}
                         title={isBookmarked ? 'Remove from Favorites' : 'Add to Favorites'}
                     >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.75">
                             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                         </svg>
                     </button>
                 )}
 
-                {/* Download Button (Visible on Hover) */}
+                {/* Download — subtle */}
                 {onDownload && (
                     <button
                         onClick={handleDownloadClick}
-                        className="opacity-0 group-hover:opacity-100 p-1 hover:text-green-400 hover:bg-green-500/15 rounded-md transition-all duration-150"
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:text-white/70 hover:bg-white/[0.06] rounded-[4px] transition-colors duration-100"
                         title={isFolder ? "Download Folder" : "Download File"}
                     >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                             <polyline points="7 10 12 15 17 10"></polyline>
                             <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -490,13 +522,13 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                     </button>
                 )}
 
-                {/* Delete Button (Visible on Hover) */}
+                {/* Delete — subtle */}
                 <button
                     onClick={handleDeleteClick}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 hover:bg-red-500/15 rounded-md transition-all duration-150"
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 hover:bg-red-500/10 rounded-[4px] transition-colors duration-100"
                     title="Delete"
                 >
-                    <Trash2 size={12} />
+                    <Trash2 size={11} strokeWidth={1.75} />
                 </button>
             </div>
 
@@ -509,11 +541,16 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                         transition={{ duration: 0.2, ease: "easeInOut" }}
                         className="overflow-hidden relative"
                     >
-                        {/* Indent Guide Line — crisp 1px, no subpixel */}
+                        {/* Indent Guide — ultra premium: 1px hairline, soft fade, always above selection */}
                         {depth >= 0 && (
                             <div
-                                className="absolute top-0 bottom-0 w-px"
-                                style={{ background: "var(--az-border)", left: `${(depth * indentStep) + indentBase + 7}px`, transform: 'translateZ(0)' } as React.CSSProperties}
+                                className="absolute top-0 bottom-0 w-px pointer-events-none z-10"
+                                style={{
+                                    left: `${(depth * indentStep) + indentBase + 8}px`,
+                                    background: "linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.085) 10px, rgba(255,255,255,0.085) calc(100% - 10px), transparent 100%)",
+                                    width: "1px",
+                                    transform: "translateZ(0)",
+                                } as React.CSSProperties}
                             />
                         )}
 
@@ -578,8 +615,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                 </div>
                             ) : (
                                 <div
-                                    style={{ paddingLeft: `${(depth + 1) * indentStep + 28}px` }}
-                                    className="py-2 text-[11px] text-white/25 italic select-none flex items-center gap-1.5"
+                                    style={{ paddingLeft: `${(depth + 1) * indentStep + 24}px` }}
+                                    className="py-1.5 text-[11px] text-white/25 italic select-none flex items-center gap-1.5 min-h-[28px]"
                                 >
                                     <span className="w-1 h-1 rounded-full bg-white/20"></span>
                                     Empty folder
@@ -593,6 +630,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                     depth={depth + 1}
                                     indentStep={indentStep}
                                     indentBase={indentBase}
+                                    parentId={node.id}
                                     onCommit={onCommitCreation}
                                     onCancel={onCancelCreation}
                                 />
@@ -661,7 +699,7 @@ const getFileTypeFilter = (node: FileNode, fileType: string): boolean => {
     return typeMap[fileType]?.includes(ext) || false;
 };
 
-// Advanced search with multiple criteria — delegates to the cycle-safe filterTree.
+// Advanced search with fuzzy matching — delegates to cycle-safe filterTree.
 const filterTreeAdvanced = (nodes: FileNode[], filters: SearchFilters): FileNode[] => {
     const { query, fileType, dateRange, sizeRange, showHidden } = filters;
 
@@ -669,14 +707,13 @@ const filterTreeAdvanced = (nodes: FileNode[], filters: SearchFilters): FileNode
         return nodes;
     }
 
-    const lowerQuery = query.toLowerCase();
     const now = Date.now();
 
     return filterTree(nodes, {
         forceOpen: Boolean(query),
         skip: (node) => !showHidden && node.name.startsWith('.'),
         predicate: (node) => {
-            const nameMatches = !query || node.name.toLowerCase().includes(lowerQuery);
+            const nameMatches = !query || fuzzyMatch(node.name, query).matched;
             const dateMatches = getDateFilter(node, dateRange, now);
             const sizeMatches = getSizeFilter(node, sizeRange);
             const typeMatches = getFileTypeFilter(node, fileType);
@@ -693,24 +730,31 @@ interface FileExplorerProps {
 export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSearchClose }) => {
     const { fileTree, activeFile } = useProjectFile();
     const { selectedNodeId, creationState, expandedFolderIds } = useProjectUI();
-    const { renameNode, deleteNode, commitCreation, cancelCreation, startCreating, moveNode, toggleFolder, setActiveFile, setSelectedFolder, setSelectedNode, getFileTree } = useProjectActions();
+    const { renameNode, deleteNode, commitCreation, cancelCreation, startCreating, moveNode, toggleFolder, setActiveFile, setSelectedFolder, setSelectedNode, getFileTree, duplicateNode, expandRecursively, collapseAll, expandAll } = useProjectActions();
+    const dialog = useDialog();
 
-    // Below 1024px the tree indentation tightens so deep nesting can never push
-    // filenames/actions past the drawer edge. Desktop indentation is unchanged.
+    // Refined spacing: 28px rows, 18px indent step, 8px base — breathable but compact
     const isDesktop = useMediaQuery('(min-width: 1024px)');
-    const indentStep = isDesktop ? 16 : 10;
-    const indentBase = isDesktop ? 12 : 8;
+    const indentStep = isDesktop ? 18 : 16;
+    const indentBase = isDesktop ? 8 : 6;
 
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
     const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
+    const [searchInput, setSearchInput] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+    // Debounce search input → query (150ms) to avoid scanning 1k-file tree on every keystroke
+    useEffect(() => {
+        const t = setTimeout(() => setSearchQuery(searchInput), 150);
+        return () => clearTimeout(t);
+    }, [searchInput]);
     const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null);
     const [draggedNode, setDraggedNode] = useState<FileNode | null>(null);
     const [newlyCreatedNodes, setNewlyCreatedNodes] = useState<Set<string>>(new Set());
     const prevTreeIdsRef = useRef<Set<string>>(new Set());
     const containerRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Track newly created nodes for entrance animation. Uses cycle-safe
     // traversal (collectIds), a single O(N) walk per tree change (the previous
@@ -770,13 +814,41 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         [fileTree, searchFilters, searchQuery]
     );
 
+    // Explorer sort — persists via localStorage, controlled from Sidebar's Sort menu
+    const [sortState, setSortState] = useState<ExplorerSortState>(() => loadSortState());
+    useEffect(() => {
+        const onSort = (e: Event) => {
+            const detail = (e as CustomEvent<ExplorerSortState>).detail;
+            if (detail) setSortState(detail);
+        };
+        const onStorage = (ev: StorageEvent) => {
+            if (ev.key === 'azemax-explorer-sort' && ev.newValue) {
+                try { setSortState(JSON.parse(ev.newValue)); } catch { /* ignore */ }
+            }
+        };
+        window.addEventListener('azemax-sort-changed' as any, onSort as any);
+        window.addEventListener('storage', onStorage);
+        // refresh event — preserve selection/expanded, re-validate tree
+        const onRefresh = () => {
+            // No-op for in-browser FS; the spinner in Sidebar provides feedback.
+            // We simply force a micro-rerender so counts stay live.
+            setSortState(s => ({ ...s }));
+        };
+        window.addEventListener('explorer-refresh' as any, onRefresh as any);
+        return () => {
+            window.removeEventListener('azemax-sort-changed' as any, onSort as any);
+            window.removeEventListener('storage', onStorage);
+            window.removeEventListener('explorer-refresh' as any, onRefresh as any);
+        };
+    }, []);
+
     // Render shape: the canonical model stores the project root as a top-level
     // sibling of the root-level items (parentId === 'root'). For rendering, the
     // root is presented as the container of those items, exactly like the
     // legacy root.children model users saw before. This is a pure projection —
-    // the real tree is never mutated. Rows are rendered from an IDE-sorted
-    // (folders-first, natural-alpha) view derived from the filtered tree.
-    const sortedTree = useMemo(() => sortTree(filteredTree), [filteredTree]);
+    // the real tree is never mutated. Rows are rendered from a deterministic,
+    // user-configurable sorted view derived from the filtered tree.
+    const sortedTree = useMemo(() => sortTreeWithState(filteredTree, sortState), [filteredTree, sortState]);
 
     const treeForRender = useMemo(() => {
         const root = sortedTree.find(n => n.id === ROOT_NODE_ID);
@@ -802,6 +874,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
 
     // Clear all filters
     const clearFilters = () => {
+        setSearchInput('');
         setSearchQuery('');
         setSearchFilters({
             query: '',
@@ -953,8 +1026,22 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 if (focusedNodeId && focusedNodeId !== 'root' && !e.metaKey) {
                     e.preventDefault();
                     const targetNode = flatNodes.find(n => n.id === focusedNodeId);
-                    if (!confirmDeleteSetting || window.confirm(`Delete "${targetNode?.name ?? 'this item'}"?`)) {
+                    if (!targetNode) break;
+                    if (!confirmDeleteSetting) {
                         deleteNode(focusedNodeId);
+                    } else {
+                        void (async () => {
+                            const confirmed = await dialog.confirm({
+                                title: targetNode.type === 'folder' ? `Delete folder "${targetNode.name}"?` : `Delete "${targetNode.name}"?`,
+                                message: targetNode.type === 'folder'
+                                    ? `Are you sure you want to delete "${targetNode.name}" and its contents? This will permanently delete the folder and all files inside it.`
+                                    : `Are you sure you want to delete "${targetNode.name}"? This action cannot be undone.`,
+                                confirmLabel: 'Delete',
+                                cancelLabel: 'Cancel',
+                                danger: true,
+                            });
+                            if (confirmed) deleteNode(focusedNodeId);
+                        })();
                     }
                 }
                 break;
@@ -966,7 +1053,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 }
                 break;
         }
-    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder, setSelectedNode, creationState.isActive, renamingNodeId, confirmDeleteSetting, expandedFolderIds]);
+    }, [flatNodes, focusedNodeId, toggleFolder, deleteNode, setActiveFile, setSelectedFolder, setSelectedNode, creationState.isActive, renamingNodeId, confirmDeleteSetting, expandedFolderIds, dialog]);
 
     useEffect(() => {
         document.addEventListener('keydown', handleKeyDown);
@@ -991,8 +1078,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     const handleDragOver = useCallback((_e: React.DragEvent, node: FileNode) => {
         if (node.type === 'folder' && draggedNode && draggedNode.id !== node.id) {
             setDragOverNodeId(node.id);
+            // Auto-expand folder on hover (600ms) — premium IDE behavior
+            if (dragExpandTimerRef.current) clearTimeout(dragExpandTimerRef.current);
+            dragExpandTimerRef.current = setTimeout(() => {
+                if (!expandedFolderIds.has(node.id)) toggleFolder(node.id);
+            }, 600);
         }
-    }, [draggedNode]);
+    }, [draggedNode, expandedFolderIds, toggleFolder]);
 
     const handleDrop = useCallback((_e: React.DragEvent, targetNode: FileNode) => {
         if (draggedNode && targetNode.type === 'folder' && draggedNode.id !== targetNode.id) {
@@ -1008,6 +1100,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     }, [draggedNode, moveNode, getFileTree]);
 
     const handleDragEnd = useCallback(() => {
+        if (dragExpandTimerRef.current) { clearTimeout(dragExpandTimerRef.current); dragExpandTimerRef.current = null; }
         setDraggedNode(null);
         setDragOverNodeId(null);
     }, []);
@@ -1037,21 +1130,46 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     const handleDelete = useCallback((id?: string) => {
         const targetId = id || contextMenu?.nodeId;
         setContextMenu(null);
-        if (targetId && targetId !== 'root') {
-            if (!confirmDeleteSetting || window.confirm('Delete this item?')) {
-                setTimeout(() => {
-                    deleteNode(targetId);
-                }, 50);
-            }
+        if (!targetId || targetId === 'root') return;
+        const node = findNodeById(fileTree, targetId);
+        const name = node?.name ?? 'this item';
+        const type = (node?.type as 'file' | 'folder') ?? 'file';
+        if (!confirmDeleteSetting) {
+            setTimeout(() => deleteNode(targetId), 50);
+            return;
         }
-    }, [contextMenu, deleteNode, confirmDeleteSetting]);
+        void (async () => {
+            const confirmed = await dialog.confirm({
+                title: type === 'folder' ? `Delete folder "${name}"?` : `Delete "${name}"?`,
+                message: type === 'folder'
+                    ? `Are you sure you want to delete "${name}" and its contents? This will permanently delete the folder and all files inside it.`
+                    : `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+                confirmLabel: 'Delete',
+                cancelLabel: 'Cancel',
+                danger: true,
+            });
+            if (confirmed) setTimeout(() => deleteNode(targetId), 50);
+        })();
+    }, [contextMenu, deleteNode, confirmDeleteSetting, fileTree, dialog]);
 
     const handleRenameCommit = useCallback((newName: string) => {
-        if (renamingNodeId) {
-            renameNode(renamingNodeId, newName);
-            setRenamingNodeId(null);
+        if (!renamingNodeId) return;
+        const trimmed = newName.trim();
+        // Premium validation — prevent path separators, empty, or duplicate sibling names
+        if (!trimmed || trimmed === '.' || trimmed === '..' || /[\/\\]/.test(trimmed) || /[*?"<>|:]/.test(trimmed)) {
+            // Keep rename open so user can correct — briefly flash feedback
+            return;
         }
-    }, [renamingNodeId, renameNode]);
+        const node = findNodeById(fileTree, renamingNodeId);
+        if (node) {
+            const parentChildren = node.parentId ? (findNodeById(fileTree, node.parentId)?.children ?? []) : fileTree;
+            const duplicate = parentChildren.some(c => c.id !== renamingNodeId && c.name.toLowerCase() === trimmed.toLowerCase());
+            if (duplicate) return;
+        }
+        const res = renameNode(renamingNodeId, trimmed);
+        // Only close if successful — allows user to fix duplicate/invalid names
+        if (!res.error) setRenamingNodeId(null);
+    }, [renamingNodeId, renameNode, fileTree]);
 
     const handleRenameCancel = useCallback(() => {
         setRenamingNodeId(null);
@@ -1275,90 +1393,133 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         const node = contextMenu?.nodeId ? findNodeById(fileTree, contextMenu.nodeId) : null;
         const isFolder = node?.type === 'folder';
         const isBookmarked = node ? bookmarkedFiles.has(node.id) : false;
-
-        const baseItems = [
-            { label: 'New File...', onClick: () => startCreating('file', contextMenu?.nodeId !== 'root' ? contextMenu?.nodeId : undefined) },
-            { label: 'New Folder...', onClick: () => startCreating('folder', contextMenu?.nodeId !== 'root' ? contextMenu?.nodeId : undefined) },
-            { type: 'separator' as const },
-        ];
+        const isExpanded = node ? expandedFolderIds.has(node.id) : false;
 
         if (isRoot) {
             return [
-                { label: 'New File...', onClick: () => startCreating('file', 'root') },
-                { label: 'New Folder...', onClick: () => startCreating('folder', 'root') },
+                { label: 'New File…', onClick: () => startCreating('file', 'root') },
+                { label: 'New Folder…', onClick: () => startCreating('folder', 'root') },
                 { type: 'separator' as const },
+                { label: 'Refresh Explorer', onClick: () => window.dispatchEvent(new CustomEvent('explorer-refresh')) },
+                { type: 'separator' as const },
+                { label: 'Expand All', onClick: () => expandAll() },
+                { label: 'Collapse All', onClick: () => collapseAll() },
+                { type: 'separator' as const },
+                { label: 'Sort By…', onClick: () => window.dispatchEvent(new CustomEvent('azemax-open-sort')) },
             ];
         }
-
-        const bookmarkItem = !isFolder ? {
-            label: isBookmarked ? 'Remove from Favorites' : 'Add to Favorites',
-            onClick: () => toggleBookmark(contextMenu?.nodeId || ''),
-            shortcut: '⌘B',
-            icon: isBookmarked ? '⭐' : '☆'
-        } : null;
-
-        const downloadItems = isFolder
-            ? [{ label: 'Download Folder...', onClick: () => downloadFolder(contextMenu?.nodeId || '') }]
-            : [{ label: 'Download File', onClick: () => downloadFile(contextMenu?.nodeId || '') }];
-
+        if (isFolder) {
+            return [
+                { label: 'New File…', onClick: () => startCreating('file', contextMenu!.nodeId) },
+                { label: 'New Folder…', onClick: () => startCreating('folder', contextMenu!.nodeId) },
+                { type: 'separator' as const },
+                { label: 'Open', onClick: () => toggleFolder(contextMenu!.nodeId) },
+                { label: isExpanded ? 'Collapse' : 'Expand', onClick: () => toggleFolder(contextMenu!.nodeId), shortcut: isExpanded ? '←' : '→' },
+                { label: 'Expand Recursively', onClick: () => expandRecursively(contextMenu!.nodeId) },
+                { type: 'separator' as const },
+                { label: 'Copy', onClick: () => { const p = pathOf(fileTree, contextMenu!.nodeId); navigator.clipboard.writeText(p ? `/${p}` : '/'); } },
+                { label: 'Copy Path', onClick: () => { const p = pathOf(fileTree, contextMenu!.nodeId); navigator.clipboard.writeText(p ? `/${p}` : '/'); }, shortcut: '⌥⌘C' },
+                { label: 'Copy Relative Path', onClick: () => { navigator.clipboard.writeText(pathOf(fileTree, contextMenu!.nodeId)); } },
+                { type: 'separator' as const },
+                { label: 'Rename…', onClick: handleRenameStart, shortcut: 'F2' },
+                { label: 'Duplicate', onClick: () => duplicateNode(contextMenu!.nodeId) },
+                { type: 'separator' as const },
+                { label: 'Delete', onClick: () => handleDelete(), danger: true, shortcut: '⌫' },
+            ];
+        }
+        // File
         return [
-            ...baseItems,
-            ...(bookmarkItem ? [bookmarkItem] : []),
-            ...downloadItems,
+            { label: 'Open', onClick: () => { const n = findNodeById(fileTree, contextMenu!.nodeId); if (n) setActiveFile(n); }, shortcut: '↵' },
+            { label: 'Open to the Side', onClick: () => { const n = findNodeById(fileTree, contextMenu!.nodeId); if (n) setActiveFile(n); } },
             { type: 'separator' as const },
-            { label: 'Reveal in Finder', onClick: () => console.log('Reveal:', contextMenu?.nodeId), shortcut: '⌥⌘R' },
-            { label: 'Open in Terminal', onClick: () => console.log('Terminal:', contextMenu?.nodeId) },
+            { label: 'Rename…', onClick: handleRenameStart, shortcut: 'F2' },
+            { label: 'Duplicate', onClick: () => duplicateNode(contextMenu!.nodeId) },
             { type: 'separator' as const },
-            { label: 'Copy Path', onClick: () => { const p = pathOf(fileTree, contextMenu?.nodeId ?? ''); navigator.clipboard.writeText(p ? `/${p}` : '/'); }, shortcut: '⌥⌘C' },
-            { label: 'Copy Relative Path', onClick: () => { navigator.clipboard.writeText(pathOf(fileTree, contextMenu?.nodeId ?? '')); }, shortcut: '⇧⌥⌘C' },
+            { label: isBookmarked ? 'Remove from Favorites' : 'Add to Favorites', onClick: () => toggleBookmark(contextMenu!.nodeId), shortcut: '☆' },
+            { label: 'Download', onClick: () => downloadFile(contextMenu!.nodeId) },
             { type: 'separator' as const },
-            { label: 'Rename', onClick: handleRenameStart, shortcut: 'F2' },
-            { label: 'Delete', onClick: () => handleDelete(), danger: true, shortcut: '⌫' }
+            { label: 'Copy', onClick: () => { const n = findNodeById(fileTree, contextMenu!.nodeId); if (n?.content) navigator.clipboard.writeText(n.content); } },
+            { label: 'Copy Path', onClick: () => { const p = pathOf(fileTree, contextMenu!.nodeId); navigator.clipboard.writeText(p ? `/${p}` : '/'); }, shortcut: '⌥⌘C' },
+            { label: 'Copy Relative Path', onClick: () => { navigator.clipboard.writeText(pathOf(fileTree, contextMenu!.nodeId)); } },
+            { type: 'separator' as const },
+            { label: 'Reveal in Explorer', onClick: () => { setFocusedNodeId(contextMenu!.nodeId); containerRef.current?.focus(); } },
+            { type: 'separator' as const },
+            { label: 'Delete', onClick: () => handleDelete(), danger: true, shortcut: '⌫' },
         ];
     };
 
-    return (
-        <div className="h-full flex flex-col" ref={containerRef} tabIndex={0}>
+    // Auto-focus search when opened, Escape to close
+    useEffect(() => {
+        if (isSearchOpen) {
+            requestAnimationFrame(() => searchInputRef.current?.focus());
+        } else {
+            setSearchInput('');
+            setSearchQuery('');
+        }
+    }, [isSearchOpen]);
+    // Escape handling for search is also in the input's onKeyDown, plus global handler above
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            setSearchInput('');
+            setSearchQuery('');
+            onSearchClose();
+            containerRef.current?.focus();
+        }
+    };
 
-            {/* Premium Search Bar with Advanced Filters */}
-            <div className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSearchOpen ? 'grid-rows-[1fr] opacity-100 mb-1' : 'grid-rows-[0fr] opacity-0 mb-0'}`}>
+    return (
+        <div className="h-full flex flex-col" ref={containerRef} tabIndex={0} onKeyDown={(e) => {
+            if (e.key === 'Escape' && isSearchOpen && document.activeElement === searchInputRef.current) return; // let input handler deal with it
+            if (e.key === 'Escape' && isSearchOpen) { e.preventDefault(); onSearchClose(); }
+        }}>
+
+            {/* Search — compact, integrated into explorer header flow */}
+            <div className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${isSearchOpen ? 'grid-rows-[1fr] opacity-100 mb-1' : 'grid-rows-[0fr] opacity-0 mb-0'}`}>
                 <div className="overflow-hidden">
-                    <div className="px-2.5 pt-2.5 pb-1">
+                    <div className="px-2 pt-2 pb-1">
                         <div className="relative group">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-blue-400/70 transition-colors" />
+                            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/25 group-focus-within:text-white/40 transition-colors" />
                             <input
                                 ref={searchInputRef}
                                 type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search files... (⌘F)"
-                                className="w-full pl-9 pr-20 py-2 h-8 text-[13px] leading-none bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder:text-white/30 placeholder:text-[12px] focus:outline-none focus:border-[var(--az-accent-border)] focus:bg-white/[0.06] focus:shadow-[var(--az-focus-ring)] transition-colors duration-150 antialiased"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                onKeyDown={handleSearchKeyDown}
+                                placeholder="Search files…"
+                                aria-label="Search files"
+                                autoComplete="off"
+                                spellCheck={false}
+                                className="w-full pl-7 pr-16 h-7 text-[12.5px] leading-none bg-white/[0.04] border border-white/[0.06] rounded-[6px] text-white placeholder:text-white/30 placeholder:text-[12px] focus:outline-none focus:border-[var(--az-border-strong)] focus:bg-white/[0.05] transition-colors duration-100 antialiased"
                             />
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
                                 {getActiveFilterCount() > 0 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-[var(--az-text)] font-semibold">
+                                    <span className="text-[10px] px-1 py-0.5 rounded-full bg-white/[0.08] text-white/60 font-medium leading-none">
                                         {getActiveFilterCount()}
                                     </span>
                                 )}
                                 <button
                                     onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                                    className={`p-1 rounded-md transition-all ${showAdvancedFilters
+                                    className={`w-5 h-5 flex items-center justify-center rounded-[4px] transition-colors duration-100 ${showAdvancedFilters
                                             ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border)]'
-                                            : 'text-white/40 hover:text-white hover:bg-white/10'
+                                            : 'text-white/35 hover:text-white/70 hover:bg-white/[0.06]'
                                         }`}
                                     title="Advanced Filters"
                                 >
-                                    <Settings size={12} />
+                                    <Settings size={11} strokeWidth={1.75} />
                                 </button>
-                                {searchQuery && (
+                                {(searchInput || searchQuery) && (
                                     <button
                                         onClick={() => {
+                                            setSearchInput('');
                                             setSearchQuery('');
                                             onSearchClose();
                                         }}
-                                        className="p-1 text-white/40 hover:text-white hover:bg-white/10 rounded-md transition-all"
+                                        aria-label="Clear search"
+                                        className="w-5 h-5 flex items-center justify-center text-white/35 hover:text-white/70 hover:bg-white/[0.06] rounded-[4px] transition-colors duration-100"
                                     >
-                                        <X size={12} />
+                                        <X size={11} strokeWidth={1.75} />
                                     </button>
                                 )}
                             </div>
@@ -1460,40 +1621,40 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
 
             {/* Favorites Section */}
             {bookmarkedFiles.size > 0 && (
-                <div className="border-b border-white/[0.04] bg-gradient-to-b from-amber-500/5 to-transparent">
-                    <div className="px-3 py-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-amber-400">
+                <div className="border-b border-white/[0.04] bg-gradient-to-b from-amber-500/[0.04] to-transparent">
+                    <div className="px-2.5 py-1.5 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="text-amber-400/80">
                                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                             </svg>
-                            <span className="text-[11px] font-semibold text-amber-300">Favorites ({bookmarkedFiles.size})</span>
+                            <span className="text-[10px] font-[600] tracking-[0.04em] uppercase text-amber-300/80">Favorites · {bookmarkedFiles.size}</span>
                         </div>
                         <button
                             onClick={() => {
                                 setBookmarkedFiles(new Set());
                             }}
-                            className="text-[9px] text-white/40 hover:text-white/60 px-1.5 py-0.5 rounded hover:bg-white/10 transition-all"
+                            className="text-[9px] text-white/30 hover:text-white/50 px-1 py-0.5 rounded-[4px] hover:bg-white/[0.06] transition-colors"
                         >
-                            Clear All
+                            Clear
                         </button>
                     </div>
-                    <div className="px-2 pb-2 space-y-0.5">
+                    <div className="px-1.5 pb-1.5 space-y-0">
                         {getBookmarkedFiles().map((file) => (
                             <div
                                 key={file.id}
                                 onClick={() => setActiveFile(file)}
-                                className="flex items-center gap-2 py-1.5 px-2 rounded-lg text-[11px] text-white/70 hover:text-white hover:bg-white/[0.06] cursor-pointer transition-all group"
+                                className="flex items-center gap-1.5 pl-1 pr-1 py-1 rounded-[6px] text-[12px] text-white/60 hover:text-white hover:bg-white/[0.04] cursor-pointer transition-colors group h-[28px] mx-1.5"
                             >
-                                <FileIcon name={file.name} isFolder={false} />
-                                <span className="truncate flex-1">{file.name}</span>
+                                <span className="shrink-0 flex items-center justify-center w-4 h-4"><ExplorerFileIcon name={file.name} /></span>
+                                <span className="truncate flex-1 min-w-0 text-[13px] font-[400] tracking-[-0.01em]">{file.name}</span>
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         toggleBookmark(file.id);
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 rounded transition-all"
+                                    className="opacity-0 group-hover:opacity-100 w-4 h-4 flex items-center justify-center text-amber-400/70 hover:text-amber-300 hover:bg-white/[0.06] rounded-[3px] transition-colors"
                                 >
-                                    <X size={10} />
+                                    <X size={9} strokeWidth={1.75} />
                                 </button>
                             </div>
                         ))}
@@ -1501,9 +1662,12 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 </div>
             )}
 
-            {/* File Tree */}
+            {/* File Tree — VS Code density, 26px rows, thin scrollbar */}
             <div
-                className="flex-1 overflow-y-auto py-1 custom-scrollbar"
+                role="tree"
+                aria-label="File Explorer"
+                aria-multiselectable={false}
+                className="flex-1 overflow-y-auto overflow-x-hidden py-1 explorer-scrollbar"
                 onContextMenu={handleContainerContextMenu}
                 onDragOver={(e) => { e.preventDefault(); setDragOverNodeId('root'); }}
                 onDrop={() => { if (draggedNode) { moveNode(draggedNode.id, 'root'); } handleDragEnd(); }}
@@ -1585,6 +1749,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                             depth={0}
                             indentStep={indentStep}
                             indentBase={indentBase}
+                            parentId={creationState.parentId ?? ROOT_NODE_ID}
                             onCommit={commitCreation}
                             onCancel={cancelCreation}
                         />
@@ -1601,13 +1766,43 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 )}
             </div>
 
-            {/* Keyboard Shortcuts Help */}
-            <div className="px-3 py-2.5 border-t border-white/[0.04] text-[10px] text-white/30 flex items-center justify-center gap-3 flex-wrap bg-gradient-to-t from-white/[0.01] to-transparent">
-                <span className="flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-white/40 font-mono">↑↓</kbd> Navigate</span>
-                <span className="text-white/10">•</span>
-                <span className="flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-white/40 font-mono">↵</kbd> Open</span>
-                <span className="text-white/10">•</span>
-                <span className="flex items-center gap-1"><kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-white/40 font-mono">F2</kbd> Rename</span>
+            {/* Keyboard hint bar — quiet, tiny, IDE-native */}
+            <div className="mt-auto shrink-0 px-2 py-1.5 border-t flex items-center justify-center gap-2 flex-wrap" style={{ borderColor: 'var(--az-border)', background: 'var(--az-surface-2)', minHeight: '26px' }}>
+                {creationState.isActive ? (
+                    <>
+                        <span className="flex items-center gap-1 text-[10px] leading-none" style={{ color: 'var(--az-text-faint)' }}>
+                            <kbd className="px-1 py-0.5 rounded-[3px] bg-white/[0.06] border border-white/[0.05] text-[9px] font-mono leading-none text-white/50">↵</kbd> Create
+                        </span>
+                        <span className="w-px h-3 bg-white/[0.06] shrink-0" aria-hidden />
+                        <span className="flex items-center gap-1 text-[10px] leading-none" style={{ color: 'var(--az-text-faint)' }}>
+                            <kbd className="px-1 py-0.5 rounded-[3px] bg-white/[0.06] border border-white/[0.05] text-[9px] font-mono leading-none text-white/50">Esc</kbd> Cancel
+                        </span>
+                    </>
+                ) : renamingNodeId ? (
+                    <>
+                        <span className="flex items-center gap-1 text-[10px] leading-none" style={{ color: 'var(--az-text-faint)' }}>
+                            <kbd className="px-1 py-0.5 rounded-[3px] bg-white/[0.06] border border-white/[0.05] text-[9px] font-mono leading-none text-white/50">↵</kbd> Save
+                        </span>
+                        <span className="w-px h-3 bg-white/[0.06] shrink-0" aria-hidden />
+                        <span className="flex items-center gap-1 text-[10px] leading-none" style={{ color: 'var(--az-text-faint)' }}>
+                            <kbd className="px-1 py-0.5 rounded-[3px] bg-white/[0.06] border border-white/[0.05] text-[9px] font-mono leading-none text-white/50">Esc</kbd> Cancel
+                        </span>
+                    </>
+                ) : (
+                    <>
+                        <span className="flex items-center gap-1 text-[10px] leading-none" style={{ color: 'var(--az-text-faint)' }}>
+                            <kbd className="px-1 py-0.5 rounded-[3px] bg-white/[0.06] border border-white/[0.05] text-[9px] font-mono leading-none text-white/50">↑↓</kbd> Navigate
+                        </span>
+                        <span className="w-px h-3 bg-white/[0.06] shrink-0 hidden sm:block" aria-hidden />
+                        <span className="flex items-center gap-1 text-[10px] leading-none" style={{ color: 'var(--az-text-faint)' }}>
+                            <kbd className="px-1 py-0.5 rounded-[3px] bg-white/[0.06] border border-white/[0.05] text-[9px] font-mono leading-none text-white/50">↵</kbd> Open
+                        </span>
+                        <span className="w-px h-3 bg-white/[0.06] shrink-0 hidden sm:block" aria-hidden />
+                        <span className="flex items-center gap-1 text-[10px] leading-none" style={{ color: 'var(--az-text-faint)' }}>
+                            <kbd className="px-1 py-0.5 rounded-[3px] bg-white/[0.06] border border-white/[0.05] text-[9px] font-mono leading-none text-white/50">F2</kbd> Rename
+                        </span>
+                    </>
+                )}
             </div>
         </div>
     );

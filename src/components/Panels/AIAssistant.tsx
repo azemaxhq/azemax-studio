@@ -16,6 +16,7 @@ import { AIComposer } from './AIComposer';
 import '../AI/ai-loading.css';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useDialog } from '../UI/DialogProvider';
 import {
     saveSessions,
     loadSessions,
@@ -585,6 +586,7 @@ export const useAutoScroll = (active: boolean = true) => {
 
 export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = true }) => {
     const { settings } = useSettings();
+    const dialog = useDialog();
     // Session State
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -1544,9 +1546,16 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                 {/* Hover Actions — reveal on hover/focus */}
                                                 <div className={`absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-[6px] p-0.5 transition-all duration-150 ${isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0'}`} style={{ background: isActive ? 'rgba(19,27,42,0.96)' : 'rgba(20,23,28,0.96)', border: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(6px)' }}>
                                                     <button
-                                                        onClick={(e) => {
+                                                        onClick={async (e) => {
                                                             e.stopPropagation();
-                                                            const newTitle = prompt('Rename:', session.title || 'New Chat');
+                                                            const newTitle = await dialog.prompt({
+                                                                title: 'Rename conversation',
+                                                                message: 'Enter a new name for this conversation.',
+                                                                defaultValue: session.title || 'New Chat',
+                                                                placeholder: 'Conversation name',
+                                                                confirmLabel: 'Rename',
+                                                                validate: v => !v.trim() ? 'Name cannot be empty' : null,
+                                                            });
                                                             if (newTitle !== null && newTitle.trim()) {
                                                                 setSessions(prev => prev.map(s =>
                                                                     s.id === session.id ? { ...s, title: newTitle.trim(), updatedAt: Date.now() } : s
@@ -1585,14 +1594,21 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     <div className="shrink-0 px-3 py-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.01)' }}>
                         <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.32)' }}>{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
                         <button
-                            onClick={() => {
+                            onClick={async () => {
                                 const doClear = () => {
                                     setSessions([]);
                                     saveSessions([]);
                                     handleNewChat();
                                 };
                                 if (settings.ai.confirmClearConversation) {
-                                    if (confirm('Clear all conversations? This cannot be undone.')) doClear();
+                                    const confirmed = await dialog.confirm({
+                                        title: 'Clear all conversations?',
+                                        message: 'This will permanently delete all conversations. This action cannot be undone.',
+                                        confirmLabel: 'Clear all',
+                                        cancelLabel: 'Cancel',
+                                        danger: true,
+                                    });
+                                    if (confirmed) doClear();
                                 } else {
                                     doClear();
                                 }
@@ -1636,11 +1652,18 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     </div>
 
                     <button
-                        onClick={() => {
+                        onClick={async () => {
                             if (!currentSessionId) return;
                             const session = sessions.find(s => s.id === currentSessionId);
                             const currentTitle = session?.title || 'New Chat';
-                            const newTitle = prompt('Rename chat:', currentTitle);
+                            const newTitle = await dialog.prompt({
+                                title: 'Rename chat',
+                                message: 'Enter a new name for this conversation.',
+                                defaultValue: currentTitle,
+                                placeholder: 'Chat name',
+                                confirmLabel: 'Rename',
+                                validate: v => !v.trim() ? 'Name cannot be empty' : null,
+                            });
                             if (newTitle != null && newTitle.trim() !== '') {
                                 setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: newTitle.trim(), updatedAt: Date.now() } : s));
                             }

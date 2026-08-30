@@ -83,11 +83,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, items }
                 borderColor: 'var(--az-border)',
                 borderWidth: '1px'
             }}
-            className="fixed z-[9999] min-w-[220px] max-w-[320px] w-auto max-h-[min(70vh,480px)] overflow-y-auto border shadow-[0_12px_32px_rgba(0,0,0,0.5)] rounded-lg py-1.5 flex flex-col gap-0.5 transition-opacity antialiased"
+            className="fixed z-[9999] min-w-[200px] max-w-[300px] w-auto max-h-[min(70vh,480px)] overflow-y-auto border shadow-[0_12px_32px_rgba(0,0,0,0.5)] rounded-[8px] py-1 flex flex-col gap-0 transition-opacity antialiased"
         >
             {items.map((item, index) => {
                 if (item.type === 'separator') {
-                    return <div key={index} className="h-px bg-white/10 my-1 mx-2" />;
+                    return <div key={index} className="h-px bg-white/[0.06] my-1 mx-2" />;
                 }
 
                 return (
@@ -97,20 +97,18 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, items }
                             item.onClick?.();
                             onClose();
                         }}
-                        className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-all rounded-[4px] mx-1 select-none
+                        className={`w-full text-left px-2.5 h-[28px] text-[12.5px] flex items-center justify-between transition-colors rounded-[5px] mx-1 select-none leading-none
                         ${item.danger
                                 ? 'text-red-400 hover:text-white hover:bg-red-500/80'
-                                : 'text-white/80 hover:text-white hover:bg-white/10'
+                                : 'text-white/75 hover:text-white hover:bg-white/[0.07]'
                             }`}
                         style={{ width: 'calc(100% - 8px)' }}
                     >
                         <div className="flex items-center gap-2">
-                            {/* Icons can provide visual cues but VS Code mostly relies on text for common actions in default menu, 
-                                but we can keep icons if passed */}
                             {item.icon}
                             <span>{item.label}</span>
                         </div>
-                        {item.shortcut && <span className="text-white/30 text-[10px] mac-cmd-key ml-6 font-mono tracking-tight">{item.shortcut}</span>}
+                        {item.shortcut && <span className="text-white/25 text-[10px] ml-6 font-mono tracking-tight">{item.shortcut}</span>}
                     </button>
                 );
             })}

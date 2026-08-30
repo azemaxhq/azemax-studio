@@ -19,6 +19,7 @@ import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
 import { setCursorPosition, useCursorPosition } from '../../core/runtime/cursorPositionStore';
 import { setActiveEditor, clearActiveEditor } from '../../core/editor/activeEditorStore';
+import { getLanguageFromFilename as getMonacoLangId } from '../../utils/language';
 import type { FileNode } from '../../utils/mockFileSystem';
 
 // Isolated status-bar readout. Subscribes to the external cursor store, so
@@ -60,21 +61,11 @@ const RunButton: React.FC<{ activeFile: FileNode | null; language: string }> = (
     );
 };
 
-// Language detection helper
+// Language detection helper — delegates to central language.ts for 30+ languages, plaintext fallback
 const getLanguage = (fileName: string): string => {
-    if (!fileName) return 'typescript';
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    const langMap: Record<string, string> = {
-        'ts': 'typescript', 'tsx': 'typescript',
-        'js': 'javascript', 'jsx': 'javascript',
-        'py': 'python', 'java': 'java',
-        'c': 'c', 'cpp': 'cpp', 'h': 'c', 'hpp': 'cpp',
-        'go': 'go', 'rs': 'rust', 'rb': 'ruby',
-        'php': 'php', 'cs': 'csharp', 'swift': 'swift', 'kt': 'kotlin',
-        'css': 'css', 'scss': 'scss', 'json': 'json',
-        'md': 'markdown', 'html': 'html', 'sh': 'shell', 'bash': 'shell'
-    };
-    return langMap[ext || ''] || 'typescript';
+    if (!fileName) return 'plaintext';
+    const monacoId = getMonacoLangId(fileName);
+    return monacoId;
 };
 
 
@@ -346,6 +337,23 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [runDiagnostics]);
+
+    // Save shortcut — Ctrl/Cmd+S saves current Monaco content without recreating editor
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                const ed = editorRef.current;
+                const file = activeFileRef.current;
+                if (ed && file) {
+                    const content = ed.getValue();
+                    updateFileContent(file.id, content);
+                }
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [updateFileContent]);
 
     // Clean up inline-completion debounce timer, pending promise, decorations and
     // any in-flight AI request on unmount so a destroyed editor never leaks.
@@ -1075,7 +1083,31 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             monaco.editor.defineTheme('github-dark', {
                 base: 'vs-dark',
                 inherit: true,
-                rules: [],
+                rules: [
+                    { token: 'comment', foreground: '707680', fontStyle: 'italic' },
+                    { token: 'comment.doc', foreground: '8B949E', fontStyle: 'italic' },
+                    { token: 'keyword', foreground: '58A6FF' },
+                    { token: 'keyword.control', foreground: '58A6FF' },
+                    { token: 'type', foreground: '79C0FF' },
+                    { token: 'type.identifier', foreground: '79C0FF' },
+                    { token: 'class', foreground: '79C0FF', fontStyle: 'bold' },
+                    { token: 'interface', foreground: '79C0FF' },
+                    { token: 'string', foreground: 'A5D6FF' },
+                    { token: 'string.escape', foreground: 'FFAB70' },
+                    { token: 'number', foreground: '79C0FF' },
+                    { token: 'constant', foreground: '79C0FF' },
+                    { token: 'variable', foreground: 'F2F3F5' },
+                    { token: 'variable.parameter', foreground: 'FFA657' },
+                    { token: 'function', foreground: 'D2A8FF' },
+                    { token: 'method', foreground: 'D2A8FF' },
+                    { token: 'operator', foreground: 'F2F3F5' },
+                    { token: 'delimiter', foreground: 'A7ACB5' },
+                    { token: 'annotation', foreground: 'FFA657' },
+                    { token: 'tag', foreground: '7EE787' },
+                    { token: 'attribute.name', foreground: '79C0FF' },
+                    { token: 'attribute.value', foreground: 'A5D6FF' },
+                    { token: 'regexp', foreground: 'FFAB70' },
+                ],
                 colors: {
                     'editor.background': '#101318',
                     'editor.foreground': '#F2F3F5',
@@ -1085,11 +1117,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     'editorCursor.foreground': '#F2F3F5',
                     'editor.selectionBackground': '#2A3040',
                     'editor.inactiveSelectionBackground': '#232830',
-                    'editorIndentGuide.background': '#242830',
-                    'editorIndentGuide.activeBackground': '#303640',
+                    'editorIndentGuide.background': '#1E222A',
+                    'editorIndentGuide.activeBackground': '#2A344A',
+                    'editorBracketPairGuide.background1': '#242830',
+                    'editorBracketPairGuide.background2': '#283142',
+                    'editorBracketPairGuide.background3': '#1E4D40',
+                    'editorBracketPairGuide.background4': '#4D2E1E',
+                    'editorBracketPairGuide.activeBackground1': '#303640',
+                    'editorBracketPairGuide.activeBackground2': '#3A4A6A',
                     'editorGutter.background': '#101318',
                     'scrollbarSlider.background': '#232830',
-                    'scrollbarSlider.hoverBackground': '#303640'
+                    'scrollbarSlider.hoverBackground': '#303640',
+                    'editorOverviewRuler.border': '#101318',
+                    'editorRuler.foreground': '#242830',
+                    'editor.foldBackground': '#14171C',
+                    'editorStickyScroll.background': '#101318',
+                    'editorStickyScroll.border': '#242830',
+                    'editor.findMatchBackground': '#3B82F633',
+                    'editor.findMatchHighlightBackground': '#3B82F61A',
+                    'editor.lineHighlightBorder': '#00000000',
                 }
             });
         }
@@ -1224,40 +1270,75 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         letterSpacing: 0,
         padding: densityPadding,
         inlineSuggest: { enabled: settings.ai.inlineSuggestions, mode: 'subwordSmart' },
-        quickSuggestions: settings.code.quickSuggestions,
+        quickSuggestions: settings.code.quickSuggestions ? { other: true, comments: false, strings: false } : false as any,
         suggestOnTriggerCharacters: settings.code.quickSuggestions,
+        quickSuggestionsDelay: 80,
+        suggest: {
+            showKeywords: true,
+            showSnippets: true,
+            preview: true,
+            insertMode: 'insert' as const,
+            filterGraceful: true,
+        } as any,
+        acceptSuggestionOnEnter: 'on' as const,
+        acceptSuggestionOnCommitCharacter: true,
+        snippetSuggestions: 'top' as const,
+        tabCompletion: 'on',
+        wordBasedSuggestions: 'off' as const,
+        autoClosingBrackets: 'always' as const,
+        autoClosingQuotes: 'always' as const,
+        autoClosingDelete: 'always' as const,
+        autoSurround: 'languageDefined' as const,
+        autoIndent: 'advanced' as const,
         formatOnPaste: settings.code.formatOnPaste,
         formatOnType: settings.code.formatOnType,
-        tabCompletion: 'on',
-        scrollBeyondLastLine: true,
-        smoothScrolling: settings.editor.smoothScrolling,
-        cursorBlinking: settings.editor.cursorBlinking,
-        cursorStyle: settings.editor.cursorStyle,
-        cursorSmoothCaretAnimation: settings.performance.optimizeEditorRendering ? 'off' : 'on',
-        renderLineHighlight: settings.performance.optimizeEditorRendering ? 'none' : 'all',
-        occurrencesHighlight: settings.performance.optimizeEditorRendering ? 'off' : 'singleFile',
-        largeFileOptimizations: settings.performance.optimizeEditorRendering,
-        fontLigatures: settings.performance.optimizeEditorRendering ? false : undefined,
-        tabSize: settings.editor.tabSize,
-        insertSpaces: settings.editor.insertSpaces,
-        detectIndentation: false,
-        autoIndent: 'advanced',
-        lineNumbers: settings.editor.lineNumbers ? 'on' : 'off',
-        lineNumbersMinChars: 3,
-        lineDecorationsWidth: 10,
-        glyphMargin: true,
-        bracketPairColorization: { enabled: settings.editor.bracketPairColorization },
-        renderWhitespace: settings.editor.renderWhitespace,
-        stickyScroll: { enabled: settings.editor.stickyScroll },
         folding: settings.editor.codeFolding,
+        foldingStrategy: 'indentation' as const,
+        showFoldingControls: 'mouseover' as const,
+        unfoldOnClickAfterEndOfLine: false,
+        bracketPairColorization: { enabled: settings.editor.bracketPairColorization },
+        matchBrackets: 'always' as const,
         // Explicit guide configuration — guides must live in indentation whitespace, not over glyphs
         guides: {
             indentation: true,
             bracketPairs: true,
             bracketPairsHorizontal: false,
             highlightActiveIndentation: true,
-            highlightActiveBracketPair: false,
-        },
+            highlightActiveBracketPair: true,
+        } as any,
+        find: {
+            seedSearchStringFromSelection: 'always' as const,
+            autoFindInSelection: 'never' as const,
+            addExtraSpaceOnTop: false,
+        } as any,
+        scrollBeyondLastLine: true,
+        smoothScrolling: settings.editor.smoothScrolling,
+        cursorBlinking: settings.editor.cursorBlinking,
+        cursorStyle: settings.editor.cursorStyle,
+        cursorSmoothCaretAnimation: settings.performance.optimizeEditorRendering ? 'off' : 'on',
+        cursorSurroundingLines: 2,
+        renderLineHighlight: settings.performance.optimizeEditorRendering ? 'none' : 'all',
+        renderLineHighlightOnlyWhenFocus: false,
+        occurrencesHighlight: settings.performance.optimizeEditorRendering ? 'off' : 'singleFile',
+        selectionHighlight: true,
+        largeFileOptimizations: settings.performance.optimizeEditorRendering,
+        fontLigatures: settings.performance.optimizeEditorRendering ? false : undefined,
+        tabSize: settings.editor.tabSize,
+        insertSpaces: settings.editor.insertSpaces,
+        detectIndentation: false,
+        lineNumbers: settings.editor.lineNumbers ? 'on' : 'off',
+        lineNumbersMinChars: 3,
+        lineDecorationsWidth: 10,
+        glyphMargin: true,
+        renderWhitespace: settings.editor.renderWhitespace,
+        stickyScroll: { enabled: settings.editor.stickyScroll },
+        linkedEditing: true,
+        dragAndDrop: true,
+        multiCursorModifier: 'ctrlCmd' as const,
+        multiCursorMergeOverlapping: true,
+        columnSelection: false,
+        copyWithSyntaxHighlighting: true,
+        accessibilitySupport: 'off' as const,
         // Prevent layout shifts and ensure guides track glyph metrics
         automaticLayout: true,
         scrollbar: {
@@ -1269,6 +1350,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         },
         overviewRulerBorder: false,
         overviewRulerLanes: 3,
+        rulers: [] as number[],
     }), [
         settings.editor.showMinimap,
         settings.editor.wordWrap,
@@ -1330,8 +1412,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     return (
         <div className="w-full h-full bg-transparent flex flex-col relative group">
-            {/* Toolbar — neutral minimal */}
-            <div className="h-[40px] min-h-[40px] flex items-center justify-between px-3 shrink-0 overflow-hidden" style={{ background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)'}}>
+            {/* Toolbar — shares --az-topbar-height with Explorer header for perfect alignment */}
+            <div className="flex items-center justify-between px-3 shrink-0 overflow-hidden" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}>
                 <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
                     {/* Check Errors — Premium AI DeepCheck */}
                     <button
@@ -1488,10 +1570,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 </div>
 
                 <div className="flex items-center gap-3 relative mr-2 shrink-0">
-                    <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-1 rounded-md border" style={{ color: "var(--az-text-muted)", background: "var(--az-surface-2)", borderColor: "var(--az-border)"}}>
-                        {language}
-                    </span>
-
                     <RunButton activeFile={activeFile} language={language} />
 
                     {/* AI Sidebar Toggle - Interactive Animated */}

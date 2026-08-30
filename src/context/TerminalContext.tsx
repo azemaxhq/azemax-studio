@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
 import { getSettings } from '../settings/settingsStore';
+import { dialogConfirm } from '../components/UI/dialogService';
 
 export interface ExecutionData {
     executionTime: number;
@@ -183,9 +184,16 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
         terminalEventEmitter.dispatchEvent(new CustomEvent('clear', { detail: { id } }));
     }, [terminalEventEmitter]);
 
-    const stopProcess = useCallback((id: string) => {
+    const stopProcess = useCallback(async (id: string) => {
         if (getSettings().terminal.confirmBeforeKill && isRunning) {
-            if (!window.confirm('Stop the running process in this terminal?')) return;
+            const confirmed = await dialogConfirm({
+                title: 'Stop process?',
+                message: 'A process is still running in this terminal. Are you sure you want to stop it?',
+                confirmLabel: 'Stop',
+                cancelLabel: 'Cancel',
+                danger: true,
+            });
+            if (!confirmed) return;
         }
         // Dispatch stop intent; the owning ShellTerminal maps it to its session
         // controller (signal/kill -> backend process termination -> exit frame).

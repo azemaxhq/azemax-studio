@@ -1,4 +1,5 @@
 import { getLanguageFromExtension } from './codeExecutionService';
+import { getMonacoLanguage as getCentralMonacoLanguage } from './language';
 import type * as Monaco from 'monaco-editor';
 
 // Marker severity map
@@ -11,35 +12,8 @@ export interface DiagnosticResult {
     isError: boolean;
 }
 
-// Language mapping for syntax checking
-const getMonacoLanguage = (language: string): string => {
-    const languageMap: Record<string, string> = {
-        'typescript': 'typescript',
-        'javascript': 'javascript',
-        'python': 'python',
-        'java': 'java',
-        'c': 'c',
-        'cpp': 'cpp',
-        'go': 'go',
-        'rust': 'rust',
-        'php': 'php',
-        'ruby': 'ruby',
-        'swift': 'swift',
-        'kotlin': 'kotlin',
-        'csharp': 'csharp',
-        'json': 'json',
-        'css': 'css',
-        'scss': 'scss',
-        'html': 'html',
-        'xml': 'xml',
-        'yaml': 'yaml',
-        'sql': 'sql',
-        'bash': 'shell',
-        'plaintext': 'plaintext'
-    };
-    
-    return languageMap[language] || 'plaintext';
-};
+// Delegate to central language.ts for 30+ languages — keeps diagnostics in sync with editor
+const getMonacoLanguage = (language: string): string => getCentralMonacoLanguage(language);
 
 export const checkCodeErrors = async (
     code: string,
@@ -153,38 +127,56 @@ export const checkCodeErrorsWithAI = async (
     };
 };
 
-// Check syntax using Monaco Editor's built-in diagnostics
+// Check syntax using Monaco Editor's built-in diagnostics — waits for async TS/JS workers
 const checkWithMonacoDiagnostics = async (
     code: string,
     fileName: string,
     language: string,
     monaco: typeof Monaco
 ): Promise<DiagnosticResult> => {
-    const markers: Monaco.editor.IMarkerData[] = [];
     const monacoLanguage = getMonacoLanguage(language);
-    const model = monaco.editor.createModel(code, monacoLanguage, monaco.Uri.parse(`file:///${fileName}`));
-    
+    const uri = monaco.Uri.parse(`file:///${fileName.replace(/[^a-zA-Z0-9._\-\/]/g, '_')}`);
+    // Reuse existing model if uri exists to avoid leaks, else create
+    const existing = monaco.editor.getModel(uri);
+    const model = existing ?? monaco.editor.createModel(code, monacoLanguage, uri);
+    const created = !existing;
+    if (existing) {
+        // Ensure model language/content in sync
+        if (existing.getLanguageId() !== monacoLanguage) monaco.editor.setModelLanguage(existing, monacoLanguage);
+        if (existing.getValue() !== code) existing.setValue(code);
+    }
     try {
-        // No delay — Monaco ready immediately for faster diagnostics
-        
-        // Get any syntax markers from Monaco
-        const monacoMarkers = monaco.editor.getModelMarkers({ resource: model.uri });
-        
-        // Convert Monaco markers to our format
-        for (const marker of monacoMarkers) {
-            markers.push({
-                startLineNumber: marker.startLineNumber,
-                startColumn: marker.startColumn,
-                endLineNumber: marker.endLineNumber,
-                endColumn: marker.endColumn,
-                message: marker.message,
-                severity: marker.severity,
-                source: marker.source || 'Monaco'
-            });
+        // TS/JS workers validate asynchronously — poll briefly then fallback to language-specific checks if still empty
+        const maxWaitMs = monacoLanguage === 'typescript' || monacoLanguage === 'javascript' ? 500 : 250;
+        const stepMs = 60;
+        let monacoMarkers: Monaco.editor.IMarker[] = [];
+        const start = Date.now();
+        // Initial yield to let worker schedule
+        await new Promise(r => setTimeout(r, stepMs));
+        while (Date.now() - start < maxWaitMs) {
+            monacoMarkers = monaco.editor.getModelMarkers({ resource: uri });
+            if (monacoMarkers.length > 0) break;
+            // Early exit if language has no worker (python etc returns 0 forever) — wait only 2 steps
+            if (monacoLanguage !== 'typescript' && monacoLanguage !== 'javascript' && monacoLanguage !== 'json' && monacoLanguage !== 'css') {
+                if (Date.now() - start > 120) break;
+            }
+            await new Promise(r => setTimeout(r, stepMs));
         }
-        
-        return { markers, output: '', isError: markers.some(m => m.severity === SEVERITY_ERROR) };
-        
+        if (monacoMarkers.length > 0) {
+            const markers: Monaco.editor.IMarkerData[] = monacoMarkers.map(m => ({
+                startLineNumber: m.startLineNumber,
+                startColumn: m.startColumn,
+                endLineNumber: m.endLineNumber,
+                endColumn: m.endColumn,
+                message: m.message,
+                severity: m.severity,
+                source: m.source || 'Monaco'
+            }));
+            return { markers, output: '', isError: markers.some(m => m.severity === SEVERITY_ERROR) };
+        }
+        // No worker markers — gracefully fall through to regex-based language checks for richer errors
+        const fallback = await checkWithLanguageSpecificTools(code, fileName, language);
+        return fallback;
     } catch (error) {
         console.error('Monaco diagnostics failed:', error);
         return {
@@ -201,11 +193,9 @@ const checkWithMonacoDiagnostics = async (
             isError: true
         };
     } finally {
-        // Always release the temporary model so a disposed/slow diagnostics run
-        // never leaks Monaco models (each one keeps a language-service worker).
-        if (!model.isDisposed()) {
-            model.dispose();
-        }
+        if (created && !model.isDisposed()) model.dispose();
+        // If we reused, keep model alive — caller may expect persistence; but we created temp uri so dispose is fine
+        // For reused case, do not dispose shared model.
     }
 };
 

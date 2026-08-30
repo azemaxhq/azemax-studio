@@ -4,6 +4,7 @@ import { TerminalProvider } from './context/TerminalContext';
 import { ExplanationProvider } from './context/ExplanationContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { PerformanceProvider } from './context/PerformanceContext';
+import { DialogProvider } from './components/UI/DialogProvider';
 import { ErrorBoundary } from './components/UI/ErrorBoundary';
 import { composeProviders } from './core/composeProviders';
 
@@ -37,6 +38,7 @@ const AppLoadingFallback = () => (
 );
 
 const AppProviders = composeProviders(
+  DialogProvider,
   PerformanceProvider,
   ProjectProvider,
   TerminalProvider,

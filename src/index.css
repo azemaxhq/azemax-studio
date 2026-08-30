@@ -101,6 +101,9 @@
   --az-dur-base: 150ms;
   --az-dur-slow: 220ms;
 
+  /* ---- Layout ---- */
+  --az-topbar-height: 40px;
+
   color: var(--az-text);
   background-color: var(--az-bg);
 }
@@ -170,6 +173,16 @@ body {
 .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #232831; border-radius: 999px; background-clip: padding-box; border: 1px solid transparent; }
 .custom-scrollbar { scrollbar-gutter: stable; }
+
+/* Explorer — 4px extremely subtle scrollbar, visible only on hover/scroll */
+.explorer-scrollbar { scrollbar-width: thin; scrollbar-color: transparent transparent; scrollbar-gutter: stable; }
+.explorer-scrollbar:hover { scrollbar-color: #232831 transparent; }
+.explorer-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.explorer-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.explorer-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
+.explorer-scrollbar:hover::-webkit-scrollbar-thumb { background: #232831; background-clip: padding-box; border: 1px solid transparent; }
+.explorer-scrollbar::-webkit-scrollbar-thumb:hover { background: #2E3440; background-clip: padding-box; }
+.explorer-scrollbar::-webkit-scrollbar-corner { background: transparent; }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

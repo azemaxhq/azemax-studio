@@ -10,6 +10,7 @@
  */
 
 import type * as Monaco from 'monaco-editor';
+import { getLanguageFromFilename } from '../../utils/language';
 
 export interface ActiveEditorContext {
     /** Current file name, e.g. "hello.js" */
@@ -42,20 +43,9 @@ let activeEditor: Monaco.editor.IStandaloneCodeEditor | null = null;
 let activeMonaco: typeof Monaco | null = null;
 let activeFileMeta: { id: string; name: string } | null = null;
 
-// Language detection helper (mirrors CodeEditor#getLanguage)
+// Language detection helper — delegates to central language.ts (30+ languages)
 function detectLanguage(fileName: string): string {
-    const ext = fileName.split('.').pop()?.toLowerCase() || '';
-    const map: Record<string, string> = {
-        ts: 'typescript', tsx: 'typescript',
-        js: 'javascript', jsx: 'javascript',
-        py: 'python', java: 'java',
-        c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
-        go: 'go', rs: 'rust', rb: 'ruby',
-        php: 'php', cs: 'csharp', swift: 'swift', kt: 'kotlin',
-        css: 'css', scss: 'scss', json: 'json',
-        md: 'markdown', html: 'html', sh: 'shell', bash: 'shell',
-    };
-    return map[ext] || 'typescript';
+    return getLanguageFromFilename(fileName);
 }
 
 export function setActiveEditor(

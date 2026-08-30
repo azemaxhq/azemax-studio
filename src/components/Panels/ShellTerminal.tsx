@@ -7,6 +7,7 @@ import { useTerminal } from '../../context/TerminalContext';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettingsSelector } from '../../context/SettingsContext';
 import { getSettings } from '../../settings/settingsStore';
+import { dialogConfirm } from '../UI/dialogService';
 import { TerminalSessionController } from '../../context/TerminalSessionController';
 import { type FileNode, ROOT_NODE_ID } from '../../utils/mockFileSystem';
 import { findNodeById, pathOf } from '../../utils/safeTree';
@@ -698,9 +699,15 @@ const handleRunData = (e: Event) => {
                     const isMultiLine = /\r?\n/.test(text);
                     if (isMultiLine && getSettings().terminal.pasteProtection) {
                         const flattened = text.replace(/\r?\n/g, ' ').trim();
-                        if (!window.confirm(
-                            `Paste multi-line text into the terminal? It will be flattened to a single line:\n\n"${flattened.length > 80 ? flattened.slice(0, 80) + '…' : flattened}"`
-                        )) return;
+                        const preview = flattened.length > 80 ? flattened.slice(0, 80) + '…' : flattened;
+                        const confirmed = await dialogConfirm({
+                            title: 'Paste multi-line text?',
+                            message: `The pasted text contains line breaks and will be flattened to a single line: "${preview}"`,
+                            confirmLabel: 'Paste',
+                            cancelLabel: 'Cancel',
+                            danger: false,
+                        });
+                        if (!confirmed) return;
                     }
                     const left = commandBuffer.current.slice(0, cursorPos.current);
                     const right = commandBuffer.current.slice(cursorPos.current);

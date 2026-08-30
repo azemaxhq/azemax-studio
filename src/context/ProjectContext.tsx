@@ -26,6 +26,8 @@ const STORAGE_KEY = 'azemax-file-tree';
 const LEGACY_STORAGE_KEY = 'deepcontext-file-tree';
 const ACTIVE_FILE_KEY = 'azemax-active-file-id';
 const LEGACY_ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
+const EXPANDED_KEY = 'azemax-expanded-folders';
+const LEGACY_EXPANDED_KEY = 'deepcontext-expanded-folders';
 
 // AI error sentinels must never be persisted as file content — if a previous
 // bug wrote an error string into a file, treat it as corruption and reset.
@@ -303,6 +305,21 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     const initial = getInitialLoad();
     const [fileTree, setFileTree] = useState<FileNode[]>(initial.tree);
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
+        try {
+            const saved = localStorage.getItem(EXPANDED_KEY) || localStorage.getItem(LEGACY_EXPANDED_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    const set = new Set<string>(parsed.filter((id: unknown) => typeof id === 'string'));
+                    set.add(ROOT_NODE_ID);
+                    // prune ids that no longer exist in current tree (prevents stuck collapsed)
+                    const validIds = new Set(collectFolderIds(initial.tree));
+                    validIds.add(ROOT_NODE_ID);
+                    for (const id of Array.from(set)) if (!validIds.has(id)) set.delete(id);
+                    return set;
+                }
+            }
+        } catch { /* ignore */ }
         const set = new Set<string>(initial.expansion);
         set.add(ROOT_NODE_ID);
         return set;
@@ -349,6 +366,29 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             saveFileTree(fileTree);
         }
     }, [fileTree]);
+
+    // Persist expanded folders so collapse/expand survives refresh and never appears stuck
+    useEffect(() => {
+        try {
+            localStorage.setItem(EXPANDED_KEY, JSON.stringify(Array.from(expandedFolderIds)));
+        } catch { /* ignore */ }
+    }, [expandedFolderIds]);
+
+    // Prune stale expansion ids when tree changes (deleted folders) — prevents stuck collapsed state
+    useEffect(() => {
+        const valid = new Set(collectFolderIds(fileTree));
+        valid.add(ROOT_NODE_ID);
+        let pruned = false;
+        for (const id of expandedFolderIds) if (!valid.has(id)) pruned = true;
+        if (pruned) {
+            setExpandedFolderIds(prev => {
+                const next = new Set<string>();
+                for (const id of prev) if (valid.has(id)) next.add(id);
+                next.add(ROOT_NODE_ID);
+                return next;
+            });
+        }
+    }, [fileTree, expandedFolderIds]);
 
     // Wrapper to also save active file ID
     const setActiveFile = useCallback((file: FileNode) => {
