@@ -76,7 +76,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
 
     // [1] Intent detection (semantic planner) — single refined status, no duplicate
     const interpretingId = `interpret-${Date.now()}`;
-    const interpreting: AgentActivity = { id: interpretingId, tool: 'interpret', status: 'running', message: 'Understanding request…', path: fileName || undefined };
+    const interpreting: AgentActivity = { id: interpretingId, tool: 'interpret', status: 'running', message: 'Understanding request', path: fileName || undefined };
     push(interpreting);
     AIRequestStore.updateRequest(AIRequestStore.getActiveRequestForOperation('chat')?.id ?? '', 'thinking');
 
@@ -218,7 +218,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
             // normalize: payload.path / target.filePath -> path, payload.query -> query
             if (!args.path && (ra.target?.filePath || (ra.payload as { path?: string })?.path)) args.path = ra.target?.filePath ?? (ra.payload as { path?: string })?.path;
             if (!args.query && (ra.payload as { query?: string })?.query) args.query = (ra.payload as { query?: string })?.query;
-            const act = makeActivity(toolName, 'running', `Reading ${String(args.path ?? args.query ?? '')}…`, String(args.path ?? ''));
+            const act = makeActivity(toolName, 'running', `Reading ${String(args.path ?? args.query ?? '')}`, String(args.path ?? ''));
             push(act);
             try {
                 if (req.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
@@ -259,7 +259,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
 
     // If no concrete ops yet, do constrained generation enriched with read results
     if (!actions || actions.length === 0) {
-        const generating = makeActivity('generate', 'running', 'Planning edits…');
+        const generating = makeActivity('generate', 'running', 'Planning edits');
         push(generating);
         const { generateConstrainedActions } = await import('./editPipeline');
         const ctx = getActiveEditorContext();

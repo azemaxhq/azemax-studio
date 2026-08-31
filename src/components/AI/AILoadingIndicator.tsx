@@ -1,7 +1,7 @@
 import React from 'react';
 import type { AILoadingStatus } from '../../hooks/useAILoading';
 import type { AIOperationType } from '../../core/ai/aiRequestStore';
-import { getAIActivityLabel } from './aiActivityLabel';
+import { getAIActivityLabel, AZEMAX_ROTATION_POOL } from './aiActivityLabel';
 
 interface AILoadingIndicatorProps {
     status: AILoadingStatus;
@@ -33,8 +33,10 @@ export const AILoadingIndicator: React.FC<AILoadingIndicatorProps> = ({
     const isActive = status === 'thinking' || status === 'preparing' || status === 'generating' || status === 'streaming' || status === 'applying';
     const [visible, setVisible] = React.useState(false);
     const [shouldRender, setShouldRender] = React.useState(false);
-    const [displayLabel, setDisplayLabel] = React.useState('Working');
+    const [displayLabel, setDisplayLabel] = React.useState('Azemaxing');
     const labelRafRef = React.useRef<number | null>(null);
+    const rotationRef = React.useRef<number | null>(null);
+    const rotationIndexRef = React.useRef(0);
 
     const label = getAIActivityLabel({
         prompt: prompt || undefined,
@@ -63,8 +65,36 @@ export const AILoadingIndicator: React.FC<AILoadingIndicatorProps> = ({
         if (label !== displayLabel) {
             if (labelRafRef.current) cancelAnimationFrame(labelRafRef.current);
             labelRafRef.current = requestAnimationFrame(() => setDisplayLabel(label));
+            // reset rotation to label's position in pool
+            const idx = AZEMAX_ROTATION_POOL.indexOf(label as typeof AZEMAX_ROTATION_POOL[number]);
+            rotationIndexRef.current = idx >= 0 ? idx : 0;
         }
     }, [label, displayLabel]);
+
+    // Calm rotation while processing — every 3.2s, no layout shift, respects reduced-motion
+    React.useEffect(() => {
+        if (!isActive || !shouldRender) {
+            if (rotationRef.current) window.clearInterval(rotationRef.current);
+            rotationRef.current = null;
+            return;
+        }
+        if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        // start after 2.8s, then every 3.2s
+        const startDelay = window.setTimeout(() => {
+            rotationRef.current = window.setInterval(() => {
+                rotationIndexRef.current = (rotationIndexRef.current + 1) % AZEMAX_ROTATION_POOL.length;
+                const next = AZEMAX_ROTATION_POOL[rotationIndexRef.current];
+                // only rotate among neutral signature phrases to avoid fake context
+                if (labelRafRef.current) cancelAnimationFrame(labelRafRef.current);
+                labelRafRef.current = requestAnimationFrame(() => setDisplayLabel(next));
+            }, 3200);
+        }, 2800);
+        return () => {
+            window.clearTimeout(startDelay);
+            if (rotationRef.current) window.clearInterval(rotationRef.current);
+            rotationRef.current = null;
+        };
+    }, [isActive, shouldRender]);
 
     if (!shouldRender) return null;
 
@@ -77,19 +107,21 @@ export const AILoadingIndicator: React.FC<AILoadingIndicatorProps> = ({
             style={{
                 opacity: visible ? 1 : 0,
                 transform: visible ? 'translateY(0)' : 'translateY(3px)',
-                transition: 'opacity 180ms ease, transform 180ms ease',
+                transition: 'opacity 180ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)), transform 180ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1))',
             }}
         >
             {showStatusText && (
                 <span
                     className="ai-loading-minimal-text"
                     style={{
-                        transition: 'opacity 160ms ease, transform 160ms ease',
-                        minWidth: 140,
+                        transition: 'opacity 220ms ease',
+                        maxWidth: 180,
                         display: 'inline-block',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
+                        verticalAlign: 'middle',
+                        flexShrink: 0,
                     }}
                 >
                     {displayLabel}

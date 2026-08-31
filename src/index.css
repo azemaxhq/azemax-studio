@@ -53,7 +53,12 @@
   --az-accent-soft: rgba(59,130,246,0.10);
   --az-accent-ring: rgba(59,130,246,0.35);
   --az-accent-border: rgba(59,130,246,0.30);
-  --az-focus-ring: 0 0 0 2px rgba(59,130,246,0.35);
+  --az-focus-ring: 0 0 0 1.5px rgba(255,255,255,0.11);
+  --az-focus-ring-subtle: 0 0 0 1px rgba(255,255,255,0.07);
+  --az-border-focus: rgba(255,255,255,0.14);
+  --az-composer-bg: #171A20;
+  --az-composer-bg-hover: #191D23;
+  --az-composer-bg-focus: #1D2129;
 
   /* ---- Semantic (muted, restrained) ---- */
   --az-success: #2EA043;
@@ -613,17 +618,42 @@ code, pre, kbd, .font-mono, .glass-terminal-body { font-family: 'JetBrains Mono'
 
 /* ============================================
    AI COMPOSER — premium neutral elevated
+   Command-center surface: calm → hover → focus
+   No blue ring/glow — subtle border + background
    ============================================ */
 
 .az-composer {
-  background: var(--az-surface-3);
-  border: 1px solid var(--az-border);
-  border-radius: 16px;
-  transition: border-color 160ms var(--az-ease), box-shadow 160ms var(--az-ease);
+  background: var(--az-composer-bg);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 2px 12px rgba(0,0,0,0.14);
+  transition:
+    border-color 160ms var(--az-ease),
+    background-color 160ms var(--az-ease),
+    box-shadow 160ms var(--az-ease);
+  outline: none;
+}
+.az-composer:hover {
+  border-color: rgba(255,255,255,0.09);
+  background: var(--az-composer-bg-hover);
 }
 .az-composer:focus-within {
-  border-color: var(--az-accent-border);
-  box-shadow: var(--az-focus-ring);
+  border-color: rgba(255,255,255,0.12);
+  background: var(--az-composer-bg-focus);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 1px 0 rgba(255,255,255,0.02) inset,
+    0 6px 20px rgba(0,0,0,0.18);
+  outline: none;
+}
+/* Ensure textarea itself never shows browser outline/ring */
+.az-composer textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.az-composer textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 .az-chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1061,13 +1091,85 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 .glass-meter{ height:6px; background:var(--az-surface-3); border-radius:999px; overflow:hidden; position:relative; border:1px solid var(--az-border)}
 .glass-meter-fill{ height:100%; background: var(--az-text-secondary); border-radius:999px; transition:width 400ms var(--az-ease); position:relative}
 
-/* Utility: focus ring for interactive */
-.az-focus:focus-visible{ outline:none; box-shadow: var(--az-focus-ring); border-color: var(--az-accent-border)}
+/* Utility: focus ring for interactive — subtle neutral, not blue */
+.az-focus:focus-visible{ outline:none; box-shadow: var(--az-focus-ring); border-color: var(--az-border-focus)}
 
-/* Composer placeholder polish */
-.az-composer textarea::placeholder { color: #6F7580; opacity: 0.9; font-weight: 400; transition: opacity var(--az-dur-fast) ease; }
-.az-composer textarea:focus::placeholder { opacity: 0.55; }
-.az-composer textarea { font-family: 'Inter', system-ui, sans-serif; letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; }
+/* Composer placeholder & textarea polish — premium command-field */
+.az-composer textarea::placeholder { color: #6F7580; opacity: 0.85; font-weight: 400; transition: opacity var(--az-dur-fast) ease; }
+.az-composer textarea:focus::placeholder { opacity: 0.48; }
+.az-composer textarea {
+  font-family: 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+.az-composer textarea::selection { background: rgba(255,255,255,0.12); }
+
+/* Chat sidebar — premium scroll + typography refinements */
+.ai-chat-root {
+  --ai-chat-max-reading: 640px;
+  --ai-chat-msg-gap: 20px;
+  --ai-chat-section-gap: 28px;
+}
+.ai-chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.10) transparent;
+  scrollbar-gutter: stable;
+}
+.ai-chat-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+.ai-chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
+.ai-chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.13); background-clip: padding-box; }
+.ai-chat-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Message editorial styles — tighter rhythm, refined hierarchy */
+.ai-message { animation: message-appear 200ms var(--az-ease-out) both; }
+.ai-code-block {
+  background: var(--az-surface-2);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ai-code-block-header {
+  background: #15181E;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 7px 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.ai-code-block pre {
+  margin: 0; padding: 12px 14px;
+  background: #0F1115;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12.5px; line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Send button — premium editor control */
+.az-send-btn {
+  width: 28px; height: 28px;
+  border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent;
+  transition:
+    background 150ms var(--az-ease),
+    border-color 150ms var(--az-ease),
+    color 150ms var(--az-ease),
+    transform 100ms var(--az-ease),
+    opacity 150ms var(--az-ease);
+  will-change: transform, background;
+}
+.az-send-btn:active:not(:disabled) { transform: scale(0.96); }
+.az-send-btn:disabled { cursor: not-allowed; opacity: 0.85; }
+.az-send-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--az-focus-ring);
+  border-color: var(--az-border-focus);
+}
+@media (prefers-reduced-motion: reduce) {
+  .az-composer, .az-composer:hover, .az-composer:focus-within, .az-send-btn { transition: none !important; }
+  .ai-message { animation: none !important; }
+}
 
 /* === POLISH PASS: global fixes === */
 button, [role="button"] { -webkit-font-smoothing: antialiased; }
@@ -1076,9 +1178,19 @@ img { display: block; max-width: 100%; }
 .overflow-hidden { scrollbar-gutter: auto; }
 /* Ensure activity bar icons optically centered */
 .lucide, [data-lucide] { display: block; flex-shrink: 0; }
-/* Consistent focus ring for any interactive */
+/* Consistent focus ring for any interactive — premium neutral (no blue glow) */
 *:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
-*:focus:not(:focus-visible) { box-shadow: none; }
+*:focus:not(:focus-visible) { box-shadow: none; outline: none; }
+/* Remove browser default blue outline for all inputs/textareas — we provide our own subtle focus */
+input:focus, textarea:focus, select:focus { outline: none; }
+/* Ensure Tailwind ring-2 for accent doesn't leak bright blue inside chat — scoped neutral override */
+.ai-chat-root [class*="focus-visible:ring-[var(--az-accent-ring)]"]:focus-visible {
+  --tw-ring-color: rgba(255,255,255,0.12) !important;
+  --tw-ring-offset-color: transparent !important;
+}
+.ai-chat-root .focus-visible\:ring-2:focus-visible {
+  --tw-ring-color: rgba(255,255,255,0.12) !important;
+}
 /* Stabilize Monaco container dimensions during async + correct guide placement */
 .monaco-editor .margin-view-overlays, .monaco-editor .margin-view-background { will-change: auto; }
 .monaco-editor .view-overlays .core-guide-indent,

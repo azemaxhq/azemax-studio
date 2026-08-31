@@ -45,11 +45,11 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
     const autoChips = useMemo(() => {
         const chips: ContextChip[] = [];
         if (activeFileMeta) {
-            chips.push({ id: `file-${activeFileMeta.name}`, label: activeFileMeta.name, icon: <FileCode size={12} />, removable: false });
+            chips.push({ id: `file-${activeFileMeta.name}`, label: activeFileMeta.name, icon: <FileCode size={11} />, removable: false });
         }
         const ctx = getActiveEditorContext();
         if (ctx?.selectionText && ctx.selection) {
-            chips.push({ id: 'selection', label: `Selection · Lines ${ctx.selection.startLine}–${ctx.selection.endLine}`, icon: <Hash size={12} />, removable: true });
+            chips.push({ id: 'selection', label: `Selection · Lines ${ctx.selection.startLine}–${ctx.selection.endLine}`, icon: <Hash size={11} />, removable: true });
         }
         return chips;
     }, [activeFileMeta]);
@@ -112,9 +112,9 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
         } else {
             setShowSlash(false);
         }
-        // Auto-resize
-        e.target.style.height = '44px';
-        e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+        // Auto-resize — reduced max for denser commander
+        e.target.style.height = '40px';
+        e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
     }, [setInput]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -134,7 +134,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                         setInput(next);
                         setShowMentions(false);
                         // Add chip
-                        setAttachedChips(prev => [...prev, { id: `at-${file}`, label: file, icon: <FileCode size={12} />, removable: true }]);
+                        setAttachedChips(prev => [...prev, { id: `at-${file}`, label: file, icon: <FileCode size={11} />, removable: true }]);
                         requestAnimationFrame(() => {
                             ta.focus();
                             const pos = before.length + file.length + 2;
@@ -190,10 +190,10 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                         const next = `${before}@${file} ${after}`;
                                         setInput(next);
                                         setShowMentions(false);
-                                        setAttachedChips(prev => [...prev, { id: `at-${file}`, label: file, icon: <FileCode size={12} />, removable: true }]);
+                                        setAttachedChips(prev => [...prev, { id: `at-${file}`, label: file, icon: <FileCode size={11} />, removable: true }]);
                                     }
                                 }}
-                                className={`w-full text-left px-3 py-2 flex items-center gap-2 text-[13px] transition-colors ${idx === mentionIndex ? 'bg-[var(--az-surface-3)] text-[var(--az-text)]' : 'text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text)]'}`}
+                                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-[12.5px] transition-colors ${idx === mentionIndex ? 'bg-[var(--az-surface-3)] text-[var(--az-text)]' : 'text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text)]'}`}
                             >
                                 <FileCode size={14} className="shrink-0" style={{ color: "var(--az-text-muted)"}} />
                                 <span className="truncate">{file}</span>
@@ -221,19 +221,19 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                 </div>
             )}
 
-            {/* Composer container */}
-            <div className="az-composer relative rounded-[16px] overflow-hidden" style={{ background: "#171A20", border: "1px solid rgba(255,255,255,0.07)", boxShadow: "0 4px 20px rgba(0,0,0,0.18), 0 1px 0 rgba(255,255,255,0.04) inset" }}>
-                {/* Context chips */}
+            {/* Composer container — premium command center (CSS handles hover/focus, no blue ring) */}
+            <div className="az-composer relative overflow-hidden">
+                {/* Context chips — lightweight attachment, tight rhythm */}
                 {allChips.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-1">
+                    <div className="flex flex-wrap gap-1.5 px-3 pt-2.5 pb-0.5">
                         {allChips.map(chip => (
-                            <span key={chip.id} className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-full text-[11px] leading-none" style={{ background: "#15181E", border: "1px solid rgba(255,255,255,0.07)", color: "var(--az-text-secondary)"}}>
-                                <span style={{ color: "var(--az-text-muted)"}}>{chip.icon}</span>
-                                <span className="truncate max-w-[140px]" style={{ color: "var(--az-text-secondary)"}}>{chip.label}</span>
+                            <span key={chip.id} className="inline-flex items-center gap-1 pl-2 pr-1 py-[3px] rounded-full text-[11px] leading-none" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "var(--az-text-secondary)"}}>
+                                <span className="shrink-0" style={{ color: "var(--az-text-muted)"}}>{chip.icon}</span>
+                                <span className="truncate max-w-[120px] tracking-tight" style={{ color: "var(--az-text-secondary)"}}>{chip.label}</span>
                                 {chip.detail && <span className="text-white/30">{chip.detail}</span>}
                                 {chip.removable && (
-                                    <button onClick={() => removeChip(chip.id)} className="ml-1 p-0.5 rounded-full transition-colors" style={{ color: "var(--az-text-muted)"}} onMouseEnter={e=>e.currentTarget.style.background="var(--az-surface-3)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                                        <X size={10} />
+                                    <button onClick={() => removeChip(chip.id)} aria-label={`Remove ${chip.label}`} className="ml-0.5 p-0.5 rounded-full transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ color: "var(--az-text-muted)"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                        <X size={9} strokeWidth={2} />
                                     </button>
                                 )}
                             </span>
@@ -241,33 +241,34 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                     </div>
                 )}
 
-                {/* Textarea — stable min-height, no layout jump */}
+                {/* Textarea — compact commander, premium placeholder, no blue outline */}
                 <textarea
                     ref={inputRef}
                     value={input}
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask Azemax..."
+                    placeholder="Ask Azemax…"
                     rows={1}
-                    className="w-full bg-transparent text-[14px] leading-[1.5] px-4 pt-3 pb-2 min-h-[44px] max-h-[160px] resize-none focus:outline-none antialiased"
-                    style={{ color: "var(--az-text)", height: '44px' } as React.CSSProperties}
+                    className="w-full bg-transparent text-[13.5px] leading-[1.5] px-3 pt-2.5 pb-1.5 min-h-[40px] max-h-[140px] resize-none focus:outline-none focus-visible:outline-none antialiased placeholder:text-[#6F7580]"
+                    style={{ color: "var(--az-text)", height: '40px', outline: 'none', boxShadow: 'none', border: 'none' } as React.CSSProperties}
                     spellCheck={false}
+                    autoComplete="off"
                 />
 
-                {/* Bottom bar */}
-                <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-1">
-                    <div className="flex items-center gap-1">
+                {/* Bottom bar — deliberate hierarchy: left (attach/file/agent) · right (hint/send) */}
+                <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-0.5">
+                    <div className="flex items-center gap-0.5">
                         <button
                             title="Attach context"
+                            aria-label="Attach current file"
                             onClick={() => {
-                                // Quick attach current file
                                 if (activeFileMeta && !attachedChips.find(c => c.id === `file-${activeFileMeta.name}`)) {
-                                    setAttachedChips(prev => [...prev, { id: `file-${activeFileMeta.name}`, label: activeFileMeta.name, icon: <FileCode size={12} />, removable: true }]);
+                                    setAttachedChips(prev => [...prev, { id: `file-${activeFileMeta.name}`, label: activeFileMeta.name, icon: <FileCode size={11} />, removable: true }]);
                                 }
                             }}
-                            className="p-1.5 rounded-md transition-colors" style={{ color: "var(--az-text-muted)"}} onMouseEnter={e=>{e.currentTarget.style.background="var(--az-surface-hover)"; e.currentTarget.style.color="var(--az-text)"}} onMouseLeave={e=>{e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--az-text-muted)"}}
+                            className="w-[26px] h-[26px] inline-flex items-center justify-center rounded-[6px] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ color: "var(--az-text-muted)"}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.06)"; e.currentTarget.style.color="var(--az-text)"}} onMouseLeave={e=>{e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--az-text-muted)"}}
                         >
-                            <Paperclip size={14} />
+                            <Paperclip size={13} strokeWidth={1.75} />
                         </button>
                         <button
                             onClick={() => {
@@ -281,37 +282,41 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                 setShowMentions(true);
                                 setMentionQuery('');
                             }}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[12px] transition-colors" style={{ color: "var(--az-text-muted)"}}
+                            className="inline-flex items-center gap-1 px-1.5 py-1 rounded-[6px] text-[11px] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ color: "var(--az-text-muted)"}}
                             title="Mention file @"
+                            aria-label="Mention file"
                         >
-                            <AtSign size={12} />
-                            <span className="hidden sm:inline text-[11px]">File</span>
+                            <AtSign size={11} strokeWidth={1.75} />
+                            <span className="hidden sm:inline text-[11px] font-medium tracking-tight leading-none">File</span>
                         </button>
-                        <button className="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium transition-colors hover:bg-[#1C2026]" style={{ background: "#15181E", border: "1px solid rgba(255,255,255,0.07)", color: "var(--az-text-muted)"}}>
-                            Agent <span style={{ opacity: 0.5, fontSize: '10px' }}>▾</span>
-                        </button>
+                        <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-[6px] text-[11px] font-medium leading-none select-none" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "var(--az-text-muted)"}}>
+                            Agent <span style={{ opacity: 0.45, fontSize: '9px', transform: 'translateY(0.5px)' }}>▾</span>
+                        </span>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                        <span className="hidden xl:block text-[11px] whitespace-nowrap" style={{ color: "var(--az-text-faint)"}}>
-                            {isLoading ? 'Esc to stop' : 'Enter · Shift+Enter newline'}
+                        <span className="hidden lg:block text-[10.5px] whitespace-nowrap tracking-tight font-[450]" style={{ color: "rgba(255,255,255,0.28)"}}>
+                            {isLoading ? 'Esc to stop' : '↵ send · ⇧↵ newline'}
                         </span>
                         {isLoading ? (
                             <button
                                 onClick={onStop}
-                                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]" style={{ background: "var(--az-surface-hover)", color: "var(--az-text)", border: "1px solid var(--az-border)"}}
+                                className="az-send-btn focus:outline-none" style={{ background: "rgba(255,255,255,0.06)", color: "var(--az-text)", border: "1px solid rgba(255,255,255,0.07)"}}
                                 title="Stop (Esc)"
-                                aria-label="Stop"
+                                aria-label="Stop generation"
                             >
-                                <Square size={12} fill="currentColor" className="shrink-0" />
+                                <Square size={11} fill="currentColor" className="shrink-0" />
                             </button>
                         ) : (
                             <button
                                 onClick={onSend}
                                 disabled={disabled || !input.trim()}
-                                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)] ${input.trim() && !disabled ? '' : 'cursor-not-allowed'}`} style={input.trim() && !disabled ? { background: 'var(--az-accent)', color: 'white', border: '1px solid var(--az-accent)'} : { background: 'var(--az-surface-2)', color: 'var(--az-text-disabled)', border: '1px solid var(--az-border)'}}
+                                className={`az-send-btn focus:outline-none ${input.trim() && !disabled ? '' : 'cursor-not-allowed'}`}
+                                style={input.trim() && !disabled
+                                    ? { background: '#F2F3F5', color: '#0B0D10', border: '1px solid #F2F3F5', boxShadow: '0 1px 4px rgba(0,0,0,0.12)'}
+                                    : { background: 'rgba(255,255,255,0.06)', color: 'var(--az-text-disabled)', border: '1px solid rgba(255,255,255,0.05)'}}
                                 title="Send (Enter)"
-                                aria-label="Send"
+                                aria-label="Send message"
                             >
                                 <ArrowUp size={14} strokeWidth={2.5} className="shrink-0" />
                             </button>

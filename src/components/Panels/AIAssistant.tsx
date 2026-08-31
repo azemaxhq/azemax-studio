@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useDeferredValue, useM
 import {
     Check, Edit3, RefreshCw, Zap, Bug, MessageCircle, Code2, Copy,
     Plus, MessageSquare, Trash2, X, History, ChevronUp,
-    ThumbsUp, ThumbsDown, FileCode, Lightbulb, ChevronDown
+    ThumbsUp, ThumbsDown, FileCode, Lightbulb, ChevronDown, ChevronRight, Clock3, Eye
 } from 'lucide-react';
 
 import { loadPrism, tryHighlight } from '../../utils/prismLoader';
@@ -75,39 +75,43 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
         }
     };
 
+    // Premium artifact / document card — Azemax workspace resource
+    const preview = content.slice(0, 120).replace(/\s+/g, ' ').trim();
     return (
-        <div className="my-3 rounded-xl border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden">
+        <div className="my-3 rounded-[10px] border border-white/[0.06] bg-[#151A24] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset] hover:border-white/[0.08] transition-colors">
             <div
-                className="flex items-center justify-between px-2.5 py-2 hover:bg-[#15181E] cursor-pointer transition-colors"
+                className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.02] cursor-pointer transition-colors gap-3"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
-                <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="w-6 h-6 rounded-md bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span className="w-7 h-7 rounded-[7px] bg-[rgba(59,130,246,0.07)] border border-[rgba(59,130,246,0.12)] flex items-center justify-center shrink-0">
                         {getIcon()}
                     </span>
-                    <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-[var(--az-text)] truncate">{title}</span>
-                            <span className="hidden sm:inline text-[11px] text-[var(--az-text-faint)]">· {isCode ? `${lineCount} lines` : type}</span>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[12.5px] font-medium tracking-tight leading-none truncate" style={{ color: 'var(--az-text)' }}>{title}</span>
+                            <span className="hidden sm:inline text-[11px] font-mono tracking-tight shrink-0" style={{ color: 'var(--az-text-faint)' }}>· {isCode ? `${lineCount} lines` : type}</span>
                         </div>
-                        {isCode && language && <span className="text-[11px] text-[var(--az-text-faint)] hidden sm:block">{language}</span>}
+                        <div className="text-[11px] leading-[1.4] truncate mt-0.5" style={{ color: 'var(--az-text-muted)' }}>
+                            {isCode && language ? `${language} · ${preview.slice(0, 48)}` : preview}
+                        </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                     <button
                         onClick={(e) => { e.stopPropagation(); onCopy?.(content, id); }}
-                        className="px-2 py-1 rounded-md text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-3)] transition-colors"
+                        className="px-2 py-1 rounded-[6px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] border border-transparent hover:border-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                     >
                         {copiedId === id ? 'Copied' : 'Copy'}
                     </button>
-                    <span className={`w-6 h-6 rounded-md bg-[var(--az-surface-3)] hover:bg-white/[0.08] flex items-center justify-center text-[var(--az-text-muted)] transition-colors ${isExpanded ? 'rotate-180' : ''}`}>
-                        <ChevronDown size={14} />
+                    <span className={`w-6 h-6 rounded-[6px] bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-[var(--az-text-muted)] transition-colors ${isExpanded ? 'rotate-180' : ''}`}>
+                        <ChevronDown size={13} strokeWidth={1.75} />
                     </span>
                 </div>
             </div>
             {isExpanded && (
-                <div className="border-t border-[var(--az-border)] bg-[var(--az-surface)]">
-                    <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-[var(--az-text-secondary)] leading-relaxed max-h-[320px] overflow-y-auto">
+                <div className="border-t border-white/[0.06] bg-[#0F1115]">
+                    <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] max-h-[320px] overflow-y-auto">
                         {highlightedCode
                             ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
                             : <code>{content}</code>}
@@ -115,8 +119,8 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
                 </div>
             )}
             {!isExpanded && isCode && lineCount > 12 && (
-                <div className="px-3 pb-2">
-                    <button onClick={() => setIsExpanded(true)} className="text-[11px] text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] transition-colors">Show {lineCount - 12} more lines</button>
+                <div className="px-3 pb-2 pt-0.5">
+                    <button onClick={() => setIsExpanded(true)} className="text-[11px] font-medium tracking-tight text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10 rounded px-1 -ml-1">Show {lineCount - 12} more lines</button>
                 </div>
             )}
         </div>
@@ -178,13 +182,13 @@ const MessageItem = React.memo(({
                 const displayCode = !expanded ? code.split('\n').slice(0, 20).join('\n') : code;
 
                 return (
-                    <div className="my-3 rounded-xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-surface-2)]">
-                        <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#15181E] border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                            <span className="text-[11px] text-[var(--az-text-muted)] font-mono">{language}</span>
+                    <div className="my-3 rounded-[10px] overflow-hidden border border-white/[0.06] bg-[var(--az-surface-2)]">
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-[#15181E] border-b border-white/[0.06]">
+                            <span className="text-[11px] text-[var(--az-text-muted)] font-mono tracking-tight">{language}</span>
                             <div className="flex items-center gap-1.5">
                                 <button
                                     onClick={() => onCopy(displayCode, codeId)}
-                                    className="px-2 py-1 rounded-md text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-3)] transition-colors"
+                                    className="px-2 py-1 rounded-[6px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                                 >
                                     {copiedId === codeId ? 'Copied' : 'Copy'}
                                 </button>
@@ -206,7 +210,7 @@ const MessageItem = React.memo(({
                                             }
                                         }}
                                         disabled={applyState === 'applying'}
-                                        className={`px-2 py-1 rounded-md text-[11px] border transition-colors ${applyState === 'applied' ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-400' : applyState === 'failed' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border-[var(--az-accent)]'} ${applyState === 'applying' ? 'opacity-70 cursor-wait' : ''}`}
+                                        className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${applyState === 'applied' ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-300' : applyState === 'failed' ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border-[var(--az-accent)]'} ${applyState === 'applying' ? 'opacity-70 cursor-wait' : ''}`}
                                         title={applyState === 'failed' ? 'Apply failed — retry' : applyState === 'applied' ? 'Applied' : 'Apply to editor'}
                                     >
                                         {applyState === 'idle' && 'Apply'}
@@ -218,27 +222,27 @@ const MessageItem = React.memo(({
                             </div>
                         </div>
                         <div className="relative">
-                            <pre className="p-3 text-[12.5px] font-mono overflow-x-auto custom-scrollbar text-[var(--az-text-secondary)] leading-relaxed bg-[var(--az-surface)] max-h-[360px] overflow-y-auto">
+                            <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] bg-[#0F1115] max-h-[360px] overflow-y-auto">
                                 {highlightedCode && expanded
                                     ? <code dangerouslySetInnerHTML={{ __html: isLongBlock && !expanded ? tryHighlight(displayCode, language) || '' : highlightedCode }} />
                                     : <code>{displayCode}</code>}
                             </pre>
                             {isLongBlock && !expanded && (
-                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[var(--az-surface)] to-transparent pointer-events-none" />
+                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0F1115] to-transparent pointer-events-none" />
                             )}
                         </div>
                         {isLongBlock && (
-                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] hover:bg-[var(--az-surface-2)] border-t border-[var(--az-border)] transition-colors">
+                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] font-medium text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] hover:bg-white/[0.02] border-t border-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10">
                                 {expanded ? 'Show less' : `Show ${code.split('\n').length - 20} more lines`}
                             </button>
                         )}
                     </div>
                 );
             }
-            // Inline code - ChatGPT style (subtle)
+            // Inline code — neutral, editor-native
             return (
                 <code
-                    className="text-[14px] font-mono bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border)] px-1 py-0.5 rounded"
+                    className="text-[13.5px] font-mono bg-[var(--az-surface-3)] text-[var(--az-text)] border border-white/[0.06] px-1 py-0.5 rounded-[5px]"
                     {...props}
                 >
                     {children}
@@ -246,29 +250,38 @@ const MessageItem = React.memo(({
             );
         },
         h1({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h1 className="text-[22px] font-semibold tracking-tight text-[var(--az-text)] mt-7 mb-3 leading-tight" {...props}>{children}</h1>;
+            return <h1 className="text-[20px] font-semibold tracking-tight text-[var(--az-text)] mt-6 mb-3 leading-tight" {...props}>{children}</h1>;
         },
         h2({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h2 className="text-[18px] font-semibold tracking-tight text-[var(--az-text)] mt-6 mb-2.5 leading-tight" {...props}>{children}</h2>;
+            return <h2 className="text-[17px] font-semibold tracking-tight text-[var(--az-text)] mt-6 mb-2.5 leading-tight" {...props}>{children}</h2>;
         },
         h3({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-            return <h3 className="text-[15px] font-semibold tracking-tight text-[var(--az-text)] mt-5 mb-2" {...props}>{children}</h3>;
+            return <h3 className="text-[14.5px] font-semibold tracking-tight text-[var(--az-text)] mt-5 mb-2 leading-snug" {...props}>{children}</h3>;
         },
         p({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-            return <p className="leading-[1.72] mb-4 text-[15px] text-[var(--az-text-secondary)] tracking-[-0.01em] last:mb-0 max-w-[680px]" {...props}>{children}</p>;
+            if (msg.role === 'user') {
+                return <p className="leading-[1.5] text-[13px] tracking-tight text-[var(--az-text)] last:mb-0" {...props}>{children}</p>;
+            }
+            return <p className="leading-[1.70] mb-3.5 text-[14.5px] text-[var(--az-text-secondary)] tracking-[-0.01em] last:mb-0 max-w-[640px]" {...props}>{children}</p>;
         },
         ul({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) {
-            return <ul className="list-disc list-outside ml-5 mb-4 space-y-2 text-[15px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ul>;
+            if (msg.role === 'user') {
+                return <ul className="list-disc list-outside ml-4 space-y-1 text-[13px] text-[var(--az-text)] leading-[1.5]" {...props}>{children}</ul>;
+            }
+            return <ul className="list-disc list-outside ml-5 mb-3.5 space-y-1.5 text-[14.5px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ul>;
         },
         ol({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) {
-            return <ol className="list-decimal list-outside ml-5 mb-4 space-y-2 text-[15px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ol>;
+            if (msg.role === 'user') {
+                return <ol className="list-decimal list-outside ml-4 space-y-1 text-[13px] text-[var(--az-text)] leading-[1.5]" {...props}>{children}</ol>;
+            }
+            return <ol className="list-decimal list-outside ml-5 mb-3.5 space-y-1.5 text-[14.5px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ol>;
         },
         li({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) {
-            return <li className="pl-1 leading-[1.65] marker:text-white/25" {...props}>{children}</li>;
+            return <li className={`pl-1 ${msg.role === 'user' ? 'leading-[1.5] marker:text-white/15' : 'leading-[1.65] marker:text-white/20'}`} {...props}>{children}</li>;
         },
         blockquote({ children, ...props }: React.QuoteHTMLAttributes<HTMLQuoteElement>) {
             return (
-                <blockquote className="border-l-2 border-[var(--az-border)] pl-4 py-1 my-4 text-[14px] text-[var(--az-text-muted)] leading-relaxed max-w-[680px]" {...props}>
+                <blockquote className="border-l-2 border-white/[0.07] pl-4 py-1 my-4 text-[13.5px] text-[var(--az-text-muted)] leading-relaxed max-w-[640px]" {...props}>
                     {children}
                 </blockquote>
             );
@@ -317,35 +330,35 @@ const MessageItem = React.memo(({
     const displayText = isLong && !showFull ? msg.text.slice(0, 1100) : msg.text;
 
     return (
-        <div className={`flex w-full message-appear ${msg.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
-            <div className={`flex flex-col min-w-0 ${msg.role === 'ai' ? 'w-full max-w-full' : 'items-end max-w-[78%] ml-auto'}`}>
+        <div className={`ai-message flex w-full ${msg.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
+            <div className={`flex flex-col min-w-0 ${msg.role === 'ai' ? 'w-full max-w-full' : 'items-end max-w-[62%] ml-auto'}`}>
                 {isEditing ? (
-                    <div className="w-full space-y-3 p-3 rounded-[12px] border" style={{ background: '#171A20', borderColor: 'rgba(255,255,255,0.07)' }}>
+                    <div className="w-full space-y-3 p-3 rounded-[10px] border" style={{ background: '#171A20', borderColor: 'rgba(255,255,255,0.07)' }}>
                         <textarea
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
-                            className="w-full p-2.5 rounded-[8px] text-[13px] resize-none focus:outline-none"
-                            style={{ background: '#101217', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text)' }}
+                            className="w-full p-2.5 rounded-[8px] text-[13px] leading-relaxed resize-none focus:outline-none focus-visible:outline-none placeholder:text-white/30"
+                            style={{ background: '#101215', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text)', boxShadow: 'none', outline: 'none' }}
                             rows={3}
                         />
                         <div className="flex gap-1.5 justify-end">
-                            <button onClick={onCancelEdit} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" style={{ color: 'var(--az-text-muted)' }}>Cancel</button>
-                            <button onClick={() => onSaveEdit(msg.id)} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" style={{ background: 'var(--az-text)', color: '#0B0D10' }}>Save</button>
+                            <button onClick={onCancelEdit} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ color: 'var(--az-text-muted)' }}>Cancel</button>
+                            <button onClick={() => onSaveEdit(msg.id)} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ background: 'var(--az-text)', color: '#0B0D10' }}>Save</button>
                         </div>
                     </div>
                 ) : (
                     <>
                         <div className={`group relative break-words ${msg.role === 'ai'
                             ? 'w-full bg-transparent'
-                            : 'px-3.5 py-2 rounded-[14px] rounded-br-[4px] border max-w-full'
-                            }`} style={msg.role !== 'ai' ? { background: '#1E232B', borderColor: 'rgba(255,255,255,0.06)', color: 'var(--az-text)' } : undefined}>
+                            : 'px-[13px] py-[7px] rounded-[16px] rounded-br-[5px] border max-w-full transition-all duration-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_1px_2px_rgba(0,0,0,0.14),0_4px_12px_rgba(0,0,0,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_2px_6px_rgba(0,0,0,0.16),0_4px_16px_rgba(0,0,0,0.08)]'
+                            }`} style={msg.role !== 'ai' ? { background: 'linear-gradient(180deg, #1E2E4A 0%, #1A2233 100%)', borderColor: 'rgba(59,130,246,0.18)', color: 'var(--az-text)' } : undefined} onMouseEnter={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = 'linear-gradient(180deg, #22304D 0%, #1E2A3E 100%)'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(59,130,246,0.26)'; } : undefined} onMouseLeave={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = 'linear-gradient(180deg, #1E2E4A 0%, #1A2233 100%)'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(59,130,246,0.18)'; } : undefined}>
 
                             {msg.role === 'ai' && (
-                                <div className="flex items-center gap-2 mb-2 select-none">
-                                    <span className="text-[13px] font-medium tracking-tight" style={{ color: 'var(--az-text-faint)', letterSpacing: '0.02em' }}>Azemax</span>
+                                <div className="flex items-center gap-2 mb-1.5 select-none">
+                                    <span className="text-[12.5px] font-medium tracking-tight" style={{ color: 'var(--az-text-faint)', letterSpacing: '0.02em' }}>Azemax</span>
                                 </div>
                             )}
-                            <div className={`markdown-content relative z-10 max-w-[680px] ${msg.role === 'ai' ? 'text-[15px] leading-[1.72] text-[var(--az-text-secondary)]' : 'text-[15px] leading-relaxed'}`}>
+                            <div className={`markdown-content relative z-10 max-w-[640px] ${msg.role === 'ai' ? 'text-[14px] leading-[1.68] text-[var(--az-text-secondary)] tracking-[-0.01em]' : 'text-[13px] leading-[1.5] font-[450] tracking-tight'}`}>
                                 {msg.role === 'ai' ? (
                                     <>
                                         {parseArtifacts(displayText).segments.map((segment, segIdx) =>
@@ -384,51 +397,51 @@ const MessageItem = React.memo(({
                             </div>
 
                             {msg.role === 'ai' && (
-                                <div className="flex items-center gap-1 mt-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+                                <div className="flex items-center gap-0.5 mt-3 opacity-60 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
                                     <button
                                         onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
-                                        className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 hover:bg-[var(--az-surface-3)]"
-                                        style={{ color: 'var(--az-text-muted)', border: '1px solid transparent' }}
+                                        className="w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                                        style={{ color: 'var(--az-text-muted)' }}
                                         title={copiedId === `msg-${msg.id}` ? 'Copied' : 'Copy'}
-                                        aria-label="Copy"
+                                        aria-label="Copy response"
                                     >
-                                        {copiedId === `msg-${msg.id}` ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                        {copiedId === `msg-${msg.id}` ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} strokeWidth={1.75} />}
                                     </button>
                                     {onRegenerate && (
                                         <button
                                             onClick={() => typeof index === 'number' && onRegenerate(index)}
-                                            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
+                                            className="w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                                             style={{ color: 'var(--az-text-muted)' }}
-                                            title="Regenerate"
-                                            aria-label="Regenerate"
+                                            title="Retry"
+                                            aria-label="Retry"
                                         >
-                                            <RefreshCw size={12} />
+                                            <RefreshCw size={12} strokeWidth={1.75} />
                                         </button>
                                     )}
                                     {onReaction && (
                                         <>
-                                            <div className="w-px h-4 mx-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                                            <div className="w-px h-3.5 mx-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
                                             <button
                                                 onClick={() => onReaction(msg.id, 'up')}
-                                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)] ${reaction === 'up' ? 'text-emerald-400' : ''}`}
+                                                className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'up' ? 'text-emerald-400 bg-white/[0.06]' : ''}`}
                                                 style={{ color: reaction === 'up' ? undefined : 'var(--az-text-muted)' }}
-                                                title="Helpful"
-                                                aria-label="Helpful"
+                                                title="Like"
+                                                aria-label="Like"
                                             >
-                                                <ThumbsUp size={12} />
+                                                <ThumbsUp size={12} strokeWidth={1.75} />
                                             </button>
                                             <button
                                                 onClick={() => onReaction(msg.id, 'down')}
-                                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)] ${reaction === 'down' ? 'text-red-400' : ''}`}
+                                                className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'down' ? 'text-red-400 bg-white/[0.06]' : ''}`}
                                                 style={{ color: reaction === 'down' ? undefined : 'var(--az-text-muted)' }}
-                                                title="Not helpful"
-                                                aria-label="Not helpful"
+                                                title="Dislike"
+                                                aria-label="Dislike"
                                             >
-                                                <ThumbsDown size={12} />
+                                                <ThumbsDown size={12} strokeWidth={1.75} />
                                             </button>
                                         </>
                                     )}
-                                    {copiedId === `msg-${msg.id}` && <span className="text-[10px] ml-1" style={{ color: 'var(--az-text-muted)' }}>Copied</span>}
+                                    {copiedId === `msg-${msg.id}` && <span className="text-[11px] ml-1.5 font-medium tracking-tight" style={{ color: 'var(--az-text-muted)' }}>Copied</span>}
                                 </div>
                             )}
 
@@ -457,7 +470,7 @@ const MessageItem = React.memo(({
                             )}
                         </div>
                         {msg.timestamp && (
-                            <span className={`text-[11px] font-normal mt-2 px-1 transition-opacity duration-200 ${msg.role === 'ai' ? 'opacity-50 group-hover:opacity-80' : 'opacity-0 group-hover:opacity-70 text-right self-end'}`} style={{ color: 'var(--az-text-faint)' }}>
+                            <span className={`text-[10.5px] font-[450] mt-1 px-1 transition-opacity duration-200 ${msg.role === 'ai' ? 'opacity-60 group-hover:opacity-80' : 'opacity-50 group-hover:opacity-70 text-right self-end'}`} style={{ color: 'var(--az-text-muted)', letterSpacing: '0.01em' }}>
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase()}
                             </span>
                         )}
@@ -608,6 +621,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({}); // msgId -> reaction
     const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
     const [lastDiffs, setLastDiffs] = useState<Array<{ file: string; added: number; removed: number; summary: string }>>([]);
+    const [lastExecution, setLastExecution] = useState<{ durationMs: number; at: number } | null>(null);
 
     // Lazy-load Prism so its ~250KB stays out of the initial bundle
     const [prismReady, setPrismReady] = useState(false);
@@ -803,6 +817,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         setCurrentSessionId(newSession.id);
         setAgentActivities([]);
         setLastDiffs([]);
+        setLastExecution(null);
         if (window.innerWidth < 768) setShowSidebar(false);
     }, [settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
@@ -976,6 +991,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         // Centralized loading: thinking immediately — single requestId for concurrent protection
         const requestId = aiLoading.start('thinking');
         currentRequestIdRef.current = requestId;
+        const requestStartAt = Date.now();
         setStreamingText('');
 
         // Update UI immediately with User Message
@@ -1227,6 +1243,13 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     }
                     return s;
                 }));
+                // Execution metadata — measured, not fabricated
+                const dur = Date.now() - requestStartAt;
+                if (stillCurrent && dur > 350) {
+                    setLastExecution({ durationMs: dur, at: Date.now() });
+                } else if (stillCurrent) {
+                    setLastExecution(null);
+                }
                 if (stillCurrent) aiLoading.setSuccess();
                 else aiLoading.stop();
             }
@@ -1394,10 +1417,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
 
     return (
-        <div className="flex flex-col h-full w-full relative overflow-hidden min-h-0" style={{ background: "#101217" }}>
+        <div className="ai-chat-root flex flex-col h-full w-full relative overflow-hidden min-h-0" style={{ background: "#101215" }}>
 
-            {/* Subtle depth — no gradients */}
-            <div className="absolute inset-0 pointer-events-none" style={{ background: 'transparent' }} />
+            {/* Subtle depth — hairline, no gradients, no blue */}
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0.01), transparent 22%), transparent' }} />
 
             {/* Sidebar (History) — premium minimal */}
             <div
@@ -1414,14 +1437,14 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 }}
             >
                 <div className="flex flex-col h-full border-r shadow-[4px_0_24px_rgba(0,0,0,0.32)]" style={{ background: "#0E1116", borderColor: "rgba(255,255,255,0.06)" }}>
-                    {/* Sidebar Header — premium */}
-                    <div className="h-[52px] shrink-0 flex items-center justify-between px-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {/* Sidebar Header — premium, balanced, neutral */}
+                    <div className="h-[48px] shrink-0 flex items-center justify-between px-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <button
                             onClick={() => { handleNewChat(); setShowSidebar(false); }}
-                            className="inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-[8px] text-[13px] font-medium tracking-tight transition-colors duration-150 hover:bg-white/[0.06] active:bg-white/[0.08]"
+                            className="inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-[8px] text-[13px] font-medium tracking-tight transition-colors duration-150 hover:bg-white/[0.06] active:bg-white/[0.08] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                             style={{ color: 'var(--az-text)' }}
                         >
-                            <Plus size={14} strokeWidth={2} style={{ color: '#3B82F6' }} />
+                            <Plus size={14} strokeWidth={2} style={{ color: 'rgba(255,255,255,0.72)' }} />
                             New chat
                         </button>
                         <button
@@ -1434,22 +1457,23 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         </button>
                     </div>
 
-                    {/* Search Bar — refined */}
+                    {/* Search Bar — premium neutral focus, no blue */}
                     <div className="px-3 pt-3 pb-2">
                         <div className="relative group">
                             <input
                                 type="text"
                                 placeholder="Search conversations"
                                 aria-label="Search conversations"
-                                className="w-full h-8 pl-8 pr-3 text-[13px] rounded-[8px] outline-none transition-all duration-150"
+                                className="w-full h-8 pl-8 pr-3 text-[13px] rounded-[8px] outline-none transition-all duration-150 placeholder:text-white/30 focus:outline-none focus-visible:outline-none"
                                 style={{
                                     background: 'rgba(255,255,255,0.04)',
                                     border: '1px solid rgba(255,255,255,0.07)',
                                     color: 'var(--az-text)',
+                                    boxShadow: 'none',
                                 }}
                                 onFocus={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.45)';
-                                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.12)';
+                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)';
+                                    e.currentTarget.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.04)';
                                     e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
                                 }}
                                 onBlur={(e) => {
@@ -1531,15 +1555,15 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                 onClick={() => handleSelectSession(session.id)}
                                                 className={`group relative flex items-center gap-2.5 pl-2.5 pr-2 py-2 rounded-[8px] cursor-pointer transition-colors duration-150 ${isActive ? 'is-active' : ''}`}
                                                 style={{
-                                                    background: isActive ? 'rgba(59,130,246,0.09)' : 'transparent',
-                                                    border: isActive ? '1px solid rgba(59,130,246,0.14)' : '1px solid transparent',
+                                                    background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent',
+                                                    border: isActive ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
                                                 }}
                                             >
                                                 {isActive && (
-                                                    <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ background: '#3B82F6' }} />
+                                                    <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.18)' }} />
                                                 )}
-                                                <MessageSquare size={14} className="shrink-0 transition-colors duration-150" style={{ color: isActive ? '#3B82F6' : 'rgba(255,255,255,0.28)' }} />
-                                                <span className="text-[13px] leading-none truncate pr-14 flex-1 min-w-0 transition-colors duration-150" style={{ color: isActive ? '#E6EDF3' : 'rgba(255,255,255,0.62)', fontWeight: isActive ? 500 : 400 }}>
+                                                <MessageSquare size={14} className="shrink-0 transition-colors duration-150" style={{ color: isActive ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.28)' }} />
+                                                <span className="text-[13px] leading-none truncate pr-14 flex-1 min-w-0 transition-colors duration-150" style={{ color: isActive ? '#F1F3F5' : 'rgba(255,255,255,0.62)', fontWeight: isActive ? 500 : 400 }}>
                                                     {session.title || 'New Chat'}
                                                 </span>
 
@@ -1635,20 +1659,20 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full relative z-10">
-                {/* Header — compact premium toolbar */}
-                <div className="h-12 shrink-0 flex items-center justify-between px-3 border-b z-20" style={{ background: '#101217', borderColor: 'rgba(255,255,255,0.06)' }}>
-                    <div className="flex items-center gap-1.5">
+                {/* Header — premium hierarchy: history · AZEMAX · title · file · + */}
+                <div className="h-[44px] shrink-0 flex items-center gap-3 px-4 border-b z-20" style={{ background: '#0F1115', borderColor: 'rgba(255,255,255,0.05)' }}>
+                    <div className="flex items-center gap-2 shrink-0">
                         <button
                             onClick={() => setShowSidebar(!showSidebar)}
-                            className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
-                            style={{ color: showSidebar ? 'var(--az-text)' : 'var(--az-text-muted)', background: showSidebar ? 'var(--az-surface-3)' : 'transparent', border: showSidebar ? '1px solid var(--az-border)' : '1px solid transparent' }}
+                            className="w-[28px] h-[28px] rounded-[7px] flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                            style={{ color: showSidebar ? 'var(--az-text-secondary)' : 'var(--az-text-muted)', background: showSidebar ? 'rgba(255,255,255,0.06)' : 'transparent', border: showSidebar ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent' }}
                             title="Chat history"
                             aria-label="Toggle history"
                         >
-                            <History size={14} strokeWidth={1.75} />
+                            <History size={13} strokeWidth={1.75} />
                         </button>
-                        <div className="w-px h-4 mx-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
-                        <span className="hidden sm:inline text-[11px] font-medium tracking-wide uppercase" style={{ color: 'var(--az-text-muted)' }}>Azemax</span>
+                        <div className="w-px h-[14px] mx-0.5 hidden sm:block" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                        <span className="hidden sm:inline text-[11px] font-semibold tracking-[0.09em] uppercase select-none" style={{ color: 'var(--az-text-secondary)', letterSpacing: '0.09em' }}>AZEMAX</span>
                     </div>
 
                     <button
@@ -1668,27 +1692,28 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: newTitle.trim(), updatedAt: Date.now() } : s));
                             }
                         }}
-                        className="flex-1 min-w-0 mx-3 px-2.5 py-1.5 rounded-md text-[14px] font-medium truncate text-center transition-colors hover:bg-[var(--az-surface-3)]"
-                        style={{ color: 'var(--az-text-secondary)' }}
+                        className="flex-1 min-w-0 px-2 py-1 rounded-[6px] text-[13px] font-medium truncate text-center tracking-tight transition-colors hover:bg-white/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10"
+                        style={{ color: 'var(--az-text)', letterSpacing: '-0.01em' }}
                         title={`${currentSession?.title || 'New Chat'} — Click to rename`}
                     >
                         <span className="truncate">{currentSession?.title || 'New Chat'}</span>
                     </button>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1 shrink-0">
                         {activeFileMeta && (
-                            <span className="hidden lg:inline-flex items-center max-w-[120px] truncate text-[11px] px-2 py-1 rounded-full" style={{ background: '#171A20', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text-muted)' }}>
-                                {activeFileMeta.name}
+                            <span className="hidden sm:inline-flex items-center gap-1 max-w-[110px] truncate text-[11px] px-2 py-1 rounded-full font-medium leading-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--az-text-muted)' }}>
+                                <FileCode size={11} className="shrink-0 opacity-60" />
+                                <span className="truncate">{activeFileMeta.name}</span>
                             </span>
                         )}
                         <button
                             onClick={handleNewChat}
-                            className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--az-surface-3)]"
+                            className="w-[28px] h-[28px] rounded-[7px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 shrink-0"
                             style={{ color: 'var(--az-text-muted)', border: '1px solid transparent' }}
                             title="New chat"
                             aria-label="New chat"
                         >
-                            <Plus size={14} strokeWidth={1.75} />
+                            <Plus size={13} strokeWidth={1.75} />
                         </button>
                     </div>
                 </div>
@@ -1702,31 +1727,31 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 <div
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
-                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar w-full"
+                    className="ai-chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full"
                     style={{ overflowAnchor: 'auto' }}
                 >
-                    <div className="mx-auto w-full max-w-[640px] px-4 pt-6 pb-8 space-y-6">
+                    <div className="mx-auto w-full max-w-[640px] px-4 pt-4 pb-8 space-y-3">
                     {messages.length === 0 && !streamingText && settings.general.showWelcomeScreen ? (
-                        <div className="flex flex-col items-center justify-center px-6 py-10 text-center animate-fade-in-up w-full max-w-[360px] mx-auto">
-                            <div className="mb-4 opacity-90">
-                                <AzemaxLogo size={28} />
+                        <div className="flex flex-col items-center px-5 pt-8 pb-6 text-center w-full max-w-[340px] mx-auto" style={{ animation: 'fade-in-up 220ms var(--az-ease-out) both' }}>
+                            <div className="mb-3 opacity-[0.88]">
+                                <AzemaxLogo size={22} />
                             </div>
-                            <h3 className="text-[13px] font-semibold tracking-tight" style={{ color: 'var(--az-text)' }}>Azemax</h3>
-                            <p className="text-[14px] font-medium tracking-tight mt-0.5" style={{ color: 'var(--az-text)' }}>What are you building?</p>
-                            <p className="text-[12px] leading-relaxed mt-2 max-w-[280px]" style={{ color: 'var(--az-text-muted)' }}>
-                                Ask about your code, files, errors, architecture or let Azemax make changes for you.
+                            <div className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: 'rgba(255,255,255,0.32)' }}>Azemax</div>
+                            <h3 className="text-[14px] font-semibold tracking-tight leading-tight mt-1" style={{ color: 'var(--az-text)' }}>What are you building?</h3>
+                            <p className="text-[12px] leading-[1.5] mt-1.5 max-w-[280px] tracking-tight" style={{ color: 'var(--az-text-muted)' }}>
+                                Ask about your code, files, or let Azemax make changes directly.
                             </p>
-                            <div className="grid grid-cols-2 gap-2 mt-6 w-full">
+                            <div className="grid grid-cols-2 gap-1.5 mt-5 w-full">
                                 {QUICK_ACTIONS.map((action) => (
                                     <button
                                         key={action.label}
                                         onClick={() => handleQuickAction(action.prompt)}
-                                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-medium transition-colors"
-                                        style={{ background: '#15181E', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text-secondary)' }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.background = '#1C2026'; e.currentTarget.style.color = 'var(--az-text)'; }}
-                                        onMouseLeave={(e) => { e.currentTarget.style.background = '#15181E'; e.currentTarget.style.color = 'var(--az-text-secondary)'; }}
+                                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-[8px] text-[11.5px] font-medium tracking-tight leading-none transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--az-text-secondary)' }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--az-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'var(--az-text-secondary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
                                     >
-                                        <action.icon size={13} strokeWidth={1.75} style={{ opacity: 0.7 }} />
+                                        <action.icon size={12} strokeWidth={1.75} style={{ opacity: 0.58 }} />
                                         {action.label}
                                     </button>
                                 ))}
@@ -1787,27 +1812,27 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         </>
                     )}
 
-                    {/* Unified AI activity — exactly ONE compact status at a time, no skeleton, no duplicate loaders */}
+                    {/* Azemax processing — cohesive inline Azemaxing · · · */}
                     {!streamingText && isLoading && (
-                        <div className="message-appear" style={{ minHeight: '28px', marginTop: '12px', marginBottom: '12px' }}>
-                            {agentActivities.length > 0 ? (
-                                <div className="space-y-1">
-                                    {agentActivities.slice(-4).map(act => (
-                                        <div key={act.id} className="flex items-center gap-2 px-2 py-1 text-[13px] leading-none" style={{ minHeight: '28px', contain: 'layout paint' }}>
-                                            <span className={`flex-1 truncate ${act.status === 'running' ? 'text-[#A1A6B0]' : act.status === 'done' ? 'text-[#707680]' : 'text-red-300/70'}`}>{act.message.replace(/…+$|\.\.\.+$/,'').trim()}</span>
-                                            <span className="ai-loading-dots-subtle ai-dots-fixed" aria-hidden="true" style={{ display: act.status === 'running' ? 'inline-flex' : 'none', width: 16, gap: 4 }}>
-                                                <span className="ai-dot-subtle" />
-                                                <span className="ai-dot-subtle" />
-                                                <span className="ai-dot-subtle" />
-                                            </span>
-                                            <span className={`shrink-0 text-[11px] ${act.status === 'running' ? 'text-transparent' : act.status === 'done' ? 'text-emerald-400/60' : 'text-red-400/70'}`}>
-                                                {act.status === 'running' ? '' : act.status === 'done' ? '✓' : '✕'}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="px-1">
+                        <div className="flex w-full justify-start" style={{ marginTop: '0px', marginBottom: '0px', contain: 'layout paint' }}>
+                            <div className="min-w-0">
+                                {agentActivities.length > 0 ? (
+                                    <div className="space-y-0">
+                                        {agentActivities.slice(-4).map(act => (
+                                            <div key={act.id} className="ai-loading-minimal" style={{ minHeight: '20px', padding: '4px 0 2px', gap: '6px' } as React.CSSProperties}>
+                                                <span className="ai-loading-minimal-text truncate" style={{ fontSize: '12.5px', maxWidth: '200px' }}>{act.message.replace(/…+$|\.\.\.+$/,'').trim()}</span>
+                                                <span className="ai-loading-dots-subtle ai-dots-fixed shrink-0" aria-hidden="true" style={{ display: act.status === 'running' ? 'inline-flex' : 'none', opacity: act.status === 'running' ? 1 : 0 }}>
+                                                    <span className="ai-dot-subtle" />
+                                                    <span className="ai-dot-subtle" />
+                                                    <span className="ai-dot-subtle" />
+                                                </span>
+                                                <span className={`shrink-0 text-[10px] leading-none ${act.status === 'running' ? 'text-transparent' : act.status === 'done' ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                                                    {act.status === 'running' ? '' : act.status === 'done' ? '✓' : '✕'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
                                     <AILoadingIndicator
                                         status={aiLoading.status}
                                         operation={currentOperation}
@@ -1817,26 +1842,87 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                         hasSelection={!!getActiveEditorContext()?.selectionText}
                                         variant="chat"
                                     />
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     )}
-                    {/* Premium diff artifacts — compact */}
+                    {/* Execution metadata — subtle, only when measured */}
+                    {lastExecution && !isLoading && !streamingText && (
+                        <div className="flex items-center gap-1 px-1 py-1" style={{ contain: 'layout' }}>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-[450] tracking-tight" style={{ color: 'var(--az-text-faint)' }}>
+                                <Clock3 size={11} strokeWidth={1.75} className="opacity-60" />
+                                Worked for {(lastExecution.durationMs / 1000).toFixed(lastExecution.durationMs >= 10000 ? 0 : 1)}s
+                            </span>
+                            <ChevronRight size={11} strokeWidth={1.75} className="opacity-30" style={{ color: 'var(--az-text-faint)' }} />
+                        </div>
+                    )}
+                    {/* Premium change summary — Azemax workspace */}
                     {lastDiffs.length > 0 && (
-                        <div className="px-1 py-1 space-y-2">
-                            {lastDiffs.map(d => (
-                                <div key={d.file} className="rounded-xl border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden">
-                                    <div className="flex items-center justify-between px-3 py-2.5">
+                        <div className="rounded-[10px] border border-white/[0.06] bg-[#151A24] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset,0_4px_12px_rgba(0,0,0,0.14)]">
+                            {/* Summary header */}
+                            <div className="flex items-center justify-between px-3 py-2.5 gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <span className="w-7 h-7 rounded-[7px] bg-[rgba(46,160,67,0.09)] border border-[rgba(46,160,67,0.14)] flex items-center justify-center shrink-0">
+                                        <FileCode size={13} strokeWidth={1.75} className="text-emerald-300/80" />
+                                    </span>
+                                    <div className="min-w-0">
+                                        <div className="text-[12.5px] font-medium tracking-tight leading-none" style={{ color: 'var(--az-text)' }}>
+                                            {lastDiffs.length} file{lastDiffs.length !== 1 ? 's' : ''} changed
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[11px] font-mono font-medium tracking-tight text-emerald-400/75">+{lastDiffs.reduce((a, d) => a + d.added, 0)}</span>
+                                            <span className="text-[11px] font-mono font-medium tracking-tight text-red-400/65">-{lastDiffs.reduce((a, d) => a + d.removed, 0)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <span className="hidden sm:flex items-center text-[var(--az-text-faint)] opacity-40">
+                                        <ChevronRight size={14} strokeWidth={1.75} />
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            const first = lastDiffs[0];
+                                            if (!first) return;
+                                            const find = (nodes: ReturnType<typeof getFileTree>, target: string): unknown => {
+                                                for (const n of nodes) {
+                                                    if (n.name === target) return n;
+                                                    // @ts-ignore
+                                                    if (n.children) { const f = find(n.children as never, target); if (f) return f; }
+                                                }
+                                                return null;
+                                            };
+                                            const node = find(getFileTree(), first.file) as { id: string; name: string } | null;
+                                            if (node) {
+                                                const fromTree = getFileTree().find(n => n.id === node.id) || node;
+                                                // @ts-ignore
+                                                setActiveFile(fromTree as never);
+                                            }
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[7px] text-[11px] font-medium bg-white/[0.04] border border-white/[0.07] text-[var(--az-text-secondary)] hover:bg-white/[0.07] hover:border-white/[0.10] hover:text-[var(--az-text)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                                    >
+                                        <Eye size={11} strokeWidth={1.75} />
+                                        Review
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Per-file rows — subtle tonal separation */}
+                            <div className="border-t border-white/[0.05] bg-[rgba(255,255,255,0.01)]">
+                                {lastDiffs.map(d => (
+                                    <div key={d.file} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                                         <div className="flex items-center gap-2 min-w-0">
-                                            <span className="w-6 h-6 rounded-md bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center text-emerald-300/70 shrink-0">✓</span>
+                                            <span className="w-5 h-5 rounded-[5px] bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
+                                                <FileCode size={11} strokeWidth={1.75} className="text-[var(--az-text-muted)]" />
+                                            </span>
                                             <div className="min-w-0">
-                                                <div className="text-[13px] font-medium text-[var(--az-text-secondary)] truncate">{d.file}</div>
-                                                <div className="text-[11px] text-[var(--az-text-faint)]">{d.summary}</div>
+                                                <div className="text-[12.5px] font-[450] tracking-tight truncate" style={{ color: 'var(--az-text-secondary)' }}>{d.file}</div>
+                                                <div className="text-[11px] truncate" style={{ color: 'var(--az-text-faint)' }}>{d.summary}</div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                            <span className="text-[11px] text-emerald-300/60">+{d.added}</span>
-                                            {d.removed > 0 && <span className="text-[11px] text-red-300/60">-{d.removed}</span>}
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[11px]">
+                                                <span className="text-emerald-400/70">+{d.added}</span>
+                                                {d.removed > 0 && <span className="text-red-400/60">-{d.removed}</span>}
+                                            </span>
                                             <button
                                                 onClick={() => {
                                                     const find = (nodes: ReturnType<typeof getFileTree>, target: string): unknown => {
@@ -1849,20 +1935,19 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                     };
                                                     const node = find(getFileTree(), d.file) as { id: string; name: string } | null;
                                                     if (node) {
-                                                        // Use setActiveFile via workspaceBridgeActions
                                                         const fromTree = getFileTree().find(n => n.id === node.id) || node;
                                                         // @ts-ignore
                                                         setActiveFile(fromTree as never);
                                                     }
                                                 }}
-                                                className="px-2 py-1 rounded-md text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-3)] transition-colors"
+                                                className="px-2 py-1 rounded-[5px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] border border-transparent hover:border-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                                             >
                                                 Open
                                             </button>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     )}
                     <div ref={messagesEndRef} />
@@ -1881,7 +1966,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 </button>
 
                 {/* Composer — sticky, anchored, premium floating */}
-                <div className="shrink-0 px-3 pb-3 pt-3 z-10" style={{ background: '#101217', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {/* Composer — sticky premium command center, soft hairline separation */}
+                <div className="shrink-0 px-4 pb-3 pt-2.5 z-10" style={{ background: '#0F1115', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                     <div className="mx-auto w-full max-w-[640px]">
                         <AIComposer
                             input={input}
