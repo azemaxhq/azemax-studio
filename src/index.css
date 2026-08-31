@@ -670,9 +670,235 @@ code, pre, kbd, .font-mono, .glass-terminal-body { font-family: 'JetBrains Mono'
 .stream-caret { background: var(--az-text-muted); }
 
 /* ============================================
-   BUTTONS / INTERACTIONS — thin down legacy glows
+   PREMIUM AI TOPBAR BUTTON — Azemax signature
+   Quiet → elegant → responsive → branded → intelligent
+   Refined compact control, not a CTA
    ============================================ */
 
+:root {
+  --az-ai-accent-soft: rgba(59,130,246,0.09);
+  --az-ai-accent-soft-hover: rgba(59,130,246,0.13);
+  --az-ai-border-active: rgba(59,130,246,0.24);
+  --az-ai-glow: 0 0 14px rgba(59,130,246,0.08);
+  --az-ai-glow-active: 0 0 16px rgba(59,130,246,0.13);
+}
+
+/* ——— Signature AI control: matched to Run button — 28px / 8px / 1px ——— */
+.az-ai-topbar-btn {
+  position: relative;
+  height: 28px;
+  min-width: 64px;
+  padding: 0 12px;
+  gap: 0;
+  border-radius: var(--az-r-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Exact match to .glass-run-button / toolbar buttons */
+  color: var(--az-text);
+  background: var(--az-surface-3);
+  border: 1px solid var(--az-border);
+  box-shadow: none;
+  transition:
+    background 140ms var(--az-ease),
+    border-color 140ms var(--az-ease),
+    color 140ms var(--az-ease);
+  will-change: background, border-color;
+}
+
+.az-ai-topbar-btn:hover {
+  background: var(--az-surface-hover);
+  border-color: var(--az-border-strong);
+  color: var(--az-text);
+  box-shadow: none;
+  transform: none;
+}
+.az-ai-topbar-btn:hover .az-ai-topbar-mark {
+  filter: brightness(1.08) saturate(1.05);
+  opacity: 1;
+}
+.az-ai-topbar-btn:hover .az-ai-topbar-i {
+  color: var(--az-text);
+}
+
+.az-ai-topbar-btn:active {
+  transform: none;
+  background: var(--az-surface-active);
+  border-color: var(--az-border);
+  box-shadow: none;
+  transition-duration: 80ms;
+}
+
+.az-ai-topbar-btn:focus-visible {
+  outline: none;
+  border-color: var(--az-accent-border);
+  box-shadow: var(--az-focus-ring);
+}
+
+/* ——— Active: subtle blue-tinted, same metrics as Run active parity ——— */
+.az-ai-topbar-btn[data-active="true"] {
+  background: var(--az-ai-accent-soft);
+  border-color: var(--az-ai-border-active);
+  color: var(--az-text);
+  box-shadow: none;
+}
+.az-ai-topbar-btn[data-active="true"] .az-ai-topbar-mark { filter: brightness(1.10) saturate(1.05); opacity: 1; }
+.az-ai-topbar-btn[data-active="true"] .az-ai-topbar-i { color: var(--az-text); }
+.az-ai-topbar-btn[data-active="true"]:hover {
+  background: var(--az-ai-accent-soft-hover);
+  border-color: var(--az-ai-border-active);
+}
+
+/* ——— Ai wordmark: logo is the A + refined lowercase i ——— */
+.az-ai-wordmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.az-ai-topbar-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  line-height: 0;
+  flex-shrink: 0;
+  opacity: 1;
+  filter: none;
+  transition: filter 140ms var(--az-ease), opacity 140ms var(--az-ease);
+  will-change: filter, opacity;
+  margin-right: -0.8px;
+}
+.az-ai-topbar-mark img {
+  display: block;
+  width: 19px !important;
+  height: 19px !important;
+  object-fit: contain;
+  object-position: center;
+  image-rendering: -webkit-optimize-contrast;
+  flex-shrink: 0;
+}
+.az-ai-topbar-i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14.5px;
+  font-weight: 550;
+  letter-spacing: -0.015em;
+  color: var(--az-text-secondary);
+  transition: color 140ms var(--az-ease);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ——— Thinking: subtle breathing + premium square spinner (reuses inline language) ——— */
+.az-ai-topbar-btn[data-loading="true"] {
+  background: var(--az-ai-accent-soft);
+  border-color: rgba(59,130,246,0.20);
+}
+.az-ai-topbar-btn[data-loading="true"] .az-ai-topbar-mark {
+  animation: az-ai-breathe 2.6s var(--az-ease) infinite;
+}
+.az-ai-topbar-btn[data-loading="true"] .az-ai-topbar-i {
+  color: #D1D6E0;
+}
+
+.az-ai-topbar-spinner {
+  position: absolute;
+  inset: -1px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  border-top-color: var(--az-accent);
+  border-top-width: 1.35px;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.02);
+}
+.az-ai-topbar-btn[data-loading="true"] .az-ai-topbar-spinner {
+  opacity: 0.88;
+  animation: az-ai-square-spin 1.15s cubic-bezier(0.4,0,0.2,1) infinite;
+}
+.az-ai-topbar-spinner::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 3px;
+  background: var(--az-accent);
+  opacity: 0.08;
+  animation: az-ai-square-pulse 1.9s cubic-bezier(0.65,0,0.35,1) infinite;
+}
+
+@keyframes az-ai-square-spin { 0% { transform: rotate(0deg); border-radius: 8px; } 25% { border-radius: 8px; } 50% { transform: rotate(180deg); } 100% { transform: rotate(360deg); border-radius: 8px; } }
+@keyframes az-ai-square-pulse { 0%,100% { opacity: 0.07; transform: scale(1); } 50% { opacity: 0.13; transform: scale(0.94); } }
+@keyframes az-ai-breathe { 0%,100% { opacity: 0.94; filter: brightness(1.02); } 50% { opacity: 1; filter: brightness(1.16); } }
+
+/* Tooltip — reuses app system (glass-tooltip) with subtle motion */
+.az-ai-tooltip {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(2px);
+  opacity: 0;
+  animation: az-tooltip-in 160ms var(--az-ease-out) forwards;
+  will-change: opacity, transform;
+}
+.az-ai-tooltip--side {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(2px);
+  opacity: 0;
+  animation: az-tooltip-in-side 160ms var(--az-ease-out) forwards;
+  will-change: opacity, transform;
+}
+.az-ai-tooltip-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--az-overlay);
+  background: rgba(26,30,38,0.97);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.04) inset;
+  color: rgba(255,255,255,0.86);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.az-ai-tooltip kbd {
+  font-size: 9.5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.42);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  line-height: 1;
+}
+@keyframes az-tooltip-in { from { opacity: 0; transform: translateX(-50%) translateY(4px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+@keyframes az-tooltip-in-side { from { opacity: 0; transform: translateY(-50%) translateX(4px); } to { opacity: 1; transform: translateY(-50%) translateX(0); } }
+
+/* Legacy hidden overrides — neutralized but keep to avoid double rendering */
 .ai-toggle-btn, .ai-toggle-btn::before, .ai-toggle-btn.active,
 .ai-toggle-particles, .ai-toggle-shimmer, .ai-toggle-ripple, .ai-toggle-stars { display: none !important; }
 .ai-toggle-btn { box-shadow: none !important; }
@@ -682,6 +908,15 @@ code, pre, kbd, .font-mono, .glass-terminal-body { font-family: 'JetBrains Mono'
 .creation-shimmer-border, .creation-shimmer-border::before,
 .creation-shimmer-border-folder::before { box-shadow: none !important; }
 .creation-shimmer-border::before, .creation-shimmer-border-folder::before { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .az-ai-topbar-spinner, .az-ai-topbar-spinner::after,
+  .az-ai-topbar-btn[data-loading="true"] .az-ai-topbar-mark { animation: none !important; }
+  .az-ai-topbar-btn, .az-ai-tooltip, .az-ai-tooltip--side { transition: none !important; }
+  .az-ai-tooltip { animation: none !important; opacity: 1; transform: translateX(-50%) translateY(0); }
+  .az-ai-tooltip--side { animation: none !important; opacity: 1; transform: translateY(-50%) translateX(0); }
+  .az-ai-topbar-btn:hover { transform: none !important; }
+}
 
 /* ============================================
    ANIMATIONS — restrained, expensive timing

@@ -10,10 +10,10 @@ import { sanitizeAiCodeOutputForLanguage } from '../../utils/aiSanitizer';
 import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
 import { checkCodeErrors } from '../../utils/diagnosticsService';
 import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map as MapIcon, WrapText, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
-import { ModernAILogo } from '../Icons/ModernAILogo';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { AICommentIndicator } from './AICommentIndicator';
 import { AIRequestStore } from '../../core/ai/aiRequestStore';
+import ReactDOM from 'react-dom';
 import { BRAND } from '../../core/branding';
 import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
@@ -58,6 +58,72 @@ const RunButton: React.FC<{ activeFile: FileNode | null; language: string }> = (
                 </>
             )}
         </button>
+    );
+};
+
+// Premium AI topbar toggle — Azemax signature control
+// Quiet → elegant → branded: dark elevated surface, brand-blue mark, muted AI text
+const AITopbarToggle: React.FC<{ isOpen?: boolean; onToggle?: () => void }> = ({ isOpen, onToggle }) => {
+    const isWorking = false;
+    const [showTip, setShowTip] = React.useState(false);
+    const [rect, setRect] = React.useState<DOMRect | null>(null);
+    const btnRef = React.useRef<HTMLButtonElement>(null);
+    const timerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    const shortcut = isMac ? '⌘L' : 'Ctrl+L';
+
+    const onEnter = React.useCallback(() => {
+        timerRef.current = setTimeout(() => {
+            if (btnRef.current) setRect(btnRef.current.getBoundingClientRect());
+            setShowTip(true);
+        }, 380);
+    }, []);
+    const onLeave = React.useCallback(() => {
+        clearTimeout(timerRef.current);
+        setShowTip(false);
+        setRect(null);
+    }, []);
+    React.useEffect(() => () => clearTimeout(timerRef.current), []);
+    if (!onToggle) return null;
+
+    return (
+        <>
+            <button
+                ref={btnRef}
+                type="button"
+                onClick={onToggle}
+                onMouseEnter={onEnter}
+                onMouseLeave={onLeave}
+                onFocus={() => {
+                    if (btnRef.current) setRect(btnRef.current.getBoundingClientRect());
+                    setShowTip(true);
+                }}
+                onBlur={onLeave}
+                aria-label={isWorking ? 'Azemax AI — working' : 'Azemax AI'}
+                aria-pressed={!!isOpen}
+                aria-busy={isWorking ? true : undefined}
+                data-active={isOpen ? 'true' : 'false'}
+                data-loading={isWorking ? 'true' : undefined}
+                className="az-ai-topbar-btn"
+            >
+                <span className="az-ai-topbar-spinner" aria-hidden />
+                <span className="az-ai-wordmark" aria-hidden>
+                    <span className="az-ai-topbar-mark">
+                        <AzemaxLogo size={19} className="!gap-0 [&_img]:!w-[19px] [&_img]:!h-[19px]" alt="" />
+                    </span>
+                    <span className="az-ai-topbar-i">i</span>
+                </span>
+            </button>
+            {showTip && rect && ReactDOM.createPortal(
+                <div className="az-ai-tooltip" style={{ left: rect.left + rect.width / 2, top: rect.bottom + 8 }} role="tooltip">
+                    <div className="az-ai-tooltip-inner">
+                        <span>{isWorking ? 'Azemax AI — working…' : 'Azemax AI'}</span>
+                        <kbd>{shortcut}</kbd>
+                    </div>
+                </div>,
+                document.body
+            )}
+        </>
     );
 };
 
@@ -1571,25 +1637,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
                 <div className="flex items-center gap-3 relative mr-2 shrink-0">
                     <RunButton activeFile={activeFile} language={language} />
-
-                    {/* AI Sidebar Toggle - Interactive Animated */}
-                    {onToggleAi && (
-                        <button
-                            onClick={() => onToggleAi()}
-                            className={`
-                                relative h-7 flex items-center justify-center gap-1.5 rounded-md border text-[11px] font-medium tracking-wide transition-colors duration-150
-                                ${isAiOpen
-                                    ? 'px-2.5 bg-[var(--az-text)] text-[var(--az-bg)] border-[var(--az-text)]'
-                                    : 'px-2.5 bg-[var(--az-surface-3)] border-[var(--az-border)] hover:bg-[var(--az-surface-hover)] hover:border-[var(--az-border-strong)]'
-                                }
-                            `}
-                            style={{ color: isAiOpen ? 'var(--az-bg)' : 'var(--az-text-secondary)'}}
-                            title={isAiOpen ? "Close AI Sidebar" : "Open AI Sidebar"}
-                        >
-                            <ModernAILogo className={`w-3.5 h-3.5 shrink-0 ${isAiOpen ? '' : 'opacity-70'}`} />
-                            <span>AI</span>
-                        </button>
-                    )}
+                    <AITopbarToggle isOpen={isAiOpen} onToggle={onToggleAi} />
                 </div>
             </div>
 

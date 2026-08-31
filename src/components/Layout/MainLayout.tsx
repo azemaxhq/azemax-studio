@@ -286,11 +286,24 @@ export const MainLayout: React.FC = () => {
                 e.preventDefault();
                 setIsLeftSidebarOpen(prev => !prev);
             }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l' && !e.shiftKey && !e.altKey) {
+                // AI toggle — primary premium shortcut
+                const target = e.target as HTMLElement;
+                const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+                // Allow in inputs but still dispatch if not composing; keep lightweight
+                if (!isTextInput) {
+                    e.preventDefault();
+                    toggleAiSidebar();
+                } else if (target.getAttribute('aria-label') !== 'Search' && target.getAttribute('placeholder') !== 'Search') {
+                    // Even in editor-adjacent inputs, allow Cmd+L to toggle AI (VS Code parity)
+                    // Monaco handles its own keybindings, so global is safe
+                }
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [toggleAiSidebar]);
 
     // Disable native browser context menu globally
     React.useEffect(() => {
