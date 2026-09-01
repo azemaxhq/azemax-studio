@@ -341,8 +341,7 @@ export async function executeActionPlan(
 
     // [6] APPLY — snapshot originals for rollback, then write once per file
     const rollback = new Map<string, string>(); // fileId -> pre-edit content
-    let appliedFiles = 0;
-    let appliedActions = new Set<number>();
+    const appliedActions = new Set<number>();
 
     try {
         for (const c of candidates) {
@@ -354,7 +353,6 @@ export async function executeActionPlan(
                         const res = deps.createFile(wholeFile.path, wholeFile.content);
                         if (!res.success) throw new Error(res.error || `Failed to create file: ${wholeFile.path}`);
                         appliedActions.add(plan.indexOf(wholeFile));
-                        appliedFiles++;
                         break;
                     }
                     case 'delete_file': {
@@ -364,7 +362,6 @@ export async function executeActionPlan(
                         if (content !== null) rollback.set(fileId, content);
                         deps.deleteNode(fileId);
                         appliedActions.add(plan.indexOf(wholeFile));
-                        appliedFiles++;
                         break;
                     }
                     case 'rename_file': {
@@ -374,7 +371,6 @@ export async function executeActionPlan(
                         const res = deps.renameNode(fileId, newName);
                         if (!res.success) throw new Error(res.error || `Failed to rename: ${wholeFile.path}`);
                         appliedActions.add(plan.indexOf(wholeFile));
-                        appliedFiles++;
                         break;
                     }
                 }
@@ -391,7 +387,6 @@ export async function executeActionPlan(
             const res = deps.updateFileContent(fileId, c.candidate);
             if (!res.success) throw new Error(res.error || `Failed to update file: ${c.filePath}`);
             for (const a of c.plan.actions) appliedActions.add(plan.indexOf(a));
-            appliedFiles++;
         }
 
         // [7] VERIFY — re-read everything; store must match validated candidates

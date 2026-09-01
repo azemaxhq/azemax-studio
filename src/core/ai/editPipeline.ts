@@ -113,6 +113,7 @@ export async function runEditPipeline(request: EditPipelineRequest): Promise<Edi
             ctx?.selection ?? null,
             request.history ?? [],
             request.signal,
+            { filePath: ctx?.filePath ?? fileName, className: ctx?.className ?? null, moduleName: ctx?.moduleName ?? null }
         );
     }
 
@@ -152,6 +153,7 @@ export async function generateConstrainedActions(
     selectionRange: { startLine: number; endLine: number } | null,
     history: ChatMessage[],
     signal?: AbortSignal,
+    opts?: { filePath?: string; className?: string | null; moduleName?: string | null }
 ): Promise<AIAction[] | null> {
     const constraintDesc = [
         plan.globalConstraints?.preserveOutput ? 'preserve the existing output' : '',
@@ -168,7 +170,18 @@ export async function generateConstrainedActions(
         .join('\n')
         .slice(0, 12000);
 
+    const filePath = opts?.filePath ?? fileName;
+    const expectedClass = fileName ? fileName.replace(/\.[^/.]+$/, '') : null;
+    const existingClass = opts?.className ?? null;
+    const existingModule = opts?.moduleName ?? null;
     const systemPrompt = `You are a precise code-edit planner for ${language}. Produce a JSON action plan implementing the user's request against the CURRENT file content.
+
+AUTHORITATIVE FILE IDENTITY (derive class from filename, never hard-code):
+- fileName: ${fileName}
+- filePath: ${filePath}
+- language: ${language}
+- expectedClass (derived from fileName, not hard-coded): ${expectedClass ?? '(none)'}${existingClass ? ` | existingClass parsed: ${existingClass}` : ''}${existingModule && language !== 'java' ? ` | module: ${existingModule}` : ''}
+CRITICAL: For Java, public class MUST exactly equal expectedClass "${expectedClass ?? '-'}" derived from fileName. File "${fileName}" must contain "public class ${expectedClass ?? '-'}" . Do NOT generate "public class BinarySearch" inside "${fileName}" — if user wants BinarySearch, create "BinarySearch.java" with that class. Keep class == filename.
 
 RULES:
 - Output ONLY JSON: {"actions":[...]} with types: add_comments, remove_comments, insert_code, replace_code, delete_code.
@@ -176,13 +189,14 @@ RULES:
 - Line/range ops: {"type":"replace_code","payload":{"startLine":N,"endLine":M,"content":"new lines","anchor":"<exact current line N text>"}}. Content replaces the range in place — NEVER duplicate existing lines.
 - All line numbers MUST match the numbered CURRENT content below. Include "anchor" for every op.
 - Use the smallest sufficient edit. Whole-file rewrites are forbidden.
+- For Java: if user says "add binary search" while editing "${fileName}" (expected class "${expectedClass ?? '-'}"), add the method INSIDE "public class ${expectedClass ?? '-'}". Do NOT output "public class BinarySearch" inside "${fileName}". Only emit create_file for a NEW file when user explicitly says "create a separate BinarySearch class/file".
 - Constraints: ${constraintDesc || 'none'}
 - If the request cannot be mapped to safe concrete operations, output {"actions":[]}.
 
 Respond ONLY with the JSON.`;
 
     const userPrompt = [
-        `File: ${fileName} (${language})`,
+        `File: ${fileName} | Path: ${filePath} | Language: ${language} | Expected class: ${expectedClass ?? '(none)'} | Existing class: ${existingClass ?? '(none)'}`,
         isSelectionScope && selectionRange
             ? `Target selection: lines ${selectionRange.startLine}-${selectionRange.endLine}\n\`\`\`${language}\n${(selectionText ?? '').slice(0, 6000)}\n\`\`\``
             : '',

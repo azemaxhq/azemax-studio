@@ -46,7 +46,7 @@ function attachExecutionWebSocket(wss) {
         console.error('[ws] WebSocket server error:', err && err.message ? err.message : err);
     });
 
-    wss.on('connection', (ws, req) => {
+    wss.on('connection', (ws, _req) => {
         // Session ID bound to this socket for legacy execute actions.
         let legacySessionId = null;
 

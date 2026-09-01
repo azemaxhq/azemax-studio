@@ -45,8 +45,9 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
     const plan = buildRoutingPlan(task, model, { allowFallback });
     const attempts = [plan.primary, ...plan.fallbacks];
     const rid = requestId || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const inputSize = messages.reduce((n, m) => n + (m.content ? m.content.length : 0), 0);
-    let lastError = null;
+    const _inputSize = messages.reduce((n, m) => n + (m.content ? m.content.length : 0), 0);
+    void _inputSize;
+    let _lastError = null;
     const t0 = Date.now();
 
     console.log(`[AI CHAT] request received, intent=chat, provider attempt = ${plan.primary.provider}, model = ${plan.primary.model} requestId=${rid}`);
@@ -116,7 +117,7 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
             console.warn(`[AI] Model ${resolved.model} failed:`, aiErr.message);
             if (aiErr.retryable) {
                 markUnhealthy(resolved.provider, resolved.model);
-                lastError = aiErr;
+                _lastError = aiErr;
                 console.log(`[AI CHAT] fallback triggered, trying next provider`);
                 continue;
             }
@@ -140,10 +141,11 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
     const plan = buildRoutingPlan(task, model, { allowFallback });
     const attempts = [plan.primary, ...plan.fallbacks];
     const requestId = req?.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const _inputSize = messages.reduce((n, m) => n + (m.content ? m.content.length : 0), 0);
     let lastError = null;
     let sawToken = false;
-    const inputSize = messages.reduce((n, m) => n + (m.content ? m.content.length : 0), 0);
     const t0 = Date.now();
+    void _inputSize;
 
     console.log(`[AI CHAT] request received, intent=chat, provider attempt = ${plan.primary.provider}, model = ${plan.primary.model} streaming requestId=${requestId}`);
 
@@ -312,7 +314,7 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                     const usageLine = usage
                         ? ` usage=${usage.total_tokens ?? '?'}tok (prompt=${usage.prompt_tokens ?? '?'}, completion=${usage.completion_tokens ?? '?'}${usage.completion_tokens_details?.reasoning_tokens != null ? `, reasoning=${usage.completion_tokens_details.reasoning_tokens}` : ''})`
                         : '';
-                    perfLog(`task=${params.task} model=${resolved.model} stream done in ${duration}ms input=${inputSize}chars tokens=${tokenCount} tok/s=${tps} reasoningChars=${reasoningChars}${usageLine}`);
+                    perfLog(`task=${params.task} model=${resolved.model} stream done in ${duration}ms input=${_inputSize}chars tokens=${tokenCount} tok/s=${tps} reasoningChars=${reasoningChars}${usageLine}`);
                     return;
                 }
 
@@ -388,7 +390,7 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
 /** OpenAI-compatible passthrough for legacy clients */
 async function proxyOpenRouter({ messages, model }) {
     const modelsToTry = model ? [model] : AI_MODELS.openRouter.fallbacks;
-    let lastError = null;
+    let _lastError = null;
 
     for (const currentModel of modelsToTry) {
         try {
@@ -402,10 +404,11 @@ async function proxyOpenRouter({ messages, model }) {
             });
             return response.json();
         } catch (err) {
-            lastError = err;
+            _lastError = err;
         }
     }
 
+    void _lastError;
     throw allProvidersFailed(
         modelsToTry.map((m) => ({ provider: 'openrouter', model: m })),
         { requestId: `${Date.now()}-${Math.random().toString(36).slice(2)}` },

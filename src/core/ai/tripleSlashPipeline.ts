@@ -73,7 +73,8 @@ function buildPrompt(
     commandText: string,
     prefix: string,
     lineNumber: number,
-    lineCount: number
+    lineCount: number,
+    opts?: { filePath?: string; className?: string | null; moduleName?: string | null }
 ): { system: string; user: string } {
     const isInline = prefix.trim().length > 0;
     const lineInfo = isInline
@@ -88,6 +89,9 @@ function buildPrompt(
 
     const syntax = getCommentSyntax(language);
     const commentHint = syntax?.line ? `Use ${syntax.line} for comments in ${language}.` : '';
+    const expectedClass = fileName ? fileName.replace(/\.[^/.]+$/, '') : null;
+    void opts?.className;
+    const filePath = opts?.filePath ?? fileName;
 
     const system = [
         `You are a premium ${language} code generator — DeepSeek V4 Flash, efficient and high-quality.`,
@@ -97,11 +101,12 @@ function buildPrompt(
         `- Do NOT include the /// instruction, do NOT duplicate existing #include or surrounding code.`,
         `- Replace in place — never append a duplicate of existing lines.`,
         `- Keep it concise and correct for ${language}. ${commentHint}`,
-        `- If the file is otherwise empty and the user asks for hello world, generate the minimal idiomatic ${language} hello world program.`,
-    ].join('\n');
+        `- If the file is otherwise empty and the user asks for hello world, generate the minimal idiomatic ${language} hello world program with class "${expectedClass ?? 'Main'}" derived from filename "${fileName}", not hard-coded.`,
+        language === 'java' ? `- Java: file "${fileName}" (path "${filePath}") must contain public class "${expectedClass ?? '-'}" derived from filename - never hard-code. Do NOT create "public class BinarySearch" inside "${fileName}"; to create BinarySearch, the file must be "BinarySearch.java".` : null,
+    ].filter(Boolean).join('\n');
 
     const user = [
-        `File: ${fileName} (${language}, ${lineCount} lines)`,
+        `File: ${fileName} | Path: ${filePath} | Language: ${language} | Expected class: ${expectedClass ?? '(none)'} | Lines: ${lineCount}`,
         lineInfo,
         `Instruction: "${commandText}"`,
         ``,
@@ -129,12 +134,14 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
     const rawCode = ctx?.code ?? model.getValue();
     const fileName = ctx?.fileName ?? (model as any)?.uri?.path?.split('/').pop() ?? 'untitled.ts';
     const fileId = ctx?.fileId ?? null;
-    const language = getLanguage(fileName);
+    const language = ctx?.language ?? getLanguage(fileName);
     const lineCount = model.getLineCount();
+    const filePath = ctx?.filePath ?? fileName;
+    const className = ctx?.className ?? null;
 
     // Clean snapshot for AI — never send the /// marker as code
     const cleanCode = buildCleanSnapshot(rawCode, lineNumber, lineContent);
-    const { system, user } = buildPrompt(cleanCode, language, fileName, commandText, prefix, lineNumber, lineCount);
+    const { system, user } = buildPrompt(cleanCode, language, fileName, commandText, prefix, lineNumber, lineCount, { filePath, className, moduleName: ctx?.moduleName ?? null });
 
     // Minimax via OpenRouter as primary (user request), DeepSeek/Groq as fallbacks.
     const tryModels: Array<{ model: string; task: 'simple_edit' | 'deep_reasoning'; maxTokens: number }> = [
@@ -284,7 +291,7 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
             return result2;
         }
         return { success: true, message: 'Applied via direct edit (high-quality, glitch-free)', appliedCount: 1 };
-    } catch (e) {
+    } catch (_e) {
         // Fallback to atomic file-tree plan if direct edit threw (model disposed, etc.)
         const deps2 = createExecutorDeps(workspace, fileName, fileId);
         const result = await executeActionPlan([action], deps2 as any, {

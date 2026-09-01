@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { inferProvider, buildDirectChain, configuredDirectProviders, defaultModelFor, ProviderId } from '../src/core/ai/modelRouter';
-import { AI_TASK_CONFIG, getTaskConfig } from '../src/core/ai/taskConfigClient';
+import { inferProvider, buildDirectChain, configuredDirectProviders, defaultModelFor } from '../src/core/ai/modelRouter';
+import { getTaskConfig } from '../src/core/ai/taskConfigClient';
 
 describe('AI Provider Routing', () => {
     describe('inferProvider', () => {

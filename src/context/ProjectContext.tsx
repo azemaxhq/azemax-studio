@@ -20,7 +20,8 @@ import {
 } from '../core/filesystem';
 import type { RepairResult, TreeOperationResult } from '../core/filesystem';
 import { noopResult } from '../core/filesystem';
-import { findNodeById, resolvePath, isDescendantOf, findChildByName } from '../utils/safeTree';
+import { findNodeById, resolvePath, isDescendantOf, findChildByName, pathOf } from '../utils/safeTree';
+import { setActiveEditor as syncActiveEditor, getActiveEditor as getSyncedEditor, getActiveMonaco as getSyncedMonaco, updateActiveFileMeta } from '../core/editor/activeEditorStore';
 
 const STORAGE_KEY = 'azemax-file-tree';
 const LEGACY_STORAGE_KEY = 'deepcontext-file-tree';
@@ -390,10 +391,21 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         }
     }, [fileTree, expandedFolderIds]);
 
-    // Wrapper to also save active file ID
+    // Wrapper to also save active file ID + keep activeEditorStore in sync (single source: editor store reflects authoritative active file)
     const setActiveFile = useCallback((file: FileNode) => {
         setActiveFileState(file);
+        const fullPath = pathOf(latestTreeRef.current, file.id) || file.name;
         setActiveFileMeta({ id: file.id, name: file.name });
+        // Sync editor store immediately so getActiveEditorContext() doesn't lag behind Explorer selection
+        try {
+            const ed = getSyncedEditor();
+            if (ed) {
+                const curMonaco = getSyncedMonaco();
+                syncActiveEditor(ed, curMonaco, { id: file.id, name: file.name, path: fullPath });
+            } else {
+                updateActiveFileMeta({ id: file.id, name: file.name, path: fullPath });
+            }
+        } catch { /* best-effort */ }
         if (getSettings().privacy.saveWorkspaceState) {
             localStorage.setItem(ACTIVE_FILE_KEY, file.id);
         }

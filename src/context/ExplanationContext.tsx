@@ -6,6 +6,7 @@ import { explainFileOrSnippet } from '../utils/groqService';
 import { aiRequestManager, type AIAbortController } from '../core/ai';
 import { AIRequestStore } from '../core/ai/aiRequestStore';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { getActiveEditorContext } from '../core/editor/activeEditorStore';
 
 const STORAGE_KEY = 'explanation-panel-persisted';
 
@@ -154,8 +155,11 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
     }, [activeFileMeta?.id, explainedFor, persist]);
 
     const handleExplain = useCallback(async () => {
+        const ctx = getActiveEditorContext();
         const activeFile = getActiveFile();
-        if (!activeFile?.content) return;
+        const fileContent = ctx?.code ?? activeFile?.content ?? '';
+        const fileName = ctx?.fileName ?? activeFile?.name ?? '';
+        if (!fileContent.trim()) return;
         persist({ explanationError: null });
         setIsExplaining(true);
         const { controller, requestId, seq } = beginExplain('explain-file');
@@ -163,16 +167,16 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
         const activeExplain = AIRequestStore.getActiveRequestForOperation('explanation');
         if (activeExplain) AIRequestStore.updateRequest(activeExplain.id, 'generating');
         try {
-            const lang = getLanguage(activeFile.name || 'file.ts');
+            const lang = ctx?.language ?? getLanguage(fileName || 'file.ts');
             const result = await explainFileOrSnippet(
-                activeFile.content,
+                fileContent,
                 lang,
-                activeFile.name || undefined,
+                fileName || undefined,
                 false,
                 controller.signal
             );
             if (!mountedRef.current || controller.signal.aborted || explainSeqRef.current !== seq) return;
-            persist({ explanation: result, explanationError: null, explainedFor: activeFile.id });
+            persist({ explanation: result, explanationError: null, explainedFor: ctx?.fileId ?? activeFile?.id ?? null });
             const active2 = AIRequestStore.getActiveRequestForOperation('explanation');
             if (active2) AIRequestStore.updateRequest(active2.id, 'success');
         } catch (error: unknown) {

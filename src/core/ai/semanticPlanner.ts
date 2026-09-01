@@ -127,7 +127,11 @@ export function buildSemanticPlannerPrompt(
     history: ChatMessage[]
 ): { messages: ChatMessage[]; modelTask: 'chat' } {
     const fileName = editorContext?.fileName ?? '(no active file)';
+    const filePath = editorContext?.filePath ?? fileName;
     const language = editorContext?.language ?? 'plaintext';
+    const extension = editorContext?.extension ?? '';
+    const className = editorContext?.className ?? null;
+    const moduleName = editorContext?.moduleName ?? null;
     const lineCount = editorContext?.lineCount ?? 0;
     const selectionText = editorContext?.selectionText?.slice(0, 2000) ?? null;
     const selectionRange = editorContext?.selection;
@@ -170,8 +174,9 @@ COMMENT OPERATION RULES (metadata only — comments never alter executable code)
 - remove_comments (bulk) removes all comments in scope; use payload.preserveLines for exceptions the user names, resolved to actual comment-line numbers from the current file.
 
 LANGUAGE & FILE CONSTRAINTS:
-- Respect the language of the target file. Java public class name must match the file name exactly; .tsx/.jsx component names should match the base name; follow idiomatic conventions per language.
-- If the user asks to write/generate a program into an existing non-empty file without naming another file, replace that file's content (update_file) honoring its name and language.
+- Respect the language of the target file. For Java: the public class name MUST exactly match the filename (without extension), derived dynamically from fileName — never hard-coded. Examples: hello.java → class hello, HelloWorld.java → class HelloWorld, BinarySearch.java → class BinarySearch. Do NOT generate "public class BinarySearch" inside "hello.java"; if the user wants a BinarySearch class, create a separate file "BinarySearch.java" with "public class BinarySearch". When modifying an existing Java file, keep the class name equal to its filename.
+- For .tsx/.jsx component names should match the base name; follow idiomatic conventions per language.
+- If the user asks to write/generate a program into an existing non-empty file without naming another file, modify that file's content in place (insert_code/replace_code), honoring its filename-derived class. Use update_file only when user asks to rewrite/regenerate the entire file.
 
 SCHEMA (exact keys):
 {
@@ -214,8 +219,25 @@ SCHEMA (exact keys):
 
 Context you receive is FRESH at request time. Base every decision on it. Output ONLY the JSON.`;
 
+    // Build authoritative file identity block — class must match filename (derived dynamically, never hard-coded)
+    const expectedClass = fileName ? fileName.replace(/\.[^/.]+$/, '') : null;
+    const fileIdentityBlock = editorContext
+        ? [
+            `CURRENT FILE (authoritative — from active editor):`,
+            `- fileName: ${fileName}`,
+            `- filePath: ${filePath}`,
+            `- extension: ${extension || '(none)'}`,
+            `- language: ${language}`,
+            `- expectedClass (derived from fileName, not hard-coded): ${expectedClass ?? '(none)'}`,
+            className ? `- existingClass (parsed from content): ${className}` : `- existingClass: (none detected)`,
+            moduleName && language !== 'java' ? `- moduleName: ${moduleName}` : null,
+            language === 'java' ? `IMPORTANT: For Java, public class MUST exactly match filename-derived expectedClass "${expectedClass ?? '—'}" — derive from fileName, never hard-code. File "${fileName}" must contain class "${expectedClass ?? '—'}". If user wants BinarySearch, create "BinarySearch.java" with class "BinarySearch", not inside "${fileName}".` : `IMPORTANT: Preserve file identity "${fileName}" — use filePath "${filePath}" for all edits.`,
+        ].filter(Boolean).join('\n')
+        : `CURRENT FILE: (no active file)`;
+
     const userPrompt = [
-        `Current editor file: ${fileName} (language: ${language}, lines: ${lineCount})`,
+        fileIdentityBlock,
+        `Lines: ${lineCount} | DocumentVersion: ${editorContext?.documentVersionId ?? 'unknown'} | FileId: ${editorContext?.fileId ?? 'unknown'}`,
         selectionText
             ? `Selection (lines ${selectionRange?.startLine}-${selectionRange?.endLine}):\n\`\`\`${language}\n${selectionText}\n\`\`\``
             : `Selection: none`,

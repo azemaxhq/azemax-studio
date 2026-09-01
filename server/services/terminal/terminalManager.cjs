@@ -53,7 +53,7 @@ class TerminalManager {
 
     static MAX_SESSIONS = 50;
 
-    createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 120, rows = 30, stdinInput = '', preStdin = null }) {
+    createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 120, rows = 30, stdinInput: _stdinInput = '', preStdin: _preStdin = null }) {
         if (this.sessions.size >= TerminalManager.MAX_SESSIONS) {
             throw new Error(`Session limit reached (${TerminalManager.MAX_SESSIONS}). Close a terminal first.`);
         }
@@ -357,7 +357,7 @@ class TerminalManager {
         const lang = String(language).toLowerCase();
 
         // Wandbox fallback for unsupported/remote
-        const runViaWandbox = (stdinData = '', wasInteractive = false) => {
+        const runViaWandbox = (stdinData = '', _wasInteractive = false) => {
             session.state = STATES.RUNNING;
             const wb = {
                 stdinData: stdinData || '',

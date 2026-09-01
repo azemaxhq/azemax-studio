@@ -113,12 +113,13 @@ export const getCodeSuggestion = async (context: SuggestionContext): Promise<Sug
     );
 
     try {
-        // Use modifyCode instead of generateCode for inline instructions
+        // Use modifyCode instead of generateCode for inline instructions — pass fileName for Java class preservation
         const generatedCode = await modifyCode(
             contextCode,
             commandText,
             context.language,
-            controller.signal
+            controller.signal,
+            context.fileName
         );
 
         if (!generatedCode) {
@@ -409,11 +410,11 @@ export const getInlineCompletion = async (context: SuggestionContext): Promise<S
         return null;
     }
 
-    // Build a language-specific hint about file conventions
+    // Build a language-specific hint — class must match filename, derived dynamically, never hard-coded
     let fileConventionHint = '';
     switch (context.language) {
         case 'java':
-            fileConventionHint = `The file is named "${context.fileName}". In Java, the public class name MUST match the filename. So the class should be named "${fileBaseName}".`;
+            fileConventionHint = `The file is named "${context.fileName}" — in Java, the public class MUST exactly match the filename without extension, derived dynamically as "${fileBaseName}" (not hard-coded). File "${context.fileName}" must contain "public class ${fileBaseName}". Do NOT generate "public class BinarySearch" inside "${context.fileName}" — for BinarySearch, file must be "BinarySearch.java".`;
             break;
         case 'python':
             fileConventionHint = `The file is named "${context.fileName}". Follow Python naming conventions (snake_case for functions, PascalCase for classes).`;

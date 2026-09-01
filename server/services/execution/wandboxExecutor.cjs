@@ -34,7 +34,7 @@ function compileViaWandbox({ language, code, stdin = '' }) {
                             stderr: `${parsed.compiler_message || ''}${parsed.program_error || ''}`,
                             code: parseInt(parsed.status, 10) || 0,
                         });
-                    } catch (e) {
+                    } catch (_e) {
                         reject(new Error('Failed to parse Wandbox response'));
                     }
                 });

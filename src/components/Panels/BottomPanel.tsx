@@ -7,6 +7,8 @@ import { useSettingsSelector } from '../../context/SettingsContext';
 import { analyzeCode, type AnalysisResult, type AgeingSignal, type AgeingHotspot } from '../../utils/codeAnalysisEngine';
 import { analysisHistory } from '../../utils/analysisHistory';
 import { sanitizeEditorOutputWithPolicy, NO_AUTO_COMMENTS_INSTRUCTION, resolveLanguageFromFilename, aiRequestManager } from '../../core/ai';
+import { ProblemsPanel } from './ProblemsPanel';
+import { subscribeDiagnostics, getCounts } from '../../core/diagnostics/diagnosticStore';
 
 const PerformancePanel = lazy(() =>
     import('./PerformancePanel').then(m => ({ default: m.PerformancePanel }))
@@ -385,9 +387,9 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
 // ────────────────────────────────────────────
 export const BottomPanel: React.FC<{ isOverlay?: boolean; isOpen?: boolean; onToggle?: () => void }> = ({ isOverlay, isOpen, onToggle }) => {
     // Persist Active Tab
-    const [activeTab, setActiveTab] = useState<'performance' | 'ageing' | 'terminal'>(() => {
+    const [activeTab, setActiveTab] = useState<'performance' | 'ageing' | 'terminal' | 'problems'>(() => {
         const saved = localStorage.getItem('bottomPanel_activeTab');
-        return (saved === 'performance' || saved === 'ageing' || saved === 'terminal' ? saved : 'performance');
+        return (saved === 'performance' || saved === 'ageing' || saved === 'terminal' || saved === 'problems' ? saved : 'performance') as 'performance' | 'ageing' | 'terminal' | 'problems';
     });
 
     useEffect(() => {
@@ -395,6 +397,13 @@ export const BottomPanel: React.FC<{ isOverlay?: boolean; isOpen?: boolean; onTo
     }, [activeTab]);
     
     const { activeFile } = useProjectFile();
+    const [problemCounts, setProblemCounts] = useState({ errors: 0, warnings: 0, total: 0 });
+    useEffect(() => {
+        const update = () => setProblemCounts(getCounts(activeFile?.id ?? null));
+        update();
+        const unsub = subscribeDiagnostics(update);
+        return unsub;
+    }, [activeFile?.id]);
     const { updateFileContent, getActiveFile } = useProjectActions();
     const { lastExecutionData } = useTerminal();
     
@@ -737,6 +746,18 @@ Apply the fix while preserving all other code exactly as-is.`;
                     <Terminal size={14} />
                     <span className="hidden sm:inline">Terminal</span>
                 </button>
+                <button
+                    className={`glass-tab flex items-center gap-2 ${activeTab === 'problems' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('problems')}
+                >
+                    <AlertTriangle size={14} />
+                    <span className="hidden sm:inline">Problems</span>
+                    {(problemCounts.errors > 0 || problemCounts.warnings > 0) && (
+                        <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#f85149] text-white' : 'bg-[#febc2e] text-black'}`}>
+                            {problemCounts.errors + problemCounts.warnings}
+                        </span>
+                    )}
+                </button>
                 {isOverlay && (
                     <>
                         <div className="flex-1" />
@@ -977,6 +998,11 @@ Apply the fix while preserving all other code exactly as-is.`;
                         <Suspense fallback={<PanelFallback />}>
                             <TerminalPanel />
                         </Suspense>
+                    )}
+                    {activeTab === 'problems' && (
+                        <div className="h-full overflow-hidden">
+                            <ProblemsPanel />
+                        </div>
                     )}
                 </div>
             </div>

@@ -27,6 +27,21 @@ import {
 import { validateCandidateNotMalformed } from './editValidator';
 import type { AIAction } from './aiToolExecutor';
 
+const JAVA_PUBLIC_TYPE_RE = /\bpublic\s+(?:(?:final|abstract|sealed)\s+)*(?:class|interface|enum|record|@interface)\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+function extractJavaPublicTypes(code: string): string[] {
+    const out: string[] = [];
+    let m: RegExpExecArray | null;
+    JAVA_PUBLIC_TYPE_RE.lastIndex = 0;
+    while ((m = JAVA_PUBLIC_TYPE_RE.exec(code)) !== null) out.push(m[1]);
+    return out;
+}
+function extractJavaPublicType(code: string): string | null {
+    JAVA_PUBLIC_TYPE_RE.lastIndex = 0;
+    const m = JAVA_PUBLIC_TYPE_RE.exec(code);
+    return m ? m[1] : null;
+}
+void extractJavaPublicType;
+
 export interface FileSnapshot {
     filePath: string;
     content: string;
@@ -537,14 +552,46 @@ export function buildCandidates(
             const a = wholeFileActions[0];
             if (a.action === 'update_file') {
                 const original = readLatest(filePath) ?? '';
-                const candidate = String((a as any).content ?? '');
+                let candidate = String((a as any).content ?? '');
                 if (!candidate.trim()) return { ok: false, reason: 'update_file content is empty' };
+                if (filePath.toLowerCase().endsWith('.java')) {
+                    const base = filePath.split('/').pop() ?? filePath;
+                    const expected = base.replace(/\.java$/i, '');
+                    const candidateTypes = extractJavaPublicTypes(candidate);
+                    if (candidateTypes.length > 1) {
+                        return { ok: false, reason: `Java file "${base}" would contain ${candidateTypes.length} public types (${candidateTypes.join(', ')}). Only one public type per file allowed.` };
+                    }
+                    if (candidateTypes.length === 1 && candidateTypes[0] !== expected) {
+                        // Class must match filename — derive expected dynamically from filePath, not hard-coded
+                        candidate = candidate.replace(new RegExp(`(\\bpublic\\s+(?:(?:final|abstract|sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+)${candidateTypes[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`), `$1${expected}`);
+                    }
+                }
                 const mal = validateCandidateNotMalformed(candidate);
                 if (!mal.ok) return { ok: false, reason: mal.reason };
                 if (candidate === original) continue; // no-op
                 candidates.push({ filePath, original, candidate, plan });
+                continue;
             }
-            // create/delete/rename handled directly by executor (no candidate needed)
+            if ((a as any).action === 'create_file') {
+                const candidate = String((a as any).content ?? '');
+                if (filePath.toLowerCase().endsWith('.java')) {
+                    const base2 = filePath.split('/').pop() ?? filePath;
+                    const expected2 = base2.replace(/\.java$/i, '');
+                    const candidateTypes2 = extractJavaPublicTypes(candidate);
+                    if (candidateTypes2.length === 1 && candidateTypes2[0].toLowerCase() !== expected2.toLowerCase()) {
+                        return { ok: false, reason: `Java mismatch: file "${base2}" declares public "${candidateTypes2[0]}" but filename expects "${expected2}".` };
+                    }
+                    if (candidateTypes2.length > 1) return { ok: false, reason: `Java file "${base2}" would contain ${candidateTypes2.length} public types` };
+                }
+                candidates.push({
+                    filePath,
+                    original: readLatest(filePath) ?? '',
+                    candidate,
+                    plan,
+                });
+                continue;
+            }
+            // delete/rename handled directly by executor (no candidate needed)
             candidates.push({
                 filePath,
                 original: readLatest(filePath) ?? '',
@@ -564,6 +611,17 @@ export function buildCandidates(
 
         const mal = validateCandidateNotMalformed(composed);
         if (!mal.ok) return { ok: false, reason: `${filePath}: ${mal.reason}` };
+        if (filePath.toLowerCase().endsWith('.java')) {
+            const base = filePath.split('/').pop() ?? filePath;
+            const expected = base.replace(/\.java$/i, '');
+            const composedTypes = extractJavaPublicTypes(composed);
+            if (composedTypes.length > 1) return { ok: false, reason: `${filePath}: Java file would contain ${composedTypes.length} public types (${composedTypes.join(', ')})` };
+            if (composedTypes.length === 1 && composedTypes[0] !== expected) {
+                const fixedComposed = composed.replace(new RegExp(`(\\bpublic\\s+(?:(?:final|abstract|sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+)${composedTypes[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`), `$1${expected}`);
+                candidates.push({ filePath, original, candidate: fixedComposed, plan });
+                continue;
+            }
+        }
 
         // Comment-only safety: executable code must be preserved exactly when
         // every op originates from comment actions.

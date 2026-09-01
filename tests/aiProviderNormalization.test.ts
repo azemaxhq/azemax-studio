@@ -5,7 +5,7 @@ import {
     createAIResponseFromStream,
     normalizeProviderStreamEvent,
 } from '../src/core/ai/AIProviderNormalizer';
-import type { AIResponse } from '../src/core/ai/types';
+
 
 describe('AI Provider Normalization', () => {
     describe('normalizeProviderStreamChunk', () => {

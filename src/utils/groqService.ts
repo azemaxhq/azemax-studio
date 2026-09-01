@@ -298,6 +298,7 @@ export const modifyCode = async (
     instruction: string,
     language: string,
     signal?: AbortSignal,
+    fileName?: string,
 ): Promise<string> => {
     const commenting = isCommentingIntent(instruction);
     const documenting = isDocumentingIntent(instruction);
@@ -323,6 +324,12 @@ export const modifyCode = async (
             : '';
     })();
 
+    // Derive expected class from filename for Java — never hard-coded, always dynamic
+    const expectedClassForHint = fileName && language === 'java' ? fileName.replace(/\.[^/.]+$/, '') : null;
+    const fileIdentityLine = fileName ? `File: ${fileName} (${language})${expectedClassForHint ? ` — expected class: ${expectedClassForHint} (derived from filename)` : ''}` : `Language: ${language}`;
+    const javaPreserveRule = language === 'java' && expectedClassForHint && fileName
+        ? `- Java: file "${fileName}" must contain public class "${expectedClassForHint}" derived from filename — never hard-code. Do NOT generate "public class BinarySearch" inside "${fileName}"; for BinarySearch, file must be "BinarySearch.java".`
+        : '';
     const systemPrompt = `You are an expert ${language} coding assistant.
 RULES:
 - You will be given a block of code and an instruction to modify it.
@@ -336,9 +343,9 @@ RULES:
 - For wrapping existing code in a function: replace the entire relevant range with the wrapped version.
 - Never repeat the '/// command' comment in your output.
 - ${NO_AUTO_COMMENTS_INSTRUCTION}
-${commenting || documenting ? `- ${COMMENT_TASK_INSTRUCTION}` : ''}${syntaxHint ? `\n${syntaxHint}` : ''}`;
+${javaPreserveRule ? javaPreserveRule + '\n' : ''}${commenting || documenting ? `- ${COMMENT_TASK_INSTRUCTION}` : ''}${syntaxHint ? `\n${syntaxHint}` : ''}`;
 
-    const userPrompt = `Context:\n\`\`\`${language}\n${code}\n\`\`\`\n\nInstruction: ${instruction}\n\nReturn ONLY the JSON edit object.`;
+    const userPrompt = `Context (${fileIdentityLine}):\n\`\`\`${language}\n${code}\n\`\`\`\n\nInstruction: ${instruction}\n\nReturn ONLY the JSON edit object.`;
 
     const response = await sendChatRequest(
         [

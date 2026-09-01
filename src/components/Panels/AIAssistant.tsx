@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useDeferredValue, useM
 import {
     Check, Edit3, RefreshCw, Zap, Bug, MessageCircle, Code2, Copy,
     Plus, MessageSquare, Trash2, X, History, ChevronUp,
-    ThumbsUp, ThumbsDown, FileCode, Lightbulb, ChevronDown, ChevronRight, Clock3, Eye
+    ThumbsUp, ThumbsDown, FileCode, Lightbulb, ChevronDown, ChevronRight, Eye
 } from 'lucide-react';
 
 import { loadPrism, tryHighlight } from '../../utils/prismLoader';
@@ -621,7 +621,6 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({}); // msgId -> reaction
     const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
     const [lastDiffs, setLastDiffs] = useState<Array<{ file: string; added: number; removed: number; summary: string }>>([]);
-    const [lastExecution, setLastExecution] = useState<{ durationMs: number; at: number } | null>(null);
 
     // Lazy-load Prism so its ~250KB stays out of the initial bundle
     const [prismReady, setPrismReady] = useState(false);
@@ -817,7 +816,6 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         setCurrentSessionId(newSession.id);
         setAgentActivities([]);
         setLastDiffs([]);
-        setLastExecution(null);
         if (window.innerWidth < 768) setShowSidebar(false);
     }, [settings.privacy.localPersistence, settings.privacy.saveChatHistory]);
 
@@ -991,7 +989,6 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         // Centralized loading: thinking immediately — single requestId for concurrent protection
         const requestId = aiLoading.start('thinking');
         currentRequestIdRef.current = requestId;
-        const requestStartAt = Date.now();
         setStreamingText('');
 
         // Update UI immediately with User Message
@@ -1022,13 +1019,27 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             }
         }, 75000);
 
-        // Build fresh context at request time (Monaco-first, never cached)
+        // Build fresh context at request time (Monaco-first, never cached) — pin as requestContext so late switching doesn't cause mismatch
         const activeFile = getActiveFile();
         const fileTree = getFileTree();
         const editorCtx = getActiveEditorContext();
         const fileContent = editorCtx?.code ?? activeFile?.content ?? '';
         const fileName = editorCtx?.fileName ?? activeFile?.name ?? '';
+        const filePathPinned = editorCtx?.filePath ?? fileName;
         const language = editorCtx?.language ?? 'plaintext';
+        const requestContext = {
+            fileName,
+            filePath: filePathPinned,
+            fileId: editorCtx?.fileId ?? activeFile?.id ?? null,
+            language,
+            documentVersionId: editorCtx?.documentVersionId ?? null,
+            extension: editorCtx?.extension ?? (fileName.split('.').pop()?.toLowerCase() ?? ''),
+            className: editorCtx?.className ?? null,
+            moduleName: editorCtx?.moduleName ?? null,
+            selectionText: editorCtx?.selectionText ?? null,
+            selection: editorCtx?.selection ?? null,
+            requestId,
+        } as const;
         // Collect @File referenced files (bounded, fresh) for context-aware @File
         const referencedContents: Array<{ path: string; content: string }> = [];
         try {
@@ -1101,13 +1112,15 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                 aiLoading.setGenerating();
                 setAgentActivities([]);
                 const { runAgentController } = await import('../../core/ai/agentController');
+                // Verify still-current before applying: pass pinned requestContext so late file switch doesn't corrupt wrong file
                 const result = await runAgentController({
                     userMessage: userMessageText,
                     workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent, setActiveFile } as unknown as import('../../core/editor/workspaceBridge').WorkspaceBridgeActions & { setActiveFile?: unknown },
-                    fileName: fileName || null,
-                    fileId: activeFile?.id ?? null,
+                    fileName: requestContext.fileName || null,
+                    fileId: requestContext.fileId,
                     history: historyForPipeline,
                     signal: abortController.signal,
+                    requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
                     onActivity: (act) => {
                         if (currentRequestIdRef.current !== requestId) return;
                         setAgentActivities(prev => {
@@ -1178,11 +1191,19 @@ Provide a warm, concise explanation. Keep to 2-4 bullets or short paragraphs. Do
 Natural: Talk like a friendly teammate, not a formal doc. Use contractions, a little warmth, an emoji when fitting.
 Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Code only when needed.`;
                 const refBlock = referencedContents.length ? `\nReferenced files:\n${referencedContents.map(r => `@${r.path}:\n\`\`\`\n${r.content}\n\`\`\``).join('\n')}` : '';
+                // Use pinned requestContext for file identity so switches mid-stream don't corrupt context
+                const pinnedCtxForChat = requestContext;
+                const chatFileName = pinnedCtxForChat.fileName || fileName;
+                const chatFileContent = pinnedCtxForChat.selectionText != null ? (getActiveEditorContext()?.code ?? fileContent) : fileContent; // fallback
+                const chatLanguage = pinnedCtxForChat.language || language;
+                // Build tree snapshot from pinned filePath's view (still read current tree structure)
+                const treeSnapshot = buildWorkspaceSnapshot(getActiveEditorContext() ?? null, fileTree).fileTreeString.slice(0, 1500);
                 const fileContext = isCodeRelated && fileContent && fileContent.length > 10
-                    ? `File: ${fileName} (${language}, ${fileContent.split('\n').length} lines)\n\`\`\`${language}\n${fileContent.slice(0, 6000)}\n\`\`\`${refBlock}\nTree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}\n\nQ: "${userMessageText}"`
-                    : isCodeRelated && fileName
-                        ? `File: ${fileName} (${language}) | Q: "${userMessageText}"${refBlock} | Tree: ${buildWorkspaceSnapshot(getActiveEditorContext(), fileTree).fileTreeString.slice(0, 1500)}`
+                    ? `File: ${chatFileName} (${chatLanguage}, ${fileContent.split('\n').length} lines)\nPath: ${pinnedCtxForChat.filePath}\nLanguage: ${chatLanguage}\nCurrent class: ${pinnedCtxForChat.className ?? '(none)'}\n\`\`\`${chatLanguage}\n${fileContent.slice(0, 6000)}\n\`\`\`${refBlock}\nTree: ${treeSnapshot}\n\nQ: "${userMessageText}"`
+                    : isCodeRelated && chatFileName
+                        ? `File: ${chatFileName} (${chatLanguage}) Path: ${pinnedCtxForChat.filePath} | Q: "${userMessageText}"${refBlock} | Tree: ${treeSnapshot}`
                         : referencedContents.length ? `${userMessageText}${refBlock}` : userMessageText;
+                void chatFileContent;
 
                 // Super-fast local handling for file identity queries — instant, no network, fully context-aware
                 if (isFileQuery && fileName) {
@@ -1243,13 +1264,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     }
                     return s;
                 }));
-                // Execution metadata — measured, not fabricated
-                const dur = Date.now() - requestStartAt;
-                if (stillCurrent && dur > 350) {
-                    setLastExecution({ durationMs: dur, at: Date.now() });
-                } else if (stillCurrent) {
-                    setLastExecution(null);
-                }
                 if (stillCurrent) aiLoading.setSuccess();
                 else aiLoading.stop();
             }
@@ -1659,7 +1673,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full relative z-10">
-                {/* Header — premium hierarchy: history · AZEMAX · title · file · + */}
+                {/* Header — premium hierarchy: history · AZEMAX · title · + */}
                 <div className="h-[44px] shrink-0 flex items-center gap-3 px-4 border-b z-20" style={{ background: '#0F1115', borderColor: 'rgba(255,255,255,0.05)' }}>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -1700,12 +1714,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     </button>
 
                     <div className="flex items-center gap-1 shrink-0">
-                        {activeFileMeta && (
-                            <span className="hidden sm:inline-flex items-center gap-1 max-w-[110px] truncate text-[11px] px-2 py-1 rounded-full font-medium leading-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--az-text-muted)' }}>
-                                <FileCode size={11} className="shrink-0 opacity-60" />
-                                <span className="truncate">{activeFileMeta.name}</span>
-                            </span>
-                        )}
                         <button
                             onClick={handleNewChat}
                             className="w-[28px] h-[28px] rounded-[7px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 shrink-0"
@@ -1844,16 +1852,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     />
                                 )}
                             </div>
-                        </div>
-                    )}
-                    {/* Execution metadata — subtle, only when measured */}
-                    {lastExecution && !isLoading && !streamingText && (
-                        <div className="flex items-center gap-1 px-1 py-1" style={{ contain: 'layout' }}>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-[450] tracking-tight" style={{ color: 'var(--az-text-faint)' }}>
-                                <Clock3 size={11} strokeWidth={1.75} className="opacity-60" />
-                                Worked for {(lastExecution.durationMs / 1000).toFixed(lastExecution.durationMs >= 10000 ? 0 : 1)}s
-                            </span>
-                            <ChevronRight size={11} strokeWidth={1.75} className="opacity-30" style={{ color: 'var(--az-text-faint)' }} />
                         </div>
                     )}
                     {/* Premium change summary — Azemax workspace */}

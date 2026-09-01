@@ -1,7 +1,7 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Paperclip, AtSign, Sparkles, ArrowUp, Square, X, FileCode, Hash, Zap } from 'lucide-react';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
-import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
+import { getActiveEditorContext, subscribeActiveEditor } from '../../core/editor/activeEditorStore';
 
 interface ContextChip {
     id: string;
@@ -40,19 +40,31 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
     const [slashIndex, setSlashIndex] = useState(0);
     const [attachedChips, setAttachedChips] = useState<ContextChip[]>([]);
     const mentionAnchorRef = useRef<number | null>(null);
+    // Live editor context subscription — ensures Explorer/Editor/Chat agree even when switches are fast
+    const [liveCtxTick, setLiveCtxTick] = useState(0);
+    useEffect(() => {
+        const unsub = subscribeActiveEditor(() => setLiveCtxTick(t => t + 1));
+        // Poll selection changes (selection can change without file switch, store emits only on file switch)
+        const iv = window.setInterval(() => setLiveCtxTick(t => t + 1), 700);
+        return () => { unsub(); clearInterval(iv); };
+    }, []);
 
     // Auto chips: current file + selection (not cluttered, max 2 auto)
+    // Depend on live tick so Explorer→Editor→Chat stay in sync immediately after file switch
     const autoChips = useMemo(() => {
+        void liveCtxTick;
         const chips: ContextChip[] = [];
-        if (activeFileMeta) {
-            chips.push({ id: `file-${activeFileMeta.name}`, label: activeFileMeta.name, icon: <FileCode size={11} />, removable: false });
-        }
         const ctx = getActiveEditorContext();
+        const fileName = ctx?.fileName ?? activeFileMeta?.name ?? null;
+        const filePath = ctx?.filePath ?? fileName;
+        if (fileName) {
+            chips.push({ id: `file-${ctx?.fileId ?? fileName}`, label: fileName, detail: filePath !== fileName ? (filePath ?? undefined) : undefined, icon: <FileCode size={11} />, removable: false });
+        }
         if (ctx?.selectionText && ctx.selection) {
             chips.push({ id: 'selection', label: `Selection · Lines ${ctx.selection.startLine}–${ctx.selection.endLine}`, icon: <Hash size={11} />, removable: true });
         }
         return chips;
-    }, [activeFileMeta]);
+    }, [activeFileMeta, liveCtxTick]);
 
     const allChips = useMemo(() => {
         // Merge auto + attached, dedupe

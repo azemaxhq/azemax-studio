@@ -1,4 +1,3 @@
-const { AI_MODELS } = require('../../config/index.cjs');
 const { getMaxTokens } = require('./aiClient.cjs');
 const { getTaskConfig } = require('./taskConfig.cjs');
 const { buildRoutingPlan, resolveModel } = require('./modelRouter.cjs');

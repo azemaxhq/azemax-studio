@@ -13,6 +13,7 @@ import { createExecutorDeps, type WorkspaceBridgeActions } from '../editor/works
 import type { FileNode } from '../../utils/mockFileSystem';
 import type { ChatMessage } from './types';
 import { AIRequestStore } from './aiRequestStore';
+import { resolvePath, findNodeById } from '../../utils/safeTree';
 
 export type AgentToolStatus = 'running' | 'done' | 'error';
 export interface AgentActivity {
@@ -24,6 +25,20 @@ export interface AgentActivity {
     detail?: string;
 }
 
+export interface AgentRequestContext {
+    fileName: string | null;
+    filePath: string | null;
+    fileId: string | null;
+    language: string | null;
+    documentVersionId: number | null;
+    extension: string | null;
+    className: string | null;
+    moduleName: string | null;
+    selectionText: string | null;
+    selection: { startLine: number; startColumn: number; endLine: number; endColumn: number } | null;
+    requestId: string | null;
+}
+
 export interface AgentControllerRequest {
     userMessage: string;
     workspace: WorkspaceBridgeActions;
@@ -32,6 +47,8 @@ export interface AgentControllerRequest {
     history?: ChatMessage[];
     signal?: AbortSignal;
     onActivity?: (activity: AgentActivity) => void;
+    /** Pinned context from request creation time — prevents stale file switch from corrupting wrong document */
+    requestContext?: AgentRequestContext | null;
 }
 
 export interface AgentControllerResult extends ExecutionResult {
@@ -69,10 +86,34 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     };
 
     // [1] INTENT + [2] LIVE CONTEXT (fresh Monaco + workspace)
+    // Use pinned requestContext when available — avoids race where user switches file during semantic planning
     const live = captureLiveIDEContext(req.workspace.getFileTree());
-    const fileName = req.fileName ?? live.fileName ?? '';
-    const fileContent = live.code ?? '';
-    const language = live.language ?? 'plaintext';
+    const pinned = req.requestContext ?? null;
+    const fileName = pinned?.fileName ?? req.fileName ?? live.fileName ?? '';
+    void pinned?.filePath;
+    const fileContent = pinned ? (getActiveEditorContext()?.code ?? live.code ?? '') : (live.code ?? '');
+    // Re-derive actual content for pinned file via deps to avoid reading newly-active file after switch
+    const readForPinned = (): string => {
+        if (!pinned?.fileName) return fileContent;
+        const curCtx = getActiveEditorContext();
+        if (curCtx && curCtx.fileName === pinned.fileName) return curCtx.code;
+        const tree = req.workspace.getFileTree();
+        try {
+            const node = resolvePath(tree as any, (pinned.filePath ?? pinned.fileName ?? '') as string);
+            if (node && typeof (node as any).content === 'string') return (node as any).content as string;
+        } catch {}
+        const walk = (nodes: any[]): any | null => {
+            for (const n of nodes) {
+                if (n.name === pinned.fileName) return n;
+                if (n.children) { const f = walk(n.children); if (f) return f; }
+            }
+            return null;
+        };
+        const found = walk(req.workspace.getFileTree() as any);
+        return (found?.content as string) ?? fileContent;
+    };
+    const pinnedContent = pinned ? readForPinned() : fileContent;
+    const language = pinned?.language ?? live.language ?? 'plaintext';
 
     // [1] Intent detection (semantic planner) — single refined status, no duplicate
     const interpretingId = `interpret-${Date.now()}`;
@@ -142,6 +183,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
                     ctx?.selection ?? null,
                     req.history ?? [],
                     req.signal,
+                    { filePath: (ctx?.filePath ?? fileName), className: ctx?.className ?? pinned?.className ?? null, moduleName: ctx?.moduleName ?? pinned?.moduleName ?? null }
                 );
                 if (fallbackActions && fallbackActions.length > 0) {
                     // Model confirmed this is an edit — continue to edit flow
@@ -254,7 +296,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     if (fallbackEditActions && fallbackEditActions.length > 0) {
         actions = fallbackEditActions;
     } else {
-        actions = semanticPlanToActions({ ...plan, actions: mutationCandidates as typeof plan.actions }, fileName, fileContent ? fileContent.split('\n') : null);
+        actions = semanticPlanToActions({ ...plan, actions: mutationCandidates as typeof plan.actions }, fileName, pinnedContent ? pinnedContent.split('\n') : null);
     }
 
     // If no concrete ops yet, do constrained generation enriched with read results
@@ -262,7 +304,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
         const generating = makeActivity('generate', 'running', 'Planning edits');
         push(generating);
         const { generateConstrainedActions } = await import('./editPipeline');
-        const ctx = getActiveEditorContext();
+        const ctxForSel = pinned ? { selectionText: pinned.selectionText, selection: pinned.selection } as unknown as ReturnType<typeof getActiveEditorContext> : getActiveEditorContext();
         const enrichedPlan: SemanticPlan = { ...plan, responseMessage: (plan.responseMessage ?? '') + readEnrichment };
         // inject enrichment via history trick: add tool results as user message context
         const enrichedHistory = [...(req.history ?? [])];
@@ -272,11 +314,12 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
             enrichedPlan,
             fileName,
             language,
-            fileContent,
-            ctx?.selectionText ?? null,
-            ctx?.selection ?? null,
+            pinnedContent,
+            ctxForSel?.selectionText ?? null,
+            ctxForSel?.selection ?? null,
             enrichedHistory,
             req.signal,
+            { filePath: pinned?.filePath ?? fileName, className: pinned?.className ?? ctxForSel?.className ?? null, moduleName: pinned?.moduleName ?? null }
         );
         generating.status = actions && actions.length ? 'done' : 'error';
         generating.message = actions && actions.length ? `Planned ${actions.length} edit(s)` : 'No safe edits generated';
@@ -313,10 +356,19 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     } else if (firstAction.action === 'rename_file') {
         applyLabel = `Renaming file`;
     }
+    // Stale-context guard: if pinned file was deleted/renamed, abort rather than writing to wrong file
+    if (pinned?.fileId) {
+        const exists = findNodeById(req.workspace.getFileTree() as any, pinned.fileId);
+        if (!exists) {
+            return { success: false, appliedCount: 0, message: `Target file "${fileName}" no longer exists (deleted/renamed) — no changes were made.`, activities, planSummary: plan.analysis.summary };
+        }
+    }
+    if (req.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
     const applying = makeActivity('apply', 'running', applyLabel);
     push(applying);
-    const deps = createExecutorDeps(req.workspace, fileName || null, req.fileId ?? getActiveEditorContext()?.fileId ?? null);
-    const snapshotForEdit = fileContent ? { filePath: fileName, content: fileContent, lines: fileContent.split('\n'), timestamp: Date.now() } as import('./editEngine').FileSnapshot : null;
+    const effectiveFileId = pinned?.fileId ?? req.fileId ?? getActiveEditorContext()?.fileId ?? null;
+    const deps = createExecutorDeps(req.workspace, fileName || null, effectiveFileId);
+    const snapshotForEdit = pinnedContent ? { filePath: fileName, content: pinnedContent, lines: pinnedContent.split('\n'), timestamp: Date.now() } as import('./editEngine').FileSnapshot : null;
     const snapshotMap = new Map<string, import('./editEngine').FileSnapshot>();
     if (snapshotForEdit) snapshotMap.set(snapshotForEdit.filePath, snapshotForEdit);
 
@@ -338,12 +390,12 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     applying.detail = result.success ? undefined : result.message.slice(0, 200);
     push({ ...applying });
 
-    // Generate compact diff summary for artifact UI
+    // Generate compact diff summary for artifact UI — use pinnedContent as baseline so switch doesn't skew diff
     let diffs: Array<{ file: string; added: number; removed: number; summary: string }> | undefined;
     if (result.success && result.appliedCount > 0) {
         const newContent = deps.getFileContent(fileName) ?? '';
-        if (newContent && fileContent) {
-            const origSet = new Set(fileContent.split('\n').map(l => l.trim()).filter(Boolean));
+        if (newContent && pinnedContent) {
+            const origSet = new Set(pinnedContent.split('\n').map(l => l.trim()).filter(Boolean));
             const newLines = newContent.split('\n').map(l => l.trim()).filter(Boolean);
             const newSet = new Set(newLines);
             let added = 0, removed = 0;

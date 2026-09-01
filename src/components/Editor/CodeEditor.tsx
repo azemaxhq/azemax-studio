@@ -8,7 +8,9 @@ import { useTheme } from '../../hooks/useTheme';
 import { getCodeSuggestion, cancelPendingRequest, getInlineCompletion } from '../../utils/codeSuggestionService';
 import { sanitizeAiCodeOutputForLanguage } from '../../utils/aiSanitizer';
 import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
-import { checkCodeErrors } from '../../utils/diagnosticsService';
+import { checkDiagnosticsEx } from '../../utils/diagnosticsService';
+import { setDiagnosticResult, markStale, subscribeDiagnostics, getDiagnosticResult, getCounts } from '../../core/diagnostics/diagnosticStore';
+import type { DiagnosticResultEx } from '../../utils/diagnosticsTypes';
 import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map as MapIcon, WrapText, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { AICommentIndicator } from './AICommentIndicator';
@@ -21,6 +23,7 @@ import { setCursorPosition, useCursorPosition } from '../../core/runtime/cursorP
 import { setActiveEditor, clearActiveEditor } from '../../core/editor/activeEditorStore';
 import { getLanguageFromFilename as getMonacoLangId } from '../../utils/language';
 import type { FileNode } from '../../utils/mockFileSystem';
+import { pathOf } from '../../utils/safeTree';
 
 // Isolated status-bar readout. Subscribes to the external cursor store, so
 // cursor movement updates ONLY this tiny node instead of the whole editor tree.
@@ -177,10 +180,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     // Persist changes for non-settings state - removed for minimap and suggestions as they're now in settings
 
-    // Diagnostics State
+    // Diagnostics State — production-grade
     const [isChecking, setIsChecking] = useState(false);
     const [hasErrors, setHasErrors] = useState(false);
+    const [hasWarnings, setHasWarnings] = useState(false);
     const [isCheckSuccess, setIsCheckSuccess] = useState(false);
+    const [diagnosticSummary, setDiagnosticSummary] = useState<string>('');
+    const [diagnosticStale, setDiagnosticStale] = useState(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const diagnosticRequestIdRef = useRef(0);
+    const lastDiagnosticResultRef = useRef<DiagnosticResultEx | null>(null);
+    const debouncedLocalCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [diagCounts, setDiagCounts] = useState({ errors: 0, warnings: 0, infos: 0, hints: 0, total: 0 });
     const [isFormatting, setIsFormatting] = useState(false);
     const [, setIsAiProcessing] = useState(false);
     const [activeAiLine, setActiveAiLine] = useState<number | null>(null);
@@ -211,132 +222,227 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         return () => ro.disconnect();
     }, []);
 
+    // Status bar / Problems counts — subscribed to global diagnostic store
+    useEffect(() => {
+        const update = () => {
+            const c = getCounts(activeFile?.id ?? null);
+            setDiagCounts(c);
+            // Keep button state in sync when store changes externally (e.g. clear)
+            if (c.errors === 0 && c.warnings === 0 && c.total === 0) {
+                // No need to force hasErrors; runDiagnostics already controls it, but ensure stale cleared
+            }
+        };
+        update();
+        const unsub = subscribeDiagnostics(update);
+        return unsub;
+    }, [activeFile?.id]);
 
 
-    // Run diagnostics — premium AI + local, version-guarded, with deep check
+
+    // Run diagnostics — production-grade: cancellable, version-guarded, file-aware
     const runDiagnostics = useCallback(async () => {
-        if (!settings.code.diagnostics) return;
+        // Settings guard — truthful disabled UX (button shows disabled, but guard here too)
+        if (!settings.code.diagnostics) {
+            return;
+        }
         const file = activeFileRef.current;
         if (!file || !monacoRef.current || !editorRef.current) return;
 
-        const model = editorRef.current.getModel();
-        const versionAtStart = model?.getVersionId() ?? -1;
-        console.log('Starting diagnostics for file:', file.name);
-        setIsChecking(true);
-        setHasErrors(false);
-        setIsCheckSuccess(false);
+        const editor = editorRef.current;
+        const monaco = monacoRef.current;
+        const model = editor.getModel();
+        if (!model || model.isDisposed()) return;
 
-        const code = file.content || '';
+        // Rapid-check protection: cancel previous run, start newest
+        if (abortControllerRef.current) {
+            try { abortControllerRef.current.abort(); } catch {}
+            abortControllerRef.current = null;
+        }
+        const requestId = ++diagnosticRequestIdRef.current;
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
+        const versionAtStart = model.getVersionId();
+        const fileIdAtStart = file.id;
+        const fileNameAtStart = file.name;
+        const filePathAtStart = pathOf(getFileTree(), file.id) || file.name;
+        const cursorLine = editor.getPosition()?.lineNumber ?? null;
+        // Use actual editor content (unsaved) — single source of truth
+        const code = model.getValue();
         const fileName = file.name;
 
+        setIsChecking(true);
+        setHasErrors(false);
+        setHasWarnings(false);
+        setIsCheckSuccess(false);
+        setDiagnosticStale(false);
+        setDiagnosticSummary('Checking...');
+
+        // Clear previous error state but keep markers until new result arrives (stale visual deferred to onType)
         try {
-            // Clear existing markers first
-            if (model && !model.isDisposed()) {
-                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', []);
-            }
-
-            // If code is empty, consider it valid
+            // Empty file → no issues, deterministic success
             if (!code.trim()) {
-                console.log('Empty code, considering valid');
+                if (monaco && model && !model.isDisposed()) {
+                    monaco.editor.setModelMarkers(model, 'piston-diagnostics', []);
+                }
                 if (diagnosticsDecorationsRef.current) {
                     diagnosticsDecorationsRef.current.clear();
                     diagnosticsDecorationsRef.current = null;
                 }
+                const emptyResult: DiagnosticResultEx = {
+                    diagnostics: [],
+                    markers: [],
+                    errorCount: 0,
+                    warningCount: 0,
+                    infoCount: 0,
+                    hintCount: 0,
+                    isError: false,
+                    output: '',
+                    status: 'success',
+                    aiStatus: 'skipped',
+                    localStatus: 'success',
+                    summary: 'No issues found',
+                    isPartial: false,
+                    errors: {},
+                    meta: { requestId: String(requestId), fileId: fileIdAtStart, fileName: fileNameAtStart, filePath: filePathAtStart, versionId: versionAtStart, timestamp: Date.now() },
+                };
+                lastDiagnosticResultRef.current = emptyResult;
+                setDiagnosticResult(fileIdAtStart, emptyResult);
                 setIsCheckSuccess(true);
-                setTimeout(() => setIsCheckSuccess(false), 800);
+                setDiagnosticSummary('No issues found');
+                // Keep success visible until next edit or check (no 800ms auto-hide)
+                setIsChecking(false);
+                abortControllerRef.current = null;
                 return;
             }
 
-            // Premium: Use AI deep check (Minimax/DeepSeek via /api/ai/chat) + local Monaco diagnostics
-            // Falls back to local only if AI is unavailable — keeps Check fast and reliable
-            let result;
-            try {
-                const { checkCodeErrorsWithAI } = await import('../../utils/diagnosticsService');
-                // Use AI for files under 8k chars (efficient), local only for huge files
-                if (code.length < 8000) {
-                    result = await checkCodeErrorsWithAI(code, fileName, undefined, monacoRef.current || undefined);
-                } else {
-                    result = await checkCodeErrors(code, fileName, monacoRef.current || undefined);
-                }
-            } catch {
-                result = await checkCodeErrors(code, fileName, monacoRef.current || undefined);
-            }
-            // If user typed during diagnostics, discard stale result
-            if (!model || model.isDisposed() || model.getVersionId() !== versionAtStart) {
-                console.log('Diagnostics: discarding stale result (version changed)');
+            const result = await checkDiagnosticsEx(code, fileName, {
+                fileId: fileIdAtStart,
+                filePath: filePathAtStart,
+                versionId: versionAtStart,
+                requestId: String(requestId),
+                includeAI: true,
+                monaco: monaco ?? undefined,
+                signal: abortController.signal,
+                cursorLine,
+            });
+
+            // Cancellation / stale-result protection: verify still current
+            if (abortController.signal.aborted) {
+                // Cancelled → return to idle without false success
+                setIsChecking(false);
                 return;
             }
-            console.log('Diagnostics result:', result);
+            const currentModel = editorRef.current?.getModel();
+            const currentFile = activeFileRef.current;
+            if (
+                !currentModel || currentModel.isDisposed() ||
+                currentModel.getVersionId() !== versionAtStart ||
+                currentFile?.id !== fileIdAtStart ||
+                diagnosticRequestIdRef.current !== requestId
+            ) {
+                // Stale result — discard silently, do not overwrite newer state
+                console.log('Diagnostics: discarding stale result (file/version/request mismatch)');
+                return;
+            }
 
-            if (model && !model.isDisposed()) {
-                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', result.markers);
+            // Apply markers — ONLY our owner, never wipe unrelated diagnostics
+            if (currentModel && !currentModel.isDisposed()) {
+                monaco.editor.setModelMarkers(currentModel, 'piston-diagnostics', result.markers);
 
-                // Premium smooth annotation: inline highlight + gutter + hover with "why"
+                // Decorations: all diagnostics in markers, only top 15 get premium visuals
                 if (diagnosticsDecorationsRef.current) {
                     diagnosticsDecorationsRef.current.clear();
                     diagnosticsDecorationsRef.current = null;
                 }
-                if (result.markers.length > 0) {
-                    const premiumDecorations: Monaco.editor.IModelDeltaDecoration[] = result.markers.slice(0, 15).map(m => {
-                        const isError = m.severity === 8;
-                        const lineContent = model.getLineContent(m.startLineNumber) || '';
-                        const why = m.message.includes('Unclosed') ? 'Mismatched bracket/brace — usually a missing `)` or `}` on this line or previous.'
-                            : m.message.toLowerCase().includes('python') && m.message.toLowerCase().includes('indent') ? 'Python is indentation-sensitive — this line is not aligned with its block.'
-                                : m.source === 'AI DeepCheck' ? 'AI detected a semantic issue — logic, security, or style.'
-                                    : `Syntax error in ${lineContent.slice(0, 40).trim() || 'this line'}.`;
-                        const fix = isError ? 'Fix: close the bracket/brace or correct the syntax and press Check again.' : 'Tip: review the line and re-check.';
+                if (result.diagnostics.length > 0) {
+                    const premiumDecorations: Monaco.editor.IModelDeltaDecoration[] = result.diagnostics.slice(0, 15).map(d => {
+                        const isError = d.severity === 'error';
+                        const isWarning = d.severity === 'warning';
+                        // Truthful hover: no invented Why/Fix
+                        let hover = `**${isError ? 'Error' : isWarning ? 'Warning' : d.severity === 'info' ? 'Info' : 'Hint'} — ${d.source === 'ai' ? 'AI DeepCheck' : d.source === 'monaco' ? 'Monaco' : 'Language'}**`;
+                        if (d.code) hover += ` \`${d.code}\``;
+                        hover += `  (line ${d.line})`;
+                        hover += `\n\n${d.message}`;
+                        if (d.fileName && d.fileName !== fileNameAtStart) hover += `\n\n*File: ${d.fileName}*`;
+                        // No fake "Press Check again"
                         return {
-                            range: new monacoRef.current!.Range(m.startLineNumber, m.startColumn, m.endLineNumber, m.endColumn),
+                            range: new monaco.Range(d.line, d.column, d.endLine, d.endColumn),
                             options: {
                                 isWholeLine: false,
-                                inlineClassName: isError ? 'premium-diag-error-inline' : 'premium-diag-warning-inline',
-                                className: isError ? 'premium-diag-error-line' : 'premium-diag-warning-line',
-                                glyphMarginClassName: isError ? 'premium-diag-glyph-error' : 'premium-diag-glyph-warning',
+                                inlineClassName: isError ? 'premium-diag-error-inline' : isWarning ? 'premium-diag-warning-inline' : 'premium-diag-info-inline',
+                                className: isError ? 'premium-diag-error-line' : isWarning ? 'premium-diag-warning-line' : 'premium-diag-info-line',
+                                glyphMarginClassName: isError ? 'premium-diag-glyph-error' : isWarning ? 'premium-diag-glyph-warning' : 'premium-diag-glyph-info',
                                 overviewRuler: {
-                                    color: isError ? 'rgba(248,81,73,0.9)' : 'rgba(254,188,46,0.9)',
-                                    position: 4, // OverviewRulerLane.Right
+                                    color: isError ? 'rgba(248,81,73,0.9)' : isWarning ? 'rgba(254,188,46,0.9)' : 'rgba(88,166,255,0.9)',
+                                    position: 4,
                                 },
-                                minimap: { color: isError ? '#f85149' : '#febc2e', position: 2 },
-                                hoverMessage: { value: `**${isError ? 'Error' : 'Warning'} on line ${m.startLineNumber} — ${m.source}**\n\n${m.message}\n\n*Why:* ${why}\n\n*${fix}*` },
+                                minimap: { color: isError ? '#f85149' : isWarning ? '#febc2e' : '#58a6ff', position: 2 },
+                                hoverMessage: { value: hover },
                                 stickiness: 1,
                             }
                         };
                     });
-                    diagnosticsDecorationsRef.current = editorRef.current.createDecorationsCollection(premiumDecorations);
+                    diagnosticsDecorationsRef.current = editorRef.current!.createDecorationsCollection(premiumDecorations);
                 }
             }
 
-            // Determine if there are actual errors (not warnings)
-            const hasActualErrors = result.markers.some(marker => marker.severity === 8); // Severity.Error = 8
+            // Update store for Problems/status bar
+            lastDiagnosticResultRef.current = result;
+            setDiagnosticResult(fileIdAtStart, result);
 
-            setHasErrors(hasActualErrors);
-            if (!hasActualErrors) {
-                console.log('No errors detected, showing success');
+            const hasErr = result.errorCount > 0;
+            const hasWarn = result.warningCount > 0;
+            setHasErrors(hasErr);
+            setHasWarnings(hasWarn);
+            setDiagnosticSummary(result.summary);
+            // Success state persists until next edit/check (truthful)
+            if (!hasErr) {
                 setIsCheckSuccess(true);
-                setTimeout(() => setIsCheckSuccess(false), 800);
             } else {
-                console.log('Errors detected:', result.markers.length);
                 setIsCheckSuccess(false);
             }
+
+            // Partial / AI failure handling: keep local result, log AI error but don't scare
+            if (result.aiStatus === 'failed' && result.errors.ai) {
+                console.warn('[Diagnostics] AI check unavailable:', result.errors.ai);
+            }
+            if (result.localStatus === 'failed' && result.errors.local) {
+                console.warn('[Diagnostics] Local diagnostics failed:', result.errors.local);
+            }
+
         } catch (error) {
+            if ((error as DOMException)?.name === 'AbortError' || abortController.signal.aborted) {
+                // Cancelled — return to idle without error
+                setIsChecking(false);
+                return;
+            }
             console.error('Failed to run diagnostics:', error);
             setHasErrors(true);
-            // Show a generic error marker
-            if (model) {
-                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', [{
-                    startLineNumber: 1,
-                    startColumn: 1,
-                    endLineNumber: 1,
-                    endColumn: 1000,
+            setDiagnosticSummary('Check failed');
+            // Only show generic marker if no result
+            const m = editorRef.current?.getModel();
+            if (m && !m.isDisposed() && monaco) {
+                monaco.editor.setModelMarkers(m, 'piston-diagnostics', [{
+                    startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1000,
                     message: 'Syntax check failed: ' + (error as Error).message,
-                    severity: 8,
-                    source: 'System'
+                    severity: 8, source: 'System'
                 }]);
             }
+            const failed: DiagnosticResultEx = {
+                diagnostics: [{ line: 1, column: 1, endLine: 1, endColumn: 1000, message: 'Syntax check failed: ' + (error as Error).message, severity: 'error', source: 'language', fileName: fileNameAtStart, fileId: fileIdAtStart }],
+                markers: [{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1000, message: 'Syntax check failed: ' + (error as Error).message, severity: 8, source: 'System' }],
+                errorCount: 1, warningCount: 0, infoCount: 0, hintCount: 0, isError: true, output: (error as Error).message, status: 'error', aiStatus: 'failed', localStatus: 'failed', summary: 'Check failed', isPartial: false, errors: { local: (error as Error).message }, meta: { requestId: String(requestId), fileId: fileIdAtStart, fileName: fileNameAtStart, filePath: filePathAtStart, versionId: versionAtStart, timestamp: Date.now() },
+            };
+            setDiagnosticResult(fileIdAtStart, failed);
         } finally {
-            setIsChecking(false);
+            // Only clear checking if this request is still current
+            if (diagnosticRequestIdRef.current === requestId) {
+                setIsChecking(false);
+                if (abortControllerRef.current === abortController) abortControllerRef.current = null;
+            }
         }
-    }, [settings.code.diagnostics]);
+    }, [settings.code.diagnostics, getFileTree]);
 
     // Debounced save to project state with auto-save setting — race-safe vs AI atomic apply
     const debouncedSave = useDebounceCallback((id: string, content: string) => {
@@ -369,40 +475,90 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         updateFileContent(id, finalContent);
     }, settings.editor.autoSave ? settings.editor.autoSaveDelay : 0);
 
-    const handleEditorChange = (value: string | undefined) => {
-        // Clear check status when user starts typing
-        if (isCheckSuccess) setIsCheckSuccess(false);
-        if (hasErrors) setHasErrors(false);
+    // Local debounced check — lightweight, no AI, keeps diagnostics fresh while typing
+    const scheduleLocalCheck = useCallback(() => {
+        if (!settings.code.diagnostics) return;
+        if (debouncedLocalCheckRef.current) clearTimeout(debouncedLocalCheckRef.current);
+        debouncedLocalCheckRef.current = setTimeout(async () => {
+            const file = activeFileRef.current;
+            const editor = editorRef.current;
+            const monaco = monacoRef.current;
+            const model = editor?.getModel();
+            if (!file || !editor || !monaco || !model || model.isDisposed()) return;
+            if (isChecking) return; // don't compete with full Check
+            const code = model.getValue();
+            if (!code.trim()) return;
+            const filePath = pathOf(getFileTree(), file.id) || file.name;
+            try {
+                const localResult = await checkDiagnosticsEx(code, file.name, {
+                    fileId: file.id,
+                    filePath,
+                    versionId: model.getVersionId(),
+                    includeAI: false,
+                    monaco: monaco ?? undefined,
+                });
+                // Check still current?
+                if (activeFileRef.current?.id !== file.id) return;
+                const curModel = editorRef.current?.getModel();
+                if (!curModel || curModel.isDisposed() || curModel.getVersionId() !== model.getVersionId()) return;
+                // Only update markers if local diagnostics differ; preserve AI diagnostics unless full Check re-runs
+                // For debounced path, we replace markers with local-only but keep AI status as stale
+                const prev = getDiagnosticResult(file.id);
+                const hasAI = prev && prev.diagnostics.some(d => d.source === 'ai');
+                if (hasAI && localResult.diagnostics.length === 0) {
+                    // Preserve AI markers but mark stale — don't hide useful info immediately
+                    return;
+                }
+                // For now, only show local if no prior full check; otherwise mark stale
+                if (prev && prev.diagnostics.length > 0) {
+                    setDiagnosticStale(true);
+                    markStale(file.id);
+                    return;
+                }
+                if (curModel && !curModel.isDisposed()) {
+                    monaco.editor.setModelMarkers(curModel, 'piston-diagnostics', localResult.markers);
+                }
+            } catch { /* ignore debounced failures */ }
+        }, 600);
+    }, [settings.code.diagnostics, isChecking, getFileTree]);
 
-        // Clear markers and premium annotations when user starts typing to avoid stale errors
-        if (editorRef.current && monacoRef.current) {
-            const model = editorRef.current.getModel();
-            if (model) {
-                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', []);
-            }
+    const handleEditorChange = (value: string | undefined) => {
+        // Mark diagnostics as potentially stale rather than destroying them
+        if (isCheckSuccess) setIsCheckSuccess(false);
+        // Keep hasErrors/hasWarnings visible but mark stale
+        if (hasErrors || hasWarnings) {
+            setDiagnosticStale(true);
+            const fid = activeFileRef.current?.id ?? null;
+            if (fid) markStale(fid);
         }
-        if (diagnosticsDecorationsRef.current) {
-            diagnosticsDecorationsRef.current.clear();
-            diagnosticsDecorationsRef.current = null;
-        }
+
+        // Do NOT immediately clear markers — keep them as stale visual until next Check or debounced local
+        // Decorations remain but will be faded via stale state if needed
 
         if (activeFile && value !== undefined) {
             debouncedSave(activeFile.id, value);
         }
+        scheduleLocalCheck();
     };
 
-    // Add keyboard shortcut for syntax checking (Ctrl/Cmd + .)
+    // Add keyboard shortcut for syntax checking (Ctrl/Cmd + .) — same path as button
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+                // Honor disabled state — don't silently fail
+                if (!settings.code.diagnostics) {
+                    e.preventDefault();
+                    return;
+                }
                 e.preventDefault();
+                // Rapid protection: if already checking, shortcut triggers cancel+restart via runDiagnostics
                 runDiagnostics();
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [runDiagnostics]);
+    }, [runDiagnostics, settings.code.diagnostics]);
 
     // Save shortcut — Ctrl/Cmd+S saves current Monaco content without recreating editor
     useEffect(() => {
@@ -427,6 +583,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         return () => {
             cancelPendingRequest();
             isProcessingAiCommandRef.current = false;
+            if (abortControllerRef.current) {
+                try { abortControllerRef.current.abort(); } catch {}
+                abortControllerRef.current = null;
+            }
+            if (debouncedLocalCheckRef.current) {
+                clearTimeout(debouncedLocalCheckRef.current);
+                debouncedLocalCheckRef.current = null;
+            }
             if (debounceTimerRef.current) {
                 clearTimeout(debounceTimerRef.current);
                 debounceTimerRef.current = null;
@@ -443,6 +607,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             commentDecorationsRef.current = null;
             loadingDecorationRef.current?.clear();
             loadingDecorationRef.current = null;
+            diagnosticsDecorationsRef.current?.clear();
+            diagnosticsDecorationsRef.current = null;
             if (completionProviderRef.current) {
                 completionProviderRef.current.dispose();
                 completionProviderRef.current = null;
@@ -457,11 +623,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     // Avoids flicker/cursor jump from setValue() by using executeEdits and respecting in-flight AI.
     useEffect(() => {
         if (!editorRef.current || !activeFile) return;
+        const fullPath = pathOf(getFileTree(), activeFile.id) || activeFile.name;
         // If AI is currently applying a /// edit, queue the sync for when it finishes
         // instead of dropping it forever (which would leave editor showing stale file).
         if (isProcessingAiCommandRef.current) {
             pendingSyncRef.current = { id: activeFile.id, content: activeFile.content || '', name: activeFile.name };
-            setActiveEditor(editorRef.current, monacoRef.current, { id: activeFile.id, name: activeFile.name });
+            setActiveEditor(editorRef.current, monacoRef.current, { id: activeFile.id, name: activeFile.name, path: fullPath });
             return;
         }
         const editor = editorRef.current;
@@ -470,7 +637,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         const currentContent = editor.getValue();
         const nextContent = activeFile.content || '';
         if (currentContent === nextContent) {
-            setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name });
+            setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name, path: fullPath });
             return;
         }
         // Preserve cursor/selection and undo stack: apply as a single edit, not setValue()
@@ -482,7 +649,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         if (selection) {
             try { editor.setSelection(selection); } catch { }
         }
-        setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name });
+        setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name, path: fullPath });
     }, [activeFile?.id, activeFile?.content]);
 
     // Flush any pending file-switch sync once AI processing completes
@@ -507,17 +674,92 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         editor.pushUndoStop();
         if (selection) { try { editor.setSelection(selection); } catch { } }
         pendingSyncRef.current = null;
-        setActiveEditor(editor, monacoRef.current, { id: pending.id, name: pending.name });
+        const pendPath = pathOf(getFileTree(), pending.id) || pending.name;
+        setActiveEditor(editor, monacoRef.current, { id: pending.id, name: pending.name, path: pendPath });
     });
 
-    // Sync Single Source of Truth when file switches or is closed
+    // Sync Single Source of Truth when file switches or is closed — also handles diagnostic staleness
     useEffect(() => {
+        // Cancel any in-flight Check — stale result must never reach new file
+        if (abortControllerRef.current) {
+            try { abortControllerRef.current.abort(); } catch {}
+            abortControllerRef.current = null;
+        }
+        diagnosticRequestIdRef.current++;
+        setIsChecking(false);
+        if (debouncedLocalCheckRef.current) {
+            clearTimeout(debouncedLocalCheckRef.current);
+            debouncedLocalCheckRef.current = null;
+        }
+
         if (!activeFile && editorRef.current) {
             clearActiveEditor();
+            // Clear diagnostics UI for closed file
+            if (editorRef.current && monacoRef.current) {
+                const m = editorRef.current.getModel();
+                if (m && !m.isDisposed()) monacoRef.current.editor.setModelMarkers(m, 'piston-diagnostics', []);
+            }
+            diagnosticsDecorationsRef.current?.clear();
+            diagnosticsDecorationsRef.current = null;
+            setHasErrors(false);
+            setHasWarnings(false);
+            setIsCheckSuccess(false);
+            setDiagnosticSummary('');
+            setDiagnosticStale(false);
         } else if (activeFile && editorRef.current && monacoRef.current) {
-            setActiveEditor(editorRef.current, monacoRef.current, { id: activeFile.id, name: activeFile.name });
+            const fp = pathOf(getFileTree(), activeFile.id) || activeFile.name;
+            setActiveEditor(editorRef.current, monacoRef.current, { id: activeFile.id, name: activeFile.name, path: fp });
+            // Restore diagnostics for new file from store, or clear if none
+            const stored = getDiagnosticResult(activeFile.id);
+            const model = editorRef.current.getModel();
+            if (stored && stored.markers.length > 0 && model && !model.isDisposed()) {
+                // Verify still same file (stale guard)
+                monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', stored.markers);
+                setHasErrors(stored.errorCount > 0);
+                setHasWarnings(stored.warningCount > 0);
+                setDiagnosticSummary(stored.summary);
+                setIsCheckSuccess(stored.status === 'success' && stored.errorCount === 0);
+                setDiagnosticStale(!!stored.isStale);
+                // Recreate decorations for stored diagnostics (top 15)
+                if (diagnosticsDecorationsRef.current) {
+                    diagnosticsDecorationsRef.current.clear();
+                    diagnosticsDecorationsRef.current = null;
+                }
+                if (stored.diagnostics.length > 0) {
+                    const decos: Monaco.editor.IModelDeltaDecoration[] = stored.diagnostics.slice(0, 15).map(d => {
+                        const isError = d.severity === 'error';
+                        const isWarning = d.severity === 'warning';
+                        let hover = `**${isError ? 'Error' : isWarning ? 'Warning' : d.severity === 'info' ? 'Info' : 'Hint'} — ${d.source === 'ai' ? 'AI DeepCheck' : d.source === 'monaco' ? 'Monaco' : 'Language'}**`;
+                        if (d.code) hover += ` \`${d.code}\``;
+                        hover += `  (line ${d.line})\n\n${d.message}`;
+                        return {
+                            range: new monacoRef.current!.Range(d.line, d.column, d.endLine, d.endColumn),
+                            options: {
+                                isWholeLine: false,
+                                inlineClassName: isError ? 'premium-diag-error-inline' : isWarning ? 'premium-diag-warning-inline' : 'premium-diag-info-inline',
+                                className: isError ? 'premium-diag-error-line' : isWarning ? 'premium-diag-warning-line' : 'premium-diag-info-line',
+                                glyphMarginClassName: isError ? 'premium-diag-glyph-error' : isWarning ? 'premium-diag-glyph-warning' : 'premium-diag-glyph-info',
+                                overviewRuler: { color: isError ? 'rgba(248,81,73,0.9)' : isWarning ? 'rgba(254,188,46,0.9)' : 'rgba(88,166,255,0.9)', position: 4 },
+                                minimap: { color: isError ? '#f85149' : isWarning ? '#febc2e' : '#58a6ff', position: 2 },
+                                hoverMessage: { value: hover },
+                                stickiness: 1,
+                            }
+                        };
+                    });
+                    diagnosticsDecorationsRef.current = editorRef.current.createDecorationsCollection(decos);
+                }
+            } else {
+                if (model && !model.isDisposed()) monacoRef.current.editor.setModelMarkers(model, 'piston-diagnostics', []);
+                diagnosticsDecorationsRef.current?.clear();
+                diagnosticsDecorationsRef.current = null;
+                setHasErrors(false);
+                setHasWarnings(false);
+                setIsCheckSuccess(false);
+                setDiagnosticSummary('');
+                setDiagnosticStale(false);
+            }
         }
-    }, [activeFile?.id]);
+    }, [activeFile?.id, getFileTree]);
 
     // Clear active editor on unmount
     useEffect(() => {
@@ -560,6 +802,23 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         };
         window.addEventListener('request-editor-selection', handler);
         return () => window.removeEventListener('request-editor-selection', handler);
+    }, []);
+
+    // Problems panel navigation — jump to diagnostic location
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { line: number; column?: number };
+            if (!detail || typeof detail.line !== 'number') return;
+            const editor = editorRef.current;
+            if (!editor) return;
+            try {
+                editor.revealLineInCenter(detail.line);
+                editor.setPosition({ lineNumber: detail.line, column: detail.column ?? 1 });
+                editor.focus();
+            } catch { /* ignore */ }
+        };
+        window.addEventListener('problems-navigate', handler as EventListener);
+        return () => window.removeEventListener('problems-navigate', handler as EventListener);
     }, []);
 
     // Track if we're currently processing an AI command (to prevent re-triggering)
@@ -1213,7 +1472,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         setEditorInstance(editor);
         // Single Source of Truth: register active Monaco instance for AI context
         if (activeFile) {
-            setActiveEditor(editor, monaco, { id: activeFile.id, name: activeFile.name });
+            const fp2 = pathOf(getFileTree(), activeFile.id) || activeFile.name;
+            setActiveEditor(editor, monaco, { id: activeFile.id, name: activeFile.name, path: fp2 });
         }
 
         // Track disposables for this editor instance to avoid leaks on remount
@@ -1481,21 +1741,42 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             {/* Toolbar — shares --az-topbar-height with Explorer header for perfect alignment */}
             <div className="flex items-center justify-between px-3 shrink-0 overflow-hidden" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}>
                 <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
-                    {/* Check Errors — Premium AI DeepCheck */}
+                    {/* Check Errors — Premium AI DeepCheck (production-grade) */}
+                    {(() => {
+                        const isDisabled = !settings.code.diagnostics;
+                        const stateTitle = isDisabled
+                            ? 'Diagnostics disabled — enable in Settings → Code → Diagnostics'
+                            : isChecking
+                                ? 'Checking... (click again to restart)'
+                                : hasErrors
+                                    ? diagnosticSummary || 'Has Errors'
+                                    : hasWarnings
+                                        ? diagnosticSummary || 'Has Warnings'
+                                        : isCheckSuccess
+                                            ? diagnosticSummary || 'No Errors'
+                                            : 'Deep code check — AI + syntax (Minimax)';
+                        return (
                     <button
-                        onClick={runDiagnostics}
-                        disabled={isChecking}
+                        onClick={isDisabled ? undefined : runDiagnostics}
+                        disabled={isDisabled || isFormatting}
+                        aria-disabled={isDisabled}
                         className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-3 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${isChecking
+                            ${isDisabled
+                                ? 'text-[var(--az-text-muted)] bg-[var(--az-surface-2)] border border-[var(--az-border)] opacity-60 cursor-not-allowed'
+                                : isChecking
                                 ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
                                 : hasErrors
                                     ? 'bg-[var(--az-error-soft)] text-[var(--az-error)] border border-[var(--az-error-border)]'
-                                    : isCheckSuccess
-                                        ? 'bg-[var(--az-success-soft)] text-[var(--az-success)] border border-[var(--az-success-border)]'
-                                        : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
+                                    : hasWarnings
+                                        ? 'bg-[rgba(254,188,46,0.12)] text-[#febc2e] border border-[rgba(254,188,46,0.3)]'
+                                        : isCheckSuccess
+                                            ? 'bg-[var(--az-success-soft)] text-[var(--az-success)] border border-[var(--az-success-border)]'
+                                            : diagnosticStale
+                                                ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-2)] border border-[var(--az-border)] opacity-80'
+                                                : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
                         `}
-                        title="Deep code check — AI + syntax (Minimax)"
+                        title={stateTitle}
                     >
                         {isChecking ? (
                             <>
@@ -1508,17 +1789,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             </>
                         ) : hasErrors ? (
                             <AlertCircle size={12} />
+                        ) : hasWarnings ? (
+                            <AlertCircle size={12} className="text-[#febc2e]" />
                         ) : isCheckSuccess ? (
                             <CheckCircle size={12} className="text-green-300" />
                         ) : (
-                            <CheckCircle size={12} />
+                            <CheckCircle size={12} className={diagnosticStale ? 'opacity-50' : ''} />
                         )}
                         {!isChecking && toolbarSize === 'full' && (
                             <span>
-                                {hasErrors ? 'Has Errors' : isCheckSuccess ? 'No Errors' : 'Check'}
+                                {hasErrors ? 'Has Errors' : hasWarnings ? 'Has Warnings' : isCheckSuccess ? 'No Errors' : diagnosticStale ? 'Stale' : 'Check'}
                             </span>
                         )}
                     </button>
+                        );
+                    })()}
 
                     <div className={`shrink-0 w-px bg-[var(--az-border)] ${toolbarSize === 'mini' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
@@ -1664,11 +1949,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             <GitBranch size={11} className="shrink-0" />
                             <span>main</span>
                         </div>
-                        <div className="flex items-center gap-1 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none">
-                            <CheckCircle size={11} className="shrink-0" />
-                            <span>0</span>
-                            <AlertCircle size={11} className="ml-1 shrink-0" />
-                            <span>0</span>
+                        <div className="flex items-center gap-1 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none" title={diagnosticSummary || (diagCounts.total === 0 ? 'No diagnostics' : `${diagCounts.errors} errors · ${diagCounts.warnings} warnings`)}>
+                            <CheckCircle size={11} className={`shrink-0 ${diagCounts.errors > 0 ? 'text-[#f85149]' : 'text-[var(--az-text-muted)]'}`} />
+                            <span className={diagCounts.errors > 0 ? 'text-[#f85149] font-semibold' : ''}>{diagCounts.errors}</span>
+                            <AlertCircle size={11} className={`ml-1 shrink-0 ${diagCounts.warnings > 0 ? 'text-[#febc2e]' : 'text-[var(--az-text-muted)]'}`} />
+                            <span className={diagCounts.warnings > 0 ? 'text-[#febc2e] font-semibold' : ''}>{diagCounts.warnings}</span>
+                            {diagnosticStale && diagCounts.total > 0 && <span className="ml-1 text-[9px] px-1 py-0 rounded bg-[var(--az-surface-3)] border border-[var(--az-border)]">stale</span>}
+                            {diagCounts.infos > 0 && <span className="ml-1 text-[9px] text-[#58a6ff]">{diagCounts.infos}i</span>}
                         </div>
                     </div>
 

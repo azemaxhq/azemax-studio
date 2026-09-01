@@ -251,7 +251,7 @@ async function sseResponse(chunks: string[]): Promise<Response> {
 {
     // Never lose the final token: append after a frame is scheduled, then flush
     // must deliver BOTH the pending frame content and the final append.
-    const raf = installRafStub();
+    const _raf = installRafStub();
     const frames: string[] = [];
     const buf = new AIStreamBuffer((t) => frames.push(t), () => true);
     buf.append('a');

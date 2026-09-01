@@ -33,6 +33,7 @@ import {
   PerformanceAlertManager,
   type PerformanceAlert
 } from '../../utils/performanceAlerts';
+import { getLanguageFromFilename } from '../../utils/language';
 
 // Grade colors
 const gradeColors: Record<string, { bg: string; border: string; text: string; glow: string }> = {
@@ -50,6 +51,12 @@ const severityColors: Record<string, string> = {
   high: '#f88249',
   medium: '#febc2e',
   low: '#3fb950',
+};
+
+const calculateImprovement = (previous: PerformanceMetrics, current: PerformanceMetrics): number => {
+  const timeImprovement = ((previous.executionTime - current.executionTime) / previous.executionTime) * 100;
+  const memoryImprovement = ((previous.memoryUsage.peak - current.memoryUsage.peak) / previous.memoryUsage.peak) * 100;
+  return (timeImprovement + memoryImprovement) / 2;
 };
 
 interface PerformancePanelProps {
@@ -92,7 +99,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
       
       const report = analyzePerformance(
         activeFile.content || '',
-        getLanguageFromExtension(activeFile.name || ''),
+        getLanguageFromFilename(activeFile.name || ''),
         executionData.executionTime,
         executionData.stdout,
         executionData.stderr,
@@ -117,23 +124,6 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
       }
     }
   }, [executionData, isRunning, getActiveFile]);
-
-  const getLanguageFromExtension = (filename: string): string => {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    const langMap: Record<string, string> = {
-      ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-      py: 'python', java: 'java', c: 'c', cpp: 'cpp', go: 'go',
-      rs: 'rust', rb: 'ruby', php: 'php', css: 'css', html: 'html',
-      json: 'json', md: 'markdown', sh: 'shell', yml: 'yaml', yaml: 'yaml',
-    };
-    return langMap[ext] || 'plaintext';
-  };
-
-  const calculateImprovement = (previous: PerformanceMetrics, current: PerformanceMetrics): number => {
-    const timeImprovement = ((previous.executionTime - current.executionTime) / previous.executionTime) * 100;
-    const memoryImprovement = ((previous.memoryUsage.peak - current.memoryUsage.peak) / previous.memoryUsage.peak) * 100;
-    return (timeImprovement + memoryImprovement) / 2;
-  };
 
   const formatTime = (ms: number): string => {
     if (ms < 1000) return `${ms.toFixed(0)}ms`;

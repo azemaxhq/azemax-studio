@@ -8,10 +8,6 @@
     animation: ai-loading-in 180ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)) both, ai-processing-breathe 3.2s ease-in-out infinite 800ms;
     will-change: opacity, transform;
     contain: layout;
-    /* cohesive inline — no space-between, no large margin */
-}
-.ai-loading-stable {
-    min-width: auto;
 }
 @keyframes ai-loading-in {
     from { opacity: 0; transform: translateY(3px); }
@@ -21,36 +17,10 @@
     0%, 100% { opacity: 0.92; }
     50% { opacity: 1; }
 }
-.ai-az-mark {
-    width: 18px;
-    height: 18px;
-    border-radius: 5px;
-    background: #171A20;
-    border: 1px solid rgba(255,255,255,0.07);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-.ai-az-mark-fixed {
-    flex: 0 0 28px;
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
-    background: var(--az-surface);
-    border: 1px solid var(--az-border);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
 .ai-dots-fixed {
     width: 18px;
     justify-content: flex-start;
     flex-shrink: 0;
-}
-.ai-loading-minimal-dot {
-    display: none;
 }
 .ai-loading-dots-subtle {
     display: inline-flex;
@@ -60,7 +30,6 @@
     width: 18px;
     justify-content: flex-start;
     flex-shrink: 0;
-    /* fixed 18px prevents width change, gap 6px to text keeps dots close */
 }
 .ai-dot-subtle {
     width: 3px;
@@ -89,108 +58,9 @@
     white-space: nowrap;
 }
 
-/* Legacy pill — kept for compact variant only, not used for chat */
-.ai-loading-indicator {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(8px) saturate(1.15);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255,255,255,0.04);
-    transition: opacity 200ms ease, transform 200ms ease;
-    will-change: opacity, transform;
-    position: relative;
-    overflow: hidden;
-}
-
-.ai-loading-indicator-inner { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
-.ai-loading-status-wrap { display: flex; align-items: center; min-height: 18px; }
-.ai-response-status { font-size: 12.5px; font-weight: 450; letter-spacing: 0.2px; color: rgba(255,255,255,0.78); }
-.ai-response-status--thinking,
-.ai-response-status--preparing { color: rgba(199,183,255,0.92); }
-.ai-response-status--generating,
-.ai-response-status--streaming { color: rgba(162,198,255,0.92); }
-.ai-response-status--applying { color: rgba(134,239,172,0.92); }
-
-/* Orb + smooth dots — single set, no duplicate */
-.ai-thinking-root { display: flex; align-items: center; gap: 8px; }
-.ai-thinking-icon {
-    position: relative;
-    width: 16px; height: 16px;
-    border-radius: 999px;
-    background: radial-gradient(circle at 35% 35%, rgba(167,139,250,0.95), rgba(99,102,241,0.85));
-    box-shadow: 0 0 8px rgba(139,92,246,0.32), 0 1px 2px rgba(0,0,0,0.18);
-    flex-shrink: 0;
-    overflow: hidden;
-}
-.ai-thinking-icon::after {
-    content: ''; position: absolute; inset: 1px; border-radius: 999px;
-    background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.55), transparent 55%); opacity: 0.85;
-}
-.ai-thinking-glow {
-    position: absolute; inset: -5px; border-radius: 999px;
-    background: radial-gradient(circle, rgba(139,92,246,0.22), transparent 70%);
-    filter: blur(5px); opacity: 0.85;
-    animation: ai-orb-breathe 2.8s ease-in-out infinite;
-    will-change: opacity, transform;
-}
-@keyframes ai-orb-breathe { 0%,100% { opacity: 0.65; transform: scale(0.96); } 50% { opacity: 1; transform: scale(1.06); } }
-
-.ai-thinking-dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: 10px;
-}
-.ai-thinking-dot {
-    width: 4px; height: 4px;
-    border-radius: 999px;
-    background: rgba(199,183,255,0.95);
-    box-shadow: 0 0 6px rgba(139,92,246,0.28);
-    opacity: 0.28;
-    transform: scale(0.85);
-    animation: ai-dot-smooth 1.8s ease-in-out infinite;
-    will-change: opacity, transform;
-}
-.ai-thinking-dot:nth-child(2) { animation-delay: 0.2s; }
-.ai-thinking-dot:nth-child(3) { animation-delay: 0.4s; }
-@keyframes ai-dot-smooth {
-    0%, 100% { opacity: 0.28; transform: scale(0.85); }
-    50% { opacity: 1; transform: scale(1); }
-}
-
-/* Streaming caret — minimal low-opacity vertical line, no glow */
-.ai-streaming-cursor { display: inline-flex; margin-left: 2px; vertical-align: baseline; }
-.ai-streaming-caret {
-    width: 1.5px; height: 1.05em; border-radius: 999px;
-    background: rgba(255,255,255,0.42);
-    animation: ai-caret-blink 1.1s step-end infinite; will-change: opacity;
-}
-@keyframes ai-caret-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
-
 /* Container */
 .ai-response-container { animation: ai-response-in 200ms ease-out both; will-change: opacity, transform; }
 @keyframes ai-response-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-
-/* Premium skeleton — subtle, no shimmer flash */
-.premium-skeleton {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 0 4px;
-    opacity: 0.55;
-}
-.premium-skeleton-line {
-    height: 8px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.06);
-}
-.premium-skeleton-line:nth-child(1) { width: 62%; }
-.premium-skeleton-line:nth-child(2) { width: 76%; }
-.premium-skeleton-line:nth-child(3) { width: 54%; }
 
 /* Smooth streaming content — stable, no per-chunk fade (prevents flicker on bursts) */
 .smooth-streaming-content {
@@ -209,28 +79,13 @@
     animation: ai-caret-blink 1.1s step-end infinite;
     will-change: opacity;
 }
+@keyframes ai-caret-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
 
 /* Reduced motion — static, no pulse, minimal */
 @media (prefers-reduced-motion: reduce) {
-    .ai-thinking-glow, .ai-thinking-dot, .ai-streaming-caret, .streaming-caret-premium, .premium-skeleton-line, .ai-loading-minimal-dot, .ai-dot-subtle { animation: none !important; }
-    .ai-loading-indicator, .ai-loading-minimal, .ai-response-container, .smooth-streaming-content { transition: opacity 120ms ease !important; animation: none !important; }
-    .ai-thinking-dot, .ai-dot-subtle { opacity: 0.42; transform: none !important; }
+    .streaming-caret-premium, .ai-dot-subtle { animation: none !important; }
+    .ai-loading-minimal, .ai-response-container, .smooth-streaming-content { transition: opacity 120ms ease !important; animation: none !important; }
+    .ai-dot-subtle { opacity: 0.42; transform: none !important; }
     .ai-loading-minimal { animation: none !important; opacity: 1 !important; }
-    .premium-skeleton-line { background: rgba(255,255,255,0.06); }
-    .ai-loading-minimal-dot { opacity: 0.7; }
     .ai-dot-subtle { opacity: 0.38; }
 }
-
-/* Variants */
-.ai-thinking--sm .ai-thinking-icon { width: 14px; height: 14px; }
-.ai-thinking--sm .ai-thinking-dot { width: 3px; height: 3px; }
-.ai-thinking--sm .ai-thinking-dots { gap: 3px; }
-.ai-loading-indicator--variant-compact {
-    padding: 6px 10px; border-radius: 10px;
-    background: rgba(255,255,255,0.025); border-color: rgba(255,255,255,0.05);
-    gap: 8px; box-shadow: 0 1px 8px rgba(0,0,0,0.14), inset 0 1px 0 rgba(255,255,255,0.03);
-}
-.ai-loading-indicator--variant-compact .ai-response-status { font-size: 11.5px; }
-.ai-loading-indicator--variant-compact .ai-thinking-icon { width: 14px; height: 14px; }
-.ai-loading-indicator--variant-compact .ai-thinking-dot { width: 3px; height: 3px; }
-.ai-loading-indicator--variant-chat { padding: 8px 12px; }

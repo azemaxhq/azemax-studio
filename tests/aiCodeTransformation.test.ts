@@ -185,7 +185,7 @@ it('should parse XML-style reasoning-wrapped payload', () => {
     describe('Function wrap transformation (regression test)', () => {
         it('should transform console.log to wrapped function + call', () => {
             const originalCode = 'console.log("hello world");';
-            const instruction = 'create a function to call it';
+            const _instruction = 'create a function to call it';
             
             // Simulate what the AI should return as a structured edit
             const edits = [{ 
