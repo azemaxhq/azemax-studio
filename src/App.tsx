@@ -1,4 +1,4 @@
-import { Suspense, lazy, memo } from 'react';
+import { Suspense, lazy, memo, useState, useEffect, useCallback } from 'react';
 import { ProjectProvider } from './context/ProjectContext';
 import { TerminalProvider } from './context/TerminalContext';
 import { ExplanationProvider } from './context/ExplanationContext';
@@ -10,6 +10,7 @@ import { composeProviders } from './core/composeProviders';
 
 import { AzemaxLogo } from './components/UI/AzemaxLogo';
 import { BRAND } from './core/branding';
+import { LandingPage } from './components/Landing/LandingPage';
 
 const MainLayout = lazy(() => import('./components/Layout/MainLayout').then(m => ({ default: m.MainLayout })));
 
@@ -65,6 +66,41 @@ function RootErrorFallback(error: Error) {
 }
 
 export default function App() {
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname;
+    }
+    return '/';
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateToApp = useCallback(() => {
+    window.history.pushState({}, '', '/app');
+    setCurrentPath('/app');
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Isolate Landing Page from IDE Workspace:
+  // Route /app (and /app/*) mounts the IDE workspace with all context providers.
+  // Route / (and any other marketing route) renders the Azemax Landing Page.
+  const isAppRoute = currentPath.startsWith('/app');
+
+  if (!isAppRoute) {
+    return (
+      <ErrorBoundary fallback={RootErrorFallback}>
+        <LandingPage onNavigateToApp={navigateToApp} />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary fallback={RootErrorFallback}>
       <AppProviders>

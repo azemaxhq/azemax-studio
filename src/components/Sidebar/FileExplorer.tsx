@@ -418,6 +418,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
     return (
         <div className={isNewlyCreated ? 'animate-creation-success rounded-[6px]' : ''}>
             <div
+                data-testid="file-tree-item"
+                data-file-name={node.name}
                 role="treeitem"
                 aria-expanded={isFolder ? isOpen : undefined}
                 aria-selected={isActive || isSelected}
@@ -1470,7 +1472,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     };
 
     return (
-        <div className="h-full flex flex-col" ref={containerRef} tabIndex={0} onKeyDown={(e) => {
+        <div data-testid="file-tree" className="h-full flex flex-col" ref={containerRef} tabIndex={0} onKeyDown={(e) => {
             if (e.key === 'Escape' && isSearchOpen && document.activeElement === searchInputRef.current) return; // let input handler deal with it
             if (e.key === 'Escape' && isSearchOpen) { e.preventDefault(); onSearchClose(); }
         }}>

@@ -322,13 +322,14 @@ export const MainLayout: React.FC = () => {
             )}
 
             {/* Activity Bar — neutral, quiet, optically centered */}
-            <div className={`shrink-0 flex flex-col items-center gap-1.5 py-2.5 w-[48px] border-r ${isDesktop ? 'z-20' : 'z-40'}`} style={{ background: 'var(--az-bg)', borderColor: 'var(--az-border)' }}>
+            <div data-testid="activity-bar" className={`shrink-0 flex flex-col items-center gap-1.5 py-2.5 w-[48px] border-r ${isDesktop ? 'z-20' : 'z-40'}`} style={{ background: 'var(--az-bg)', borderColor: 'var(--az-border)' }}>
                 <div className="h-10 w-full flex items-center justify-center shrink-0" title="Azemax">
                     <AzemaxLogo size={20} />
                 </div>
                 <div className="w-6 h-px mb-0.5 shrink-0" style={{ background: 'var(--az-divider)' }} />
 
                 <button
+                    data-testid="activity-explorer"
                     onClick={openExplorer}
                     className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center shrink-0 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]"
                     style={{
@@ -402,6 +403,7 @@ export const MainLayout: React.FC = () => {
             )}
 
             <div
+                data-testid="sidebar"
                 ref={leftSidebarRef}
                 style={{
                     width: isLeftSidebarOpen ? (isDesktop ? `${Math.max(150, leftSidebarWidth)}px` : `min(${Math.max(150, leftSidebarWidth)}px, calc(100vw - 72px))`) : '0px',
@@ -469,8 +471,8 @@ export const MainLayout: React.FC = () => {
                 {/* Center Column (Editor + Bottom Panel) */}
                 <div className="flex-1 flex flex-col min-w-0">
                     {/* Editor Area */}
-                    <div className="flex-1 flex min-h-0 relative">
-                        <div className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-surface)', border: 'none' }}>
+                    <div data-testid="editor-root" className="flex-1 flex min-h-0 relative">
+                        <div data-testid="editor" className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-surface)', border: 'none' }}>
                             <CodeEditor
                                 isAiOpen={isAiSidebarOpen}
                                 onToggleAi={toggleAiSidebar}

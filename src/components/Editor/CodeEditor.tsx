@@ -21,9 +21,10 @@ import { useTerminal } from '../../context/TerminalContext';
 import { useDebounceCallback } from '../../hooks/useDebounce';
 import { setCursorPosition, useCursorPosition } from '../../core/runtime/cursorPositionStore';
 import { setActiveEditor, clearActiveEditor } from '../../core/editor/activeEditorStore';
+import { DisposableStore } from '../../core/runtime/DisposableStore';
 import { getLanguageFromFilename as getMonacoLangId } from '../../utils/language';
 import type { FileNode } from '../../utils/mockFileSystem';
-import { pathOf } from '../../utils/safeTree';
+import { pathOf, findNodeById } from '../../utils/safeTree';
 
 // Isolated status-bar readout. Subscribes to the external cursor store, so
 // cursor movement updates ONLY this tiny node instead of the whole editor tree.
@@ -160,6 +161,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     type InlineCompletionsResult = Monaco.languages.InlineCompletions<Monaco.languages.InlineCompletion>;
     const pendingInlineResolveRef = useRef<((value: InlineCompletionsResult | PromiseLike<InlineCompletionsResult | null | undefined> | null | undefined) => void) | null>(null);
     const activeFileRef = useRef(activeFile);
+    // Single owner for per-editor Monaco listeners (mirrors vscode-main DisposableStore pattern)
+    const editorDisposablesRef = useRef<DisposableStore | null>(null);
+    const formatTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     /** Cache last non-empty selection so Explain Selection still works after focus leaves editor */
     const lastSelectionRef = useRef<{ fileId: string; text: string; language: string; fileName?: string } | null>(null);
 
@@ -196,6 +200,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const [, setIsAiProcessing] = useState(false);
     const [activeAiLine, setActiveAiLine] = useState<number | null>(null);
     const [activeAiIntent, setActiveAiIntent] = useState<string | null>(null);
+    const pendingLocalCheckRef = useRef(false);
+    const isCheckingRef = useRef(false);
+    const scheduleLocalCheckRef = useRef<() => void>(() => {});
+    useEffect(() => { isCheckingRef.current = isChecking; }, [isChecking]);
     // Tracks the LIVE editor instance. Unlike a boolean "ready" flag, this
     // changes identity whenever the inner Monaco editor is (re)created (e.g.
     // after the placeholder "no file" view), so effects that attach listeners
@@ -440,87 +448,111 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             if (diagnosticRequestIdRef.current === requestId) {
                 setIsChecking(false);
                 if (abortControllerRef.current === abortController) abortControllerRef.current = null;
+                if (pendingLocalCheckRef.current) {
+                    pendingLocalCheckRef.current = false;
+                    // Coalesced pending local check — delegate to ref (defined later) to avoid forward-reference
+                    scheduleLocalCheckRef.current();
+                }
             }
         }
     }, [settings.code.diagnostics, getFileTree]);
 
-    // Debounced save to project state with auto-save setting — race-safe vs AI atomic apply
+    // Debounced save — latest-wins. Captured `content` is from handleEditorChange
+    // but the authoritative value at fire time is `editor.getValue()` for the active
+    // file. Spec: dirty→saving must eventually persist latest editor content.
     const debouncedSave = useDebounceCallback((id: string, content: string) => {
         if (!settings.editor.autoSave) return;
-        // If an AI edit is in-flight for THIS file, skip — AI holds a snapshot. For other files, save normally.
         if (isProcessingAiCommandRef.current && activeFileRef.current?.id === id) return;
-        // If user switched files, latestEditorValue is for the new file — don't use it to discard save for old file
         if (activeFileRef.current?.id !== id) {
-            let finalContentForOtherFile = content;
-            if (settings.code.formatOnSave) {
-                // Don't run formatter for non-active file (no editor model) — save raw
-            }
-            updateFileContent(id, finalContentForOtherFile);
+            // File no longer active — no live model; captured content is authoritative
+            updateFileContent(id, content);
             return;
         }
-        // For the active file, skip if editor already moved on (AI write or newer typing)
-        const latestEditorValue = editorRef.current?.getValue();
+        const ed = editorRef.current;
+        const model = ed?.getModel();
+        const latestEditorValue = model && !model.isDisposed() ? ed!.getValue() : undefined;
+        // If active file and latest differs from captured, the user (or AI) typed
+        // again after the debounce was scheduled. Persist LATEST, not stale capture.
+        // This satisfies CASE 1 (A→AB→ABC → ABC), CASE 2 (AI XYZ wins), CASE 3 (user edit after AI).
+        let finalContent: string;
         if (latestEditorValue !== undefined && latestEditorValue !== content) {
-            return;
+            finalContent = latestEditorValue;
+        } else {
+            finalContent = content;
         }
-        let finalContent = content;
-        if (settings.code.formatOnSave && editorRef.current) {
+        // Verify target still exists before writing (CASE 4 file switch / delete)
+        try {
+            const tree = getFileTree();
+            const node = findNodeById(tree as any, id) as FileNode | null;
+            if (!node) return;
+        } catch { return; }
+        if (settings.code.formatOnSave && ed && model && !model.isDisposed()) {
+            // Format the *latest* content, not the stale capture. Use captured model's value
+            // if it matches finalContent to avoid formatting stale text.
             try {
-                editorRef.current.getAction('editor.action.formatDocument')?.run();
-                finalContent = editorRef.current.getValue();
+                // Only run formatter if finalContent matches current model (active file)
+                if (ed.getValue() === finalContent) {
+                    ed.getAction('editor.action.formatDocument')?.run();
+                    finalContent = ed.getValue();
+                }
             } catch {
-                // Formatter may not be registered; keep the original content.
+                // Formatter may not be registered; keep finalContent.
             }
         }
         updateFileContent(id, finalContent);
     }, settings.editor.autoSave ? settings.editor.autoSaveDelay : 0);
 
-    // Local debounced check — lightweight, no AI, keeps diagnostics fresh while typing
+    // Local debounced check — lightweight, no AI, keeps diagnostics fresh while typing.
+    // If a full Check is running, coalesce into one pending request run after it finishes.
+    const runLocalCheckNow = useCallback(async () => {
+        const file = activeFileRef.current;
+        const editor = editorRef.current;
+        const monaco = monacoRef.current;
+        const model = editor?.getModel();
+        if (!file || !editor || !monaco || !model || model.isDisposed()) return;
+        const code = model.getValue();
+        if (!code.trim()) return;
+        const filePath = pathOf(getFileTree(), file.id) || file.name;
+        const versionAtCapture = model.getVersionId();
+        try {
+            const localResult = await checkDiagnosticsEx(code, file.name, {
+                fileId: file.id,
+                filePath,
+                versionId: versionAtCapture,
+                includeAI: false,
+                monaco: monaco ?? undefined,
+            });
+            if (activeFileRef.current?.id !== file.id) return;
+            const curModel = editorRef.current?.getModel();
+            if (!curModel || curModel.isDisposed() || curModel.getVersionId() !== versionAtCapture) return;
+            // Stale-guard: if a full Check started after we captured, don't overwrite its pending result
+            if (isCheckingRef.current) return;
+            const prev = getDiagnosticResult(file.id);
+            const hasAI = prev && prev.diagnostics.some(d => d.source === 'ai');
+            if (hasAI && localResult.diagnostics.length === 0) return;
+            if (prev && prev.diagnostics.length > 0) {
+                setDiagnosticStale(true);
+                markStale(file.id);
+                return;
+            }
+            if (curModel && !curModel.isDisposed()) {
+                monaco.editor.setModelMarkers(curModel, 'piston-diagnostics', localResult.markers);
+            }
+        } catch { /* ignore */ }
+    }, [getFileTree]);
+
     const scheduleLocalCheck = useCallback(() => {
         if (!settings.code.diagnostics) return;
         if (debouncedLocalCheckRef.current) clearTimeout(debouncedLocalCheckRef.current);
         debouncedLocalCheckRef.current = setTimeout(async () => {
-            const file = activeFileRef.current;
-            const editor = editorRef.current;
-            const monaco = monacoRef.current;
-            const model = editor?.getModel();
-            if (!file || !editor || !monaco || !model || model.isDisposed()) return;
-            if (isChecking) return; // don't compete with full Check
-            const code = model.getValue();
-            if (!code.trim()) return;
-            const filePath = pathOf(getFileTree(), file.id) || file.name;
-            try {
-                const localResult = await checkDiagnosticsEx(code, file.name, {
-                    fileId: file.id,
-                    filePath,
-                    versionId: model.getVersionId(),
-                    includeAI: false,
-                    monaco: monaco ?? undefined,
-                });
-                // Check still current?
-                if (activeFileRef.current?.id !== file.id) return;
-                const curModel = editorRef.current?.getModel();
-                if (!curModel || curModel.isDisposed() || curModel.getVersionId() !== model.getVersionId()) return;
-                // Only update markers if local diagnostics differ; preserve AI diagnostics unless full Check re-runs
-                // For debounced path, we replace markers with local-only but keep AI status as stale
-                const prev = getDiagnosticResult(file.id);
-                const hasAI = prev && prev.diagnostics.some(d => d.source === 'ai');
-                if (hasAI && localResult.diagnostics.length === 0) {
-                    // Preserve AI markers but mark stale — don't hide useful info immediately
-                    return;
-                }
-                // For now, only show local if no prior full check; otherwise mark stale
-                if (prev && prev.diagnostics.length > 0) {
-                    setDiagnosticStale(true);
-                    markStale(file.id);
-                    return;
-                }
-                if (curModel && !curModel.isDisposed()) {
-                    monaco.editor.setModelMarkers(curModel, 'piston-diagnostics', localResult.markers);
-                }
-            } catch { /* ignore debounced failures */ }
+            if (isCheckingRef.current) {
+                pendingLocalCheckRef.current = true;
+                return;
+            }
+            await runLocalCheckNow();
         }, 600);
-    }, [settings.code.diagnostics, isChecking, getFileTree]);
+    }, [settings.code.diagnostics, runLocalCheckNow]);
+    useEffect(() => { scheduleLocalCheckRef.current = scheduleLocalCheck; }, [scheduleLocalCheck]);
 
     const handleEditorChange = (value: string | undefined) => {
         // Mark diagnostics as potentially stale rather than destroying them
@@ -603,6 +635,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 clearTimeout(commentDecorationTimerRef.current);
                 commentDecorationTimerRef.current = null;
             }
+            if (formatTimeoutRef.current) {
+                clearTimeout(formatTimeoutRef.current);
+                formatTimeoutRef.current = null;
+            }
             commentDecorationsRef.current?.clear();
             commentDecorationsRef.current = null;
             loadingDecorationRef.current?.clear();
@@ -613,11 +649,37 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 completionProviderRef.current.dispose();
                 completionProviderRef.current = null;
             }
+            editorDisposablesRef.current?.dispose();
+            editorDisposablesRef.current = null;
         };
     }, []);
 
     // Pending sync when file switches while AI is processing — apply once AI finishes
     const pendingSyncRef = useRef<{ id: string; content: string; name: string } | null>(null);
+    // Flush pending file-switch sync when AI completes or activeFile changes
+    const flushPendingSync = useCallback(() => {
+        if (isProcessingAiCommandRef.current || !pendingSyncRef.current || !editorRef.current || !activeFile) return;
+        const pending = pendingSyncRef.current;
+        if (pending.id !== activeFile.id || pending.content !== (activeFile.content || '')) {
+            pendingSyncRef.current = { id: activeFile.id, content: activeFile.content || '', name: activeFile.name };
+            return;
+        }
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        if (!model || model.isDisposed()) return;
+        if (editor.getValue() === pending.content) {
+            pendingSyncRef.current = null;
+            return;
+        }
+        const selection = editor.getSelection();
+        editor.pushUndoStop();
+        editor.executeEdits('file-sync-pending', [{ range: model.getFullModelRange(), text: pending.content, forceMoveMarkers: true }]);
+        editor.pushUndoStop();
+        if (selection) { try { editor.setSelection(selection); } catch { /* ignore */ } }
+        pendingSyncRef.current = null;
+        const pendPath = pathOf(getFileTree(), pending.id) || pending.name;
+        setActiveEditor(editor, monacoRef.current, { id: pending.id, name: pending.name, path: pendPath });
+    }, [activeFile?.id, activeFile?.content, getFileTree]);
 
     // Glitch-free sync when activeFile changes externally (e.g., AI edit via file-tree).
     // Avoids flicker/cursor jump from setValue() by using executeEdits and respecting in-flight AI.
@@ -652,30 +714,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         setActiveEditor(editor, monacoRef.current, { id: activeFile.id, name: activeFile.name, path: fullPath });
     }, [activeFile?.id, activeFile?.content]);
 
-    // Flush any pending file-switch sync once AI processing completes
+    // Flush pending sync when AI completes or activeFile changes (replaces render-polling effect)
     useEffect(() => {
-        if (isProcessingAiCommandRef.current || !pendingSyncRef.current || !editorRef.current || !activeFile) return;
-        const pending = pendingSyncRef.current;
-        if (pending.id !== activeFile.id || pending.content !== (activeFile.content || '')) {
-            // Active file changed again while we were processing — keep the latest
-            pendingSyncRef.current = { id: activeFile.id, content: activeFile.content || '', name: activeFile.name };
-            return;
-        }
-        const editor = editorRef.current;
-        const model = editor.getModel();
-        if (!model || model.isDisposed()) return;
-        if (editor.getValue() === pending.content) {
-            pendingSyncRef.current = null;
-            return;
-        }
-        const selection = editor.getSelection();
-        editor.pushUndoStop();
-        editor.executeEdits('file-sync-pending', [{ range: model.getFullModelRange(), text: pending.content, forceMoveMarkers: true }]);
-        editor.pushUndoStop();
-        if (selection) { try { editor.setSelection(selection); } catch { } }
-        pendingSyncRef.current = null;
-        const pendPath = pathOf(getFileTree(), pending.id) || pending.name;
-        setActiveEditor(editor, monacoRef.current, { id: pending.id, name: pending.name, path: pendPath });
+        flushPendingSync();
+    }, [flushPendingSync]);
+    useEffect(() => {
+        // Also poll one frame after AI processing flag flips via state update
+        if (!isProcessingAiCommandRef.current) flushPendingSync();
     });
 
     // Sync Single Source of Truth when file switches or is closed — also handles diagnostic staleness
@@ -1142,7 +1187,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     useEffect(() => {
         cancelPendingRequest();
         isProcessingAiCommandRef.current = false;
-    }, [activeFile?.id]);
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+        }
+        if (pendingInlineResolveRef.current) {
+            pendingInlineResolveRef.current({ items: [] });
+            pendingInlineResolveRef.current = null;
+        }
+        flushPendingSync();
+    }, [activeFile?.id, flushPendingSync]);
 
 
     // Fetch suggestion from API
@@ -1385,7 +1439,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             editor?.getAction('editor.action.formatDocument')?.run();
         } finally {
             setIsFormatting(false);
-            setTimeout(() => setIsFormatting(false), 800);
+            if (formatTimeoutRef.current) clearTimeout(formatTimeoutRef.current);
+            formatTimeoutRef.current = setTimeout(() => setIsFormatting(false), 800);
         }
     };
 
@@ -1476,28 +1531,35 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             setActiveEditor(editor, monaco, { id: activeFile.id, name: activeFile.name, path: fp2 });
         }
 
-        // Track disposables for this editor instance to avoid leaks on remount
-        const disposables: Monaco.IDisposable[] = [];
-        disposables.push(
-            editor.onDidBlurEditorText(() => cancelPendingRequest()),
-            editor.onDidChangeCursorPosition((e) => setCursorPosition({ lineNumber: e.position.lineNumber, column: e.position.column })),
-            editor.onDidChangeCursorSelection((e) => {
-                const model = editor.getModel();
-                const sel = e.selection;
-                if (!model || !sel) return;
-                const text = model.getValueInRange(sel);
-                if (text.trim().length > 0 && activeFileRef.current) {
-                    lastSelectionRef.current = {
-                        fileId: activeFileRef.current.id,
-                        text,
-                        language: getLanguage(activeFileRef.current.name || ''),
-                        fileName: activeFileRef.current.name
-                    };
-                }
-            })
-        );
-        // Store for cleanup when editor is disposed/remounted
-        (editor as any)._codeEditorDisposables = disposables;
+        // Track disposables for this editor instance (VS Code DisposableStore pattern)
+        // Dispose previous store if remounting (StrictMode double-mount) to avoid leaks
+        editorDisposablesRef.current?.dispose();
+        const store = new DisposableStore();
+        editorDisposablesRef.current = store;
+        store.add(editor.onDidBlurEditorText(() => cancelPendingRequest()));
+        store.add(editor.onDidChangeCursorPosition((e) => setCursorPosition({ lineNumber: e.position.lineNumber, column: e.position.column })));
+        store.add(editor.onDidChangeCursorSelection((e) => {
+            const model = editor.getModel();
+            const sel = e.selection;
+            if (!model || !sel) return;
+            const text = model.getValueInRange(sel);
+            if (text.trim().length > 0 && activeFileRef.current) {
+                lastSelectionRef.current = {
+                    fileId: activeFileRef.current.id,
+                    text,
+                    language: getLanguage(activeFileRef.current.name || ''),
+                    fileName: activeFileRef.current.name
+                };
+            }
+        }));
+        // Keep legacy field for any external consumers; owned by store
+        (editor as any)._codeEditorDisposables = store;
+        // E2E hook: expose editor/monaco for Playwright when running in test
+        try {
+            const w = window as unknown as Record<string, unknown>;
+            w.__azemax_editor = editor;
+            w.__azemax_monaco = monaco;
+        } catch { /* ignore */ }
 
         // Powerful AI Commenting — available everywhere via context menu (right-click) and Cmd+Shift+C
         editor.addAction({
@@ -1596,7 +1658,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         letterSpacing: 0,
         padding: densityPadding,
         inlineSuggest: { enabled: settings.ai.inlineSuggestions, mode: 'subwordSmart' },
-        quickSuggestions: settings.code.quickSuggestions ? { other: true, comments: false, strings: false } : false as any,
+        quickSuggestions: settings.code.quickSuggestions ? { other: true, comments: false, strings: false } : false,
         suggestOnTriggerCharacters: settings.code.quickSuggestions,
         quickSuggestionsDelay: 80,
         suggest: {
@@ -1827,6 +1889,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {/* Save Button - only show when auto-save is disabled */}
                     {!settings.editor.autoSave && (
                         <button
+                            data-testid="save-button"
                             onClick={handleSave}
                             className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90
                                 ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
