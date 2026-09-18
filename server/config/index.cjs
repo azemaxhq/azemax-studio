@@ -16,18 +16,16 @@ const AI_MODELS = {
         apiKey: process.env.NVIDIA_API_KEY || '',
     },
     groq: {
-        default: 'qwen/qwen3.6-27b',
+        default: 'qwen/qwen3.8-27b',
         apiKey: process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || '',
     },
     openRouter: {
         baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
         apiKey: process.env.OPENROUTER_API_KEY || process.env.VITE_OPENROUTER_API_KEY || '',
         fallbacks: [
-            'minimax/minimax-m3:free',
-            'openrouter/free',
-            'qwen/qwen3-coder:free',
-            'meta-llama/llama-3.3-70b-instruct:free',
-            'google/gemini-2.0-flash-exp:free',
+            'nvidia/nemotron-3-super-120b-a12b:free',
+            'nvidia/nemotron-3.5-lightning:free',
+            'nvidia/nemotron-3-ultra-550b-a55b:free',
         ],
     },
     huggingFace: {

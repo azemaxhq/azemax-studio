@@ -17,9 +17,10 @@ test.describe('Azemax Landing Page E2E', () => {
     await expect(heroHeading).toContainText('Build');
     await expect(heroHeading).toContainText('beyond limits.');
 
-    // Planet canvas presence
-    const canvas = page.locator('canvas');
-    await expect(canvas).toBeVisible();
+    // Planet canvas layers (static planet sheet + live star sheet)
+    await expect(page.locator('canvas')).toHaveCount(2);
+    await expect(page.locator('canvas').first()).toBeVisible();
+    await expect(page.locator('canvas').nth(1)).toBeVisible();
 
     // Eyebrow and badges
     await expect(page.locator('text=BEYOND THE EDITOR').first()).toBeVisible();
@@ -28,8 +29,28 @@ test.describe('Azemax Landing Page E2E', () => {
     await expect(page.locator('.az-hero-metadata')).toContainText('UNDERSTAND');
     await expect(page.locator('.az-hero-metadata')).toContainText('IMPROVE');
 
-    // Code panel removed from hero — assert it stays gone
+    // Positioning copy
+    await expect(page.locator('text=The space between thought and code.').first()).toBeVisible();
+    await expect(page.locator('text=without leaving your flow').first()).toBeVisible();
+
+    // Primary CTA label
+    await expect(page.locator('#hero-primary-cta')).toContainText('Enter Azemax');
+
+    // Editor panel removed from hero — assert it stays gone
+    await expect(page.locator('.az-hero-product .az-laptop-chassis')).toHaveCount(0);
     await expect(page.locator('.az-laptop-chassis')).toHaveCount(0);
+  });
+
+  test('hero discovery control preselects workspace mode and scrolls', async ({ page }) => {
+    await page.goto('/');
+
+    const understandLink = page.locator('[data-discovery-mode="understand"]');
+    await understandLink.scrollIntoViewIfNeeded();
+    await understandLink.click();
+
+    await expect(page).toHaveURL(/#modes/);
+    await expect(page.locator('#tab-understand')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('text=Azemax Explanation')).toBeVisible();
   });
 
   test('interactive workspace modes switch seamlessly', async ({ page }) => {

@@ -72,7 +72,7 @@ export interface ResolvedModel {
 }
 
 const GROQ_MODEL_IDS = new Set([
-    'qwen/qwen3.6-27b',
+    'qwen/qwen3.8-27b',
     'openai/gpt-oss-20b',
     'openai/gpt-oss-120b',
     'allam-2-7b',
@@ -121,9 +121,9 @@ export function configuredDirectProviders(): ProviderId[] {
 export function defaultModelFor(provider: ProviderId): string {
     switch (provider) {
         case 'groq':
-            return 'qwen/qwen3.6-27b';
+            return 'qwen/qwen3.8-27b';
         case 'openrouter':
-            return `${OR_PREFIX}openrouter/free`;
+            return `${OR_PREFIX}nvidia/nemotron-3-super-120b-a12b:free`;
         case 'huggingface':
             return `${HF_PREFIX}deepseek-ai/DeepSeek-R1:novita`;
         case 'kilocode':

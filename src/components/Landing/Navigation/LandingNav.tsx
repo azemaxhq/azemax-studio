@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { BRAND } from '../../../core/branding';
 import { ArrowRight, Menu, X } from 'lucide-react';
 
@@ -17,7 +17,7 @@ const REVEAL_ZONE = 140;
 const HIDE_ZONE = 420;
 const DIRECTION_DEAD_ZONE = 4;
 
-export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
+export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace }) => {
   const [scrolled, setScrolled] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [activeHref, setActiveHref] = useState<string>('');
@@ -207,6 +207,29 @@ export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
     });
   }, []);
 
+  const handleToggleMenu = useCallback(() => setMobileMenuOpen((v) => !v), []);
+  const handleCloseMenu = useCallback(() => setMobileMenuOpen(false), []);
+
+  // useMemo keeps desktop/mobile link lists referentially stable so the nav
+  // doesn't reconcile 6 anchors on every scroll-driven render (scrolled /
+  // progress ticks). Active state is derived per render, not stored.
+  const desktopLinks = useMemo(
+    () =>
+      NAV_LINKS.map((link) => ({
+        ...link,
+        isActive: activeHref === link.href,
+      })),
+    [activeHref],
+  );
+  const mobileLinks = useMemo(
+    () =>
+      NAV_LINKS.map((link) => ({
+        ...link,
+        isActive: activeHref === link.href,
+      })),
+    [activeHref],
+  );
+
   return (
     <header
       className={`az-nav-shell fixed inset-x-0 top-0 z-50 ${hidden && !mobileMenuOpen ? '-translate-y-full motion-reduce:translate-y-0' : 'translate-y-0'}`}
@@ -240,11 +263,11 @@ export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
       </div>
 
       {/* Fixed height = no layout reflow on scrolled toggle */}
-      <div className="relative mx-auto flex h-14 max-w-7xl items-center justify-between px-6 md:px-12">
+      <div className="relative mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 md:px-12">
         <a
           href="#top"
           onClick={handleBrandClick}
-          className="group flex select-none items-center gap-2.5 rounded-lg px-1.5 py-1.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70"
+          className="group flex min-w-0 select-none items-center gap-2 sm:gap-2.5 rounded-lg px-1.5 py-1.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70"
           aria-label="Azemax — back to top"
         >
           <span className="relative grid h-6 w-6 place-items-center">
@@ -257,6 +280,7 @@ export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
               alt=""
               width={20}
               height={20}
+              decoding="async"
               className="relative h-5 w-5 shrink-0 object-contain opacity-90 transition-[opacity,filter] duration-200 group-hover:opacity-100 group-hover:brightness-110"
               draggable={false}
             />
@@ -264,41 +288,41 @@ export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
           <span className="text-xs font-medium uppercase tracking-[0.22em] text-white/90 transition-colors duration-200 group-hover:text-white">
             {BRAND.name}
           </span>
+          <span className="rounded-full border border-[#4F8CFF]/40 bg-[#4F8CFF]/10 px-1.5 py-px font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[#8FB4FF]">
+            Beta
+          </span>
         </a>
 
         <nav
           className="hidden items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.03] px-1.5 py-1 md:flex"
           aria-label="Main Navigation"
         >
-          {NAV_LINKS.map((link) => {
-            const isActive = activeHref === link.href;
-            return (
-              <a
-                key={link.href}
-                href={link.href}
-                aria-current={isActive ? 'location' : undefined}
-                className={`relative rounded-full px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70 ${
-                  isActive ? 'text-white' : 'text-white/55 hover:text-white/90'
+          {desktopLinks.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              aria-current={link.isActive ? 'location' : undefined}
+              className={`relative rounded-full px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70 ${
+                link.isActive ? 'text-white' : 'text-white/55 hover:text-white/90'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`absolute inset-0 rounded-full border bg-[#4F8CFF]/[0.12] transition-opacity duration-200 ease-out ${
+                  link.isActive ? 'border-[#4F8CFF]/35 opacity-100' : 'border-transparent opacity-0'
                 }`}
-              >
+              />
+              <span className="relative flex items-center gap-1.5">
                 <span
                   aria-hidden="true"
-                  className={`absolute inset-0 rounded-full border bg-[#4F8CFF]/[0.12] transition-opacity duration-200 ease-out ${
-                    isActive ? 'border-[#4F8CFF]/35 opacity-100' : 'border-transparent opacity-0'
+                  className={`h-1 w-1 rounded-full bg-[#8FB4FF] transition-[opacity,transform] duration-200 ease-out ${
+                    link.isActive ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
                   }`}
                 />
-                <span className="relative flex items-center gap-1.5">
-                  <span
-                    aria-hidden="true"
-                    className={`h-1 w-1 rounded-full bg-[#8FB4FF] transition-[opacity,transform] duration-200 ease-out ${
-                      isActive ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
-                    }`}
-                  />
-                  {link.label}
-                </span>
-              </a>
-            );
-          })}
+                {link.label}
+              </span>
+            </a>
+          ))}
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
@@ -321,7 +345,7 @@ export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
 
         <button
           type="button"
-          onClick={() => setMobileMenuOpen((v) => !v)}
+          onClick={handleToggleMenu}
           aria-label={mobileMenuOpen ? 'Close Menu' : 'Open Menu'}
           aria-expanded={mobileMenuOpen}
           aria-controls="landing-mobile-menu"
@@ -336,32 +360,29 @@ export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
       <div
         id="landing-mobile-menu"
         aria-hidden={!mobileMenuOpen}
-        className={`absolute inset-x-0 top-full px-4 motion-reduce:transition-none md:hidden ${mobileMenuOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-2 opacity-0'}`}
+        className={`absolute inset-x-0 top-full max-h-[calc(100dvh-3.5rem)] overflow-y-auto px-4 pb-4 motion-reduce:transition-none md:hidden ${mobileMenuOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-2 opacity-0'}`}
         style={{ transition: 'opacity 200ms ease, transform 200ms ease' }}
       >
         <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#05080f]/95 shadow-[0_24px_64px_rgba(0,0,0,0.7)] backdrop-blur-xl">
           <div aria-hidden="true" className="h-px bg-gradient-to-r from-transparent via-[#4F8CFF]/50 to-transparent" />
           <nav className="flex flex-col p-2" aria-label="Mobile Navigation">
-            {NAV_LINKS.map((link, i) => {
-              const isActive = activeHref === link.href;
-              return (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  tabIndex={mobileMenuOpen ? 0 : -1}
-                  onClick={() => setMobileMenuOpen(false)}
-                  style={{ transitionDelay: mobileMenuOpen ? `${i * 40}ms` : '0ms' }}
-                  className={`flex items-center justify-between rounded-xl px-4 py-3.5 font-mono text-xs uppercase tracking-[0.16em] transition-[opacity,transform,background-color,color] duration-200 motion-reduce:transition-none ${
-                    mobileMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-                  } ${isActive ? 'bg-[#4F8CFF]/10 text-white' : 'text-white/60 hover:bg-white/[0.05] hover:text-white'}`}
-                >
-                  <span>{link.label}</span>
-                  <span aria-hidden="true" className={isActive ? 'text-[#8FB4FF]' : 'text-white/25'}>
-                    →
-                  </span>
-                </a>
-              );
-            })}
+            {mobileLinks.map((link, i) => (
+              <a
+                key={link.href}
+                href={link.href}
+                tabIndex={mobileMenuOpen ? 0 : -1}
+                onClick={handleCloseMenu}
+                style={{ transitionDelay: mobileMenuOpen ? `${i * 40}ms` : '0ms' }}
+                className={`flex items-center justify-between rounded-xl px-4 py-3.5 font-mono text-xs uppercase tracking-[0.16em] transition-[opacity,transform,background-color,color] duration-200 motion-reduce:transition-none ${
+                  mobileMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+                } ${link.isActive ? 'bg-[#4F8CFF]/10 text-white' : 'text-white/60 hover:bg-white/[0.05] hover:text-white'}`}
+              >
+                <span>{link.label}</span>
+                <span aria-hidden="true" className={link.isActive ? 'text-[#8FB4FF]' : 'text-white/25'}>
+                  →
+                </span>
+              </a>
+            ))}
           </nav>
           <div className="border-t border-white/[0.07] p-3">
             <a
@@ -381,4 +402,6 @@ export const LandingNav: React.FC<LandingNavProps> = ({ onEnterWorkspace }) => {
       </div>
     </header>
   );
-};
+});
+
+LandingNav.displayName = 'LandingNav';

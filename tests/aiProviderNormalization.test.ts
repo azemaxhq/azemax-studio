@@ -158,7 +158,7 @@ describe('AI Provider Normalization', () => {
             const kiloResponse = normalizeAIResponse('kilocode', 'kilo:nemotron-3-super', {
                 choices: [{ message: { content: 'B' }, finish_reason: 'stop' }],
             });
-            const groqResponse = normalizeAIResponse('groq', 'qwen/qwen3.6-27b', {
+            const groqResponse = normalizeAIResponse('groq', 'qwen/qwen3.8-27b', {
                 choices: [{ message: { content: 'C' }, finish_reason: 'stop' }],
             });
 

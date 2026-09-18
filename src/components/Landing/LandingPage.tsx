@@ -1,18 +1,37 @@
-import React, { useLayoutEffect } from 'react';
+import React, { Suspense, lazy, memo, useLayoutEffect } from 'react';
 import './Landing.css';
 import { LandingNav } from './Navigation/LandingNav';
 import { Hero } from './Hero/Hero';
-import { Philosophy } from './Sections/Philosophy';
-import { WorkspaceShowcase } from './Sections/WorkspaceShowcase';
-import { ProductSystem } from './Sections/ProductSystem';
-import { FinalCTA } from './Sections/FinalCTA';
 import { LandingFooter } from './Footer/LandingFooter';
+
+// Render-budget split: Hero + Nav are above the fold and stay in the initial
+// chunk. Everything below the fold is code-split so Blink/WebKit parse +
+// evaluate less JS before first paint (better FCP/LCP, less main-thread
+// blocking). Each lazy chunk is wrapped in Suspense with a min-height
+// fallback that matches `contain-intrinsic-size`, so no layout shift occurs
+// while the chunk loads.
+const Philosophy = lazy(() =>
+  import('./Sections/Philosophy').then((m) => ({ default: m.Philosophy })),
+);
+const WorkspaceShowcase = lazy(() =>
+  import('./Sections/WorkspaceShowcase').then((m) => ({ default: m.WorkspaceShowcase })),
+);
+const ProductSystem = lazy(() =>
+  import('./Sections/ProductSystem').then((m) => ({ default: m.ProductSystem })),
+);
+const FinalCTA = lazy(() =>
+  import('./Sections/FinalCTA').then((m) => ({ default: m.FinalCTA })),
+);
+
+function BelowFoldFallback({ minHeight = 600 }: { minHeight?: number }) {
+  return <div aria-hidden="true" style={{ minHeight }} className="w-full bg-[#000204]" />;
+}
 
 interface LandingPageProps {
   onNavigateToApp: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToApp }) => {
+export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp }) => {
   // Refresh must always land on the hero, never mid-page. Browsers restore
   // the previous scroll offset and/or jump to location.hash on reload — both
   // bypass React. We kill that early (before paint) and strip any hash so a
@@ -29,7 +48,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToApp }) => 
       try {
         prev = history.scrollRestoration as ScrollRestoration;
         history.scrollRestoration = 'manual';
-      } catch {}
+      } catch {
+        // History API unavailable — non-fatal, keep default restoration.
+      }
     }
 
     // If URL carries a hash (e.g. /#philosophy after clicking nav), discard it
@@ -55,7 +76,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToApp }) => 
       html.classList.remove('az-no-smooth');
       html.classList.remove('az-landing-active');
       if (prev !== null) {
-        try { history.scrollRestoration = prev; } catch {}
+        try {
+          history.scrollRestoration = prev;
+        } catch {
+          // History API unavailable on restore — non-fatal.
+        }
       }
     };
   }, []);
@@ -76,7 +101,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToApp }) => 
         </div>
 
         {/* 02 — THE CORE LOOP: Write -> Run -> Understand -> Improve */}
-        <Philosophy />
+        <Suspense fallback={<BelowFoldFallback minHeight={700} />}>
+          <Philosophy />
+        </Suspense>
 
         {/* Animated Section Separator */}
         <div className="relative w-full h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
@@ -84,7 +111,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToApp }) => 
         </div>
 
         {/* 03 — INTERACTIVE WORKSPACE: One environment, Four modes */}
-        <WorkspaceShowcase />
+        <Suspense fallback={<BelowFoldFallback minHeight={800} />}>
+          <WorkspaceShowcase />
+        </Suspense>
 
         {/* Animated Section Separator */}
         <div className="relative w-full h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
@@ -92,14 +121,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToApp }) => 
         </div>
 
         {/* 04 — ARCHITECTURAL UNIFICATION: The Machine Behind the File */}
-        <ProductSystem />
+        <Suspense fallback={<BelowFoldFallback minHeight={800} />}>
+          <ProductSystem />
+        </Suspense>
 
         {/* 05 — RETURN TO BUILD: Final Campaign Call to Action */}
-        <FinalCTA onEnterWorkspace={onNavigateToApp} />
+        <Suspense fallback={<BelowFoldFallback minHeight={600} />}>
+          <FinalCTA onEnterWorkspace={onNavigateToApp} />
+        </Suspense>
       </main>
 
       {/* Minimal Landing Footer */}
       <LandingFooter onEnterWorkspace={onNavigateToApp} />
     </div>
   );
-};
+});
+
+LandingPage.displayName = 'LandingPage';

@@ -50,6 +50,18 @@ html.az-no-smooth {
   scroll-margin-top: 64px;
 }
 
+/* Below-fold sections: skip layout/style/paint until near viewport (Chrome).
+   `auto <size>` remembers the rendered size after first paint, so the
+   scrollbar doesn't jump. Scroll-spy + anchors are unaffected — the browser
+   renders these on demand for intersection and scrollIntoView. */
+#philosophy,
+#modes,
+#system,
+#initiation {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1000px;
+}
+
 /* Landing needs real page scroll — override app's body/#root overflow:hidden while mounted */
 html.az-landing-active {
   overflow: auto !important;
@@ -67,10 +79,16 @@ html.az-landing-active #root {
   display: block !important;
 }
 
-/* Navbar is now fixed 56px — isolate its paint to avoid full-page repaint on scroll */
+/* Navbar is now fixed 56px — isolate its paint to avoid full-page repaint on scroll.
+   Own compositor layer in both Blink and WebKit (`translateZ` + -webkit
+   prefix); `contain` keeps backdrop-filter repaints inside the header. */
 .az-nav-shell {
   transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  contain: layout paint style;
   transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 @media (prefers-reduced-motion: reduce) {
   .az-nav-shell {
@@ -144,6 +162,12 @@ html.az-landing-active #root {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--az-line);
+  /* Compositor isolation: backdrop-filter already promotes to a layer, but
+     explicit containment stops Blink/WebKit from repainting siblings when
+     the frame's children update (tab switches, run logs, ghost toggles). */
+  contain: paint;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .az-glass-surface-interactive {
@@ -259,18 +283,6 @@ html.az-landing-active #root {
   box-shadow: 0 4px 20px rgba(79, 140, 255, 0.15);
 }
 
-/* Scroll progress indicator */
-.az-scroll-line {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--az-blue-electric), var(--az-blue-pale));
-  z-index: 100;
-  pointer-events: none;
-  transition: width 0.1s linear;
-}
-
 /* Code Editor Styling inside Mockups */
 .az-code-window {
   font-family: var(--az-font-mono);
@@ -369,15 +381,15 @@ html.az-landing-active #root {
    ============================================================ */
 
 @keyframes az-hero-fadeUp {
+  /* Composited-only (opacity + transform): animating filter: blur() here
+     forced a full software repaint of large serif type every frame. */
   0% {
     opacity: 0;
-    transform: translateY(40px);
-    filter: blur(4px);
+    transform: translateY(28px);
   }
   100% {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 
@@ -406,15 +418,6 @@ html.az-landing-active #root {
   }
 }
 
-@keyframes az-float-subtle {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
 @keyframes az-shimmer {
   0% {
     background-position: -200% 0;
@@ -424,44 +427,51 @@ html.az-landing-active #root {
   }
 }
 
-@keyframes az-glow-pulse {
-  0%, 100% {
-    opacity: 0.5;
-    box-shadow: 0 0 20px rgba(79, 140, 255, 0.15);
-  }
-  50% {
-    opacity: 0.8;
-    box-shadow: 0 0 32px rgba(79, 140, 255, 0.28);
-  }
+/* Hero animation application classes — restrained cinematic entrance:
+   planet (0–300ms) → eyebrow → headline → positioning → CTA → product → discovery */
+.az-hero-planet {
+  animation: az-planet-establish 1.4s ease-out backwards;
 }
 
-/* Hero animation application classes */
+@keyframes az-planet-establish {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
 .az-hero-eyebrow {
-  animation: az-hero-fadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+  animation: az-hero-fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.35s backwards;
 }
 
 .az-hero-headline {
-  animation: az-hero-fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  animation: az-hero-fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) 0.55s backwards;
+}
+
+.az-hero-positioning {
+  animation: az-hero-fadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1s backwards;
 }
 
 .az-hero-subtitle {
-  animation: az-hero-fadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both;
+  animation: az-hero-fadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1s backwards;
 }
 
 .az-hero-cta {
-  animation: az-hero-fadeUp 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.6s both;
+  animation: az-hero-fadeUp 0.85s cubic-bezier(0.16, 1, 0.3, 1) 1.2s backwards;
 }
 
 .az-hero-metadata {
-  animation: az-hero-fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.75s both;
+  animation: az-hero-fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.6s backwards;
 }
 
-.az-hero-laptop {
-  animation: az-hero-scaleIn 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
+.az-hero-product {
+  animation: az-hero-scaleIn 1s cubic-bezier(0.16, 1, 0.3, 1) 1.35s backwards;
 }
 
-.az-hero-footer {
-  animation: az-hero-fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.9s both;
+/* Discovery control — minimal interaction, no flash */
+.az-discovery-item:hover {
+  transform: translateY(-1px);
+}
+.az-discovery-item:active {
+  transform: translateY(0);
 }
 
 /* ============================================================
@@ -494,16 +504,6 @@ html.az-landing-active #root {
   animation: az-shimmer 6s linear infinite;
 }
 
-/* Floating laptop subtle hover effect */
-.az-laptop-float {
-  animation: az-float-subtle 6s ease-in-out infinite;
-  animation-play-state: running;
-}
-
-.az-laptop-float:hover {
-  animation-play-state: paused;
-}
-
 /* Premium card hover lift */
 .az-card-lift {
   transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
@@ -515,12 +515,11 @@ html.az-landing-active #root {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 24px rgba(79, 140, 255, 0.12);
 }
 
-/* Glowing dot pulse (for status indicators) */
-.az-dot-pulse {
-  animation: az-glow-pulse 3s ease-in-out infinite;
-}
-
-/* Smooth text gradient shimmer for special headings */
+/* Smooth text gradient shimmer for special headings.
+   NOTE (Blink/WebKit cost): animating background-position repaints the text
+   layer every frame. Kept on desktop where it's a single headline, but killed
+   on mobile / coarse pointers / reduced-motion (see queries below) where
+   fill-rate matters most. */
 .az-text-shimmer {
   background: linear-gradient(
     90deg,
@@ -531,14 +530,85 @@ html.az-landing-active #root {
   );
   background-size: 300% 100%;
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
   animation: az-shimmer 8s linear infinite;
+}
+
+/* ============================================================
+   WEBKIT / BLINK COMPOSITING LAYER (render-path optimization)
+   Rules:
+   - Only transform + opacity animate on the compositor. Anything else
+     (background-position, box-shadow, filter) triggers paint in Blink and
+     is especially expensive in WebKit on mobile GPUs.
+   - will-change is applied ONLY while animating; released on .az-visible
+     so layers can be reclaimed instead of pinning GPU memory.
+   ============================================================ */
+
+/* Canvases: own strict layer, never repainted by DOM changes nearby. */
+.az-planet-layer,
+.az-planet-layer canvas {
+  contain: strict;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Large radial atmosphere washes: static decor. Promote once, never animate,
+   and contain paint so scrolling never re-rasterizes the blur. */
+.az-atmosphere {
+  contain: paint;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: auto;
+  pointer-events: none;
+}
+
+/* Thin horizon line: drop the glow shadow (a 1200px blurred shadow forces a
+   huge raster in both engines). A static gradient line is ~free. */
+.az-horizon-line {
+  contain: paint;
+  box-shadow: none;
+}
+
+/* Pipeline progress: width still set from React, but the property transition
+   is transform-friendly (scaleX via width is layout). Keep width for simplicity
+   (infrequent hover-driven updates) yet avoid `transition-all`. */
+.az-progress-track {
+  transition: width 0.5s ease;
+  will-change: width;
+}
+
+/* Release compositor hints once reveals finish — pins GPU memory otherwise. */
+.az-reveal.az-visible,
+.az-reveal-left.az-visible,
+.az-reveal-scale.az-visible {
+  will-change: auto;
 }
 
 /* ============================================================
    RESPONSIVE REFINEMENTS
    ============================================================ */
+
+/* Hard guards against horizontal scroll from wide decor / code views */
+.az-landing-root,
+.az-landing-root main {
+  overflow-x: clip;
+}
+
+.az-landing-root img,
+.az-landing-root canvas,
+.az-landing-root pre,
+.az-landing-root code {
+  max-width: 100%;
+}
+
+.az-landing-root pre,
+.az-landing-root code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
 @media (max-width: 768px) {
   .az-hero-eyebrow,
@@ -546,13 +616,55 @@ html.az-landing-active #root {
   .az-hero-subtitle,
   .az-hero-cta,
   .az-hero-metadata,
-  .az-hero-laptop,
-  .az-hero-footer {
+  .az-hero-positioning,
+  .az-hero-product {
     animation-duration: 0.6s;
   }
-  
-  .az-laptop-float {
+}
+
+/* Coarse pointers / mobile GPUs: shimmer + heavy blurs off. The static
+   gradient remains, so the design is identical in a still frame — only the
+   per-frame repaint loop is removed. Matches PlanetCanvas low-power path. */
+@media (pointer: coarse), (max-width: 640px) {
+  .az-section-separator::after,
+  .az-text-shimmer {
     animation: none;
+  }
+  .az-atmosphere {
+    filter: none;
+  }
+}
+
+/* Small phones: fluid headline, full-width CTAs, tighter badges */
+@media (max-width: 640px) {
+  .az-hero-headline {
+    overflow-wrap: break-word;
+  }
+
+  .az-btn-primary,
+  .az-btn-secondary {
+    width: 100%;
+    justify-content: center;
+    padding: 13px 18px;
+  }
+
+  .az-mono-badge {
+    letter-spacing: 0.14em;
+  }
+
+  /* Below-fold sections shouldn't force a desktop-size paint box */
+  #philosophy,
+  #modes,
+  #system,
+  #initiation {
+    contain-intrinsic-size: auto 600px;
+  }
+}
+
+/* Very small phones: prevent eyebrow + pill crowding */
+@media (max-width: 380px) {
+  .az-hero-eyebrow {
+    gap: 8px;
   }
 }
 

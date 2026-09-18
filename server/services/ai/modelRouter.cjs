@@ -77,7 +77,7 @@ function stripPrefixes(model) {
 }
 
 const GROQ_MODEL_IDS = new Set([
-    'qwen/qwen3.6-27b',
+    'qwen/qwen3.8-27b',
     'openai/gpt-oss-20b',
     'openai/gpt-oss-120b',
     'allam-2-7b',
@@ -86,9 +86,9 @@ const GROQ_MODEL_IDS = new Set([
 ]);
 
 const KILO_MODEL_IDS = new Set([
-    'kilo-code/nemotron-3-super',
-    'kilo-code/gpt-4o',
-    'kilo-code/claude-3.5-sonnet',
+    'nemotron-3-super',
+    'gpt-4o',
+    'claude-3.5-sonnet',
 ]);
 
 function inferProvider(model) {
@@ -207,7 +207,7 @@ function configuredFallbackModels() {
     // Groq first for speed (qwen 950ms), Kilo after. Ensures DeepSeek timeout quickly falls back to working Groq.
     if (isConfigured('groq')) list.push(AI_MODELS.groq.default);
     if (isConfigured('kilocode')) list.push(`${KILO_PREFIX}nemotron-3-super`);
-    if (isConfigured('openrouter')) list.push(`${OR_PREFIX}openrouter/free`);
+    if (isConfigured('openrouter')) list.push(`${OR_PREFIX}nvidia/nemotron-3-super-120b-a12b:free`);
     if (isConfigured('huggingface')) list.push(`${HF_PREFIX}${AI_MODELS.huggingFace.defaultModel}`);
     return list;
 }
@@ -223,12 +223,16 @@ function configuredFallbackModels() {
  * @returns {{ primary: object, fallbacks: object[] }}
  */
 function buildRoutingPlan(task, requestedModel, { allowFallback = true, healthFilter = true } = {}) {
-    // Minimax via OpenRouter is now the absolute primary for every task (user request).
-    // Ignore any explicit requestedModel like deepseek/qwen and force minimax as primary
-    // when OpenRouter is configured — requested model becomes first fallback instead.
-    const hasMinimax = isConfigured('openRouter');
-    const forcedPrimary = hasMinimax ? 'or:minimax/minimax-m3:free' : null;
-    const primaryModel = forcedPrimary || requestedModel || AI_MODELS.nvidia.default;
+    // Primary is the caller's requested model, defaulting to the configured
+    // NVIDIA model. No forced override: hijacking the primary breaks
+    // `allowFallback:false` callers (autocomplete) and sends every request to
+    // a single provider even when it is down.
+    // Latency exception: `fast_chat` (greetings/small talk, max 512 tokens) is
+    // latency-critical and quality-insensitive — measured Groq TTFB ~0.35s vs
+    // NVIDIA ~13s — so it defaults to the fast Groq model when configured.
+    // An explicit requestedModel always wins.
+    const fastDefault = (task === 'fast_chat' && isConfigured('groq')) ? AI_MODELS.groq.default : null;
+    const primaryModel = requestedModel || fastDefault || AI_MODELS.nvidia.default;
     const primary = resolveModel(task, primaryModel, { fallbackIndex: 0 });
 
     if (!allowFallback) return { primary, fallbacks: [] };
@@ -237,19 +241,8 @@ function buildRoutingPlan(task, requestedModel, { allowFallback = true, healthFi
     const fallbacks = [];
     let idx = 1;
     const skippedDueToHealth = [];
-    // When we forced minimax as primary, the original requestedModel (e.g. deepseek) should become a fallback
-    if (forcedPrimary && requestedModel && requestedModel !== forcedPrimary) {
-        const prov = inferProvider(requestedModel);
-        if (isConfigured(prov) && (!healthFilter || isHealthy(prov, requestedModel))) {
-            fallbacks.push(resolveModel(task, requestedModel, { fallbackIndex: idx++ }));
-        } else if (isConfigured(prov)) {
-            skippedDueToHealth.push(requestedModel);
-        }
-    }
-    const hasMinimaxForFallback = isConfigured('openRouter');
-    const fallbackDefault = hasMinimaxForFallback ? 'or:minimax/minimax-m3:free' : AI_MODELS.nvidia.default;
     for (const candidate of candidates) {
-        if (candidate === (requestedModel || fallbackDefault) || candidate === forcedPrimary) continue;
+        if (candidate === (requestedModel || primaryModel)) continue;
         const provider = inferProvider(candidate);
         if (healthFilter && !isHealthy(provider, candidate)) {
             skippedDueToHealth.push(candidate);
@@ -286,7 +279,7 @@ function listConfiguredModels() {
     }
     if (isConfigured('groq')) {
         models.push(
-            { id: 'qwen/qwen3.6-27b', provider: 'groq', label: 'Qwen 3.6 27B (Groq)' },
+            { id: 'qwen/qwen3.8-27b', provider: 'groq', label: 'Qwen 3.8 27B (Groq)' },
             { id: 'openai/gpt-oss-20b', provider: 'groq', label: 'GPT-OSS 20B (Groq)' },
             { id: 'openai/gpt-oss-120b', provider: 'groq', label: 'GPT-OSS 120B (Groq)' },
             { id: 'allam-2-7b', provider: 'groq', label: 'Allam 2 7B (Groq)' },

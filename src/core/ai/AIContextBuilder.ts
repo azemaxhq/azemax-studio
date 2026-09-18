@@ -104,8 +104,16 @@ export const taskDefaults = (
     };
 };
 
+/**
+ * Fast model for latency-critical editor paths (ghost completions). Measured
+ * ~0.3s vs ~13s TTFB on the default NVIDIA primary — ghost text that arrives
+ * after 13s is useless. Quality-sensitive tasks keep the premium default.
+ */
+export const FAST_EDITOR_MODEL = 'qwen/qwen3.8-27b';
+
 export const getSmartModel = (task: TaskType | AiTaskKey): string => {
     const key = (TASK_KEY_BY_TYPE[task as TaskType] || task) as AiTaskKey;
+    if (key === 'autocomplete') return FAST_EDITOR_MODEL;
     return resolveModel(key, DEFAULT_MODEL).model;
 };
 

@@ -341,8 +341,13 @@ export async function generateSemanticPlan(
 ): Promise<SemanticPlan | null> {
     const { messages } = buildSemanticPlannerPrompt(userMessage, editorContext, fileTreeString, history);
     try {
+        // Latency-critical: intent parsing is a small JSON task — pin it to the
+        // fast Groq model instead of the default (slow) primary. Measured
+        // ~0.3s vs ~8s on NVIDIA for the same prompt. Backend still falls back
+        // across all configured providers if Groq is unavailable.
         const raw = await sendChat(messages, {
             signal,
+            model: 'qwen/qwen3.8-27b',
             task: 'chat',
             temperature: 0.1,
             maxTokens: 800,

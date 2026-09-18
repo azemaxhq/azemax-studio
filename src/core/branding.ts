@@ -5,7 +5,7 @@ import azemaxLogoSrc from '../assets/azemax_logo_wbg.png';
  */
 export const BRAND = {
   name: 'Azemax',
-  version: '1.0.0',
+  version: '1.0.0-beta',
   tagline: 'Fast, intelligent developer environment',
   logoSrc: azemaxLogoSrc,
   logoPublicPath: '/img/azemax_logo_wbg.png',

@@ -142,11 +142,13 @@ function classifyProviderError({ provider, model, status, message, cause, latenc
             });
         }
         if (statusNum === 400 || statusNum === 404 || statusNum === 422) {
-            // Kilo 404 for nemotron-3-super is a config/model mismatch, not a hard stop — allow fallback to Groq/OpenRouter
-            const isKilo404 = provider === 'kilocode' && statusNum === 404;
+            // 404 (unknown/retired model id) must fall back to the next provider:
+            // a single stale model string must never doom the whole chain.
+            // 400/422 (malformed request) stay terminal — retrying elsewhere won't help.
+            const isNotFound = statusNum === 404;
             return new AIError({
                 code: AI_ERROR_CODES.AI_PROVIDER_BAD_REQUEST,
-                provider, model, status: statusNum, retryable: isKilo404 ? true : false,
+                provider, model, status: statusNum, retryable: isNotFound ? true : false,
                 message: `${provider} rejected the request (HTTP ${statusNum})`,
                 cause, latencyMs, requestId,
             });

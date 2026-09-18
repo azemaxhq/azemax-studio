@@ -10,14 +10,14 @@ describe('AI Provider Routing', () => {
         });
 
         it('should identify Groq models', () => {
-            expect(inferProvider('qwen/qwen3.6-27b')).toBe('groq');
+            expect(inferProvider('qwen/qwen3.8-27b')).toBe('groq');
             expect(inferProvider('openai/gpt-oss-20b')).toBe('groq');
             expect(inferProvider('openai/gpt-oss-120b')).toBe('groq');
             expect(inferProvider('allam-2-7b')).toBe('groq');
         });
 
         it('should identify OpenRouter models', () => {
-            expect(inferProvider('or:openrouter/free')).toBe('openrouter');
+            expect(inferProvider('or:nvidia/nemotron-3-super-120b-a12b:free')).toBe('openrouter');
             expect(inferProvider('or:meta-llama/llama-3.3-70b-instruct:free')).toBe('openrouter');
         });
 
@@ -53,8 +53,8 @@ describe('AI Provider Routing', () => {
 
     describe('defaultModelFor', () => {
         it('should return correct default model for each provider', () => {
-            expect(defaultModelFor('groq')).toBe('qwen/qwen3.6-27b');
-            expect(defaultModelFor('openrouter')).toBe('or:openrouter/free');
+            expect(defaultModelFor('groq')).toBe('qwen/qwen3.8-27b');
+            expect(defaultModelFor('openrouter')).toBe('or:nvidia/nemotron-3-super-120b-a12b:free');
             expect(defaultModelFor('huggingface')).toBe('hf:deepseek-ai/DeepSeek-R1:novita');
             expect(defaultModelFor('kilocode')).toBe('kilo:nemotron-3-super');
         });
@@ -69,13 +69,13 @@ describe('AI Provider Routing', () => {
         });
 
         it('should use requested model if it is a direct provider', () => {
-            const chain = buildDirectChain('chat', 'qwen/qwen3.6-27b', { allowFallback: true });
+            const chain = buildDirectChain('chat', 'qwen/qwen3.8-27b', { allowFallback: true });
             expect(chain.length).toBeGreaterThan(0);
-            expect(chain[0]).toBe('qwen/qwen3.6-27b');
+            expect(chain[0]).toBe('qwen/qwen3.8-27b');
         });
 
         it('should not include fallback when allowFallback is false', () => {
-            const chain = buildDirectChain('autocomplete', 'qwen/qwen3.6-27b', { allowFallback: false });
+            const chain = buildDirectChain('autocomplete', 'qwen/qwen3.8-27b', { allowFallback: false });
             expect(chain.length).toBe(1);
         });
     });

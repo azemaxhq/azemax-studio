@@ -47,7 +47,7 @@ function getMaxTokens(responseLength = 'medium') {
 }
 
 const GROQ_MODEL_IDS = new Set([
-    'qwen/qwen3.6-27b',
+    'qwen/qwen3.8-27b',
     'openai/gpt-oss-20b',
     'openai/gpt-oss-120b',
     'allam-2-7b',
@@ -121,7 +121,7 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
     } else if (resolvedProvider === 'groq') {
         resolvedModel = stripORPrefix(stripHFPrefix(model || AI_MODELS.groq.default));
     } else if (resolvedProvider === 'openrouter') {
-        resolvedModel = stripORPrefix(model || 'minimax/minimax-m3:free');
+        resolvedModel = stripORPrefix(model || 'nvidia/nemotron-3-super-120b-a12b:free');
     } else if (resolvedProvider === 'huggingface') {
         resolvedModel = stripHFPrefix(model || AI_MODELS.huggingFace.defaultModel);
         stream = false; // HF router does not stream in this integration
@@ -210,8 +210,12 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
                 signal: requestSignal,
             });
             if (!response.ok) {
-                const retryableStatus = response.status === 429 || response.status >= 500;
-                if (retryableStatus && attempt === 0) {
+                // Same-provider retry ONLY for 429 (rate limit — usually a fast
+                // failure where a brief backoff helps). For 5xx: fail over to
+                // the next provider immediately instead of burning a second
+                // full timeout (up to 60s) on a provider that is already sick.
+                const retrySameProvider = response.status === 429;
+                if (retrySameProvider && attempt === 0) {
                     const txt = await response.text().catch(() => '');
                     // brief backoff before retrying same provider
                     await new Promise(r => setTimeout(r, 700 + Math.random() * 500));
@@ -322,7 +326,7 @@ function listModels() {
 
     if (AI_MODELS.groq.apiKey) {
         models.push(
-            { id: 'qwen/qwen3.6-27b', provider: 'groq', label: 'Qwen 3.6 27B (Groq)' },
+            { id: 'qwen/qwen3.8-27b', provider: 'groq', label: 'Qwen 3.8 27B (Groq)' },
             { id: 'openai/gpt-oss-20b', provider: 'groq', label: 'GPT-OSS 20B (Groq)' },
             { id: 'openai/gpt-oss-120b', provider: 'groq', label: 'GPT-OSS 120B (Groq)' },
             { id: 'allam-2-7b', provider: 'groq', label: 'Allam 2 7B (Groq)' },

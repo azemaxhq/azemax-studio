@@ -41,12 +41,12 @@ const { resolveModel, buildRoutingPlan, inferProvider, stripPrefixes, listConfig
 {
     // Provider-specific controls: non-NVIDIA providers get NO chat_template_kwargs
     // (unsupported params are omitted, never sent).
-    const groqModel = resolveModel('chat', 'qwen/qwen3.6-27b');
+    const groqModel = resolveModel('chat', 'qwen/qwen3.8-27b');
     check('server: groq has no chat_template_kwargs', groqModel.provider === 'groq' && groqModel.chatTemplateKwargs === null);
-    check('server: groq model id stripped', groqModel.model === 'qwen/qwen3.6-27b');
+    check('server: groq model id stripped', groqModel.model === 'qwen/qwen3.8-27b');
 
-    const orModel = resolveModel('chat', 'or:openrouter/free');
-    check('server: or: prefix stripped', orModel.provider === 'openrouter' && orModel.model === 'openrouter/free');
+    const orModel = resolveModel('chat', 'or:nvidia/nemotron-3-super-120b-a12b:free');
+    check('server: or: prefix stripped', orModel.provider === 'openrouter' && orModel.model === 'nvidia/nemotron-3-super-120b-a12b:free');
 
     const hfModel = resolveModel('chat', 'hf:deepseek-ai/DeepSeek-R1:novita');
     check('server: hf: prefix stripped + no streaming capability', hfModel.provider === 'huggingface' && hfModel.model === 'deepseek-ai/DeepSeek-R1:novita' && hfModel.capabilities.supportsStreaming === false);
@@ -55,13 +55,13 @@ const { resolveModel, buildRoutingPlan, inferProvider, stripPrefixes, listConfig
 {
     // inferProvider / stripPrefixes
     check('infer: nvidia default', inferProvider('nvidia/nemotron-3-super-120b-a12b') === 'nvidia');
-    check('infer: groq by id', inferProvider('qwen/qwen3.6-27b') === 'groq');
-    check('infer: or: prefix', inferProvider('or:openrouter/free') === 'openrouter');
+    check('infer: groq by id', inferProvider('qwen/qwen3.8-27b') === 'groq');
+    check('infer: or: prefix', inferProvider('or:nvidia/nemotron-3-super-120b-a12b:free') === 'openrouter');
     check('infer: hf: prefix', inferProvider('hf:deepseek-ai/DeepSeek-R1:novita') === 'huggingface');
     check('infer: bare no-slash defaults groq', inferProvider('allam-2-7b') === 'groq');
-    check('strip: OR prefix', stripPrefixes('or:openrouter/free') === 'openrouter/free');
+    check('strip: OR prefix', stripPrefixes('or:nvidia/nemotron-3-super-120b-a12b:free') === 'nvidia/nemotron-3-super-120b-a12b:free');
     check('strip: HF prefix', stripPrefixes('hf:x') === 'x');
-    check('strip: no prefix passthrough', stripPrefixes('qwen/qwen3.6-27b') === 'qwen/qwen3.6-27b');
+    check('strip: no prefix passthrough', stripPrefixes('qwen/qwen3.8-27b') === 'qwen/qwen3.8-27b');
 }
 
 {
@@ -75,6 +75,13 @@ const { resolveModel, buildRoutingPlan, inferProvider, stripPrefixes, listConfig
 
     const noFallback = buildRoutingPlan('chat', undefined, { allowFallback: false });
     check('plan: allowFallback:false yields no fallbacks', noFallback.fallbacks.length === 0);
+
+    // Latency: fast_chat (greetings) defaults to the fast Groq primary when
+    // configured; an explicit model always wins.
+    const fast = buildRoutingPlan('fast_chat', undefined, { allowFallback: true });
+    check('plan: fast_chat primary is groq (fast)', fast.primary.provider === 'groq');
+    const fastExplicit = buildRoutingPlan('fast_chat', 'deepseek-ai/deepseek-v4-flash-0731', { allowFallback: true });
+    check('plan: fast_chat explicit model wins', fastExplicit.primary.provider === 'nvidia');
 }
 
 {
@@ -120,10 +127,20 @@ const { getTaskConfig } = await import('../src/core/ai/taskConfigClient');
     const single = buildDirectChain('autocomplete', undefined, { allowFallback: false });
     check('client: allowFallback:false yields one model', single.length === 1 || single.length === 0);
 
-    check('client: infer OR prefix', clientInfer('or:openrouter/free') === 'openrouter');
+    check('client: infer OR prefix', clientInfer('or:nvidia/nemotron-3-super-120b-a12b:free') === 'openrouter');
     check('client: infer HF prefix', clientInfer('hf:x') === 'huggingface');
-    check('client: strip OR prefix', clientStrip('or:openrouter/free') === 'openrouter/free');
-    check('client: defaultModelFor groq', defaultModelFor('groq') === 'qwen/qwen3.6-27b');
+    check('client: strip OR prefix', clientStrip('or:nvidia/nemotron-3-super-120b-a12b:free') === 'nvidia/nemotron-3-super-120b-a12b:free');
+    check('client: defaultModelFor groq', defaultModelFor('groq') === 'qwen/qwen3.8-27b');
+}
+
+const { getSmartModel, FAST_EDITOR_MODEL } = await import('../src/core/ai/AIContextBuilder');
+
+{
+    // Latency: ghost completions must use the fast model (~0.3s), never the
+    // slow premium primary (~13s TTFB) — a 13s ghost suggestion is useless.
+    check('smartModel: inline-suggest uses fast editor model', getSmartModel('inline-suggest') === FAST_EDITOR_MODEL);
+    check('smartModel: fast model is groq qwen', FAST_EDITOR_MODEL === 'qwen/qwen3.8-27b');
+    check('smartModel: code-gen keeps premium default', getSmartModel('code-gen') !== FAST_EDITOR_MODEL);
 }
 
 {

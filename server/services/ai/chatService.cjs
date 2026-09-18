@@ -61,7 +61,9 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
         });
     }
 
-    const timeoutMs = (params.task === 'complex_code' || params.task === 'deep_reasoning') ? 60000 : 30000;
+    const timeoutMs = (params.task === 'complex_code' || params.task === 'deep_reasoning') ? 60000
+        : (params.task === 'fast_chat' || params.task === 'autocomplete' || params.task === 'comment') ? 15000
+        : 30000;
 
     // Deadlock check: if health would skip ALL attempts, force-try the primary as last resort
     const allSkippedByHealth = attempts.every(a => !isHealthy(a.provider, a.model));
@@ -168,7 +170,9 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
         return;
     }
 
-    const streamTimeoutMs = (params.task === 'complex_code' || params.task === 'deep_reasoning') ? 60000 : 30000;
+    const streamTimeoutMs = (params.task === 'complex_code' || params.task === 'deep_reasoning') ? 60000
+        : (params.task === 'fast_chat' || params.task === 'autocomplete' || params.task === 'comment') ? 15000
+        : 30000;
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');

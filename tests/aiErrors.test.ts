@@ -25,6 +25,12 @@ const { classifyProviderError, allProvidersFailed, invalidResponse, aiErrorToUse
     const badRequest = classifyProviderError({ provider: 'nvidia', model: 'm', status: 400 });
     check('classify: 400 is bad request, not retryable', badRequest.code === AI_ERROR_CODES.AI_PROVIDER_BAD_REQUEST && badRequest.retryable === false);
 
+    // Regression: a stale/retired model id returns 404 — it must fall back to
+    // the next provider instead of killing the whole chain with
+    // "AI is temporarily unavailable".
+    const notFound = classifyProviderError({ provider: 'openrouter', model: 'stale/model:free', status: 404 });
+    check('classify: 404 is bad request but retryable (stale model falls back)', notFound.code === AI_ERROR_CODES.AI_PROVIDER_BAD_REQUEST && notFound.retryable === true);
+
     const rateLimited = classifyProviderError({ provider: 'nvidia', model: 'm', status: 429 });
     check('classify: 429 is rate-limited, retryable', rateLimited.code === AI_ERROR_CODES.AI_PROVIDER_RATE_LIMITED && rateLimited.retryable === true);
 

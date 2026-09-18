@@ -183,9 +183,12 @@ export function classifyProviderError({
             });
         }
         if (statusNum === 400 || statusNum === 404 || statusNum === 422) {
+            // 404 (unknown/retired model id) must fall back to the next provider:
+            // a single stale model string must never doom the whole chain.
+            const isNotFound = statusNum === 404;
             return new AIError({
                 code: AI_ERROR_CODES.AI_PROVIDER_BAD_REQUEST,
-                provider, model, status: statusNum, retryable: false,
+                provider, model, status: statusNum, retryable: isNotFound ? true : false,
                 message: `${provider} rejected the request (HTTP ${statusNum})`,
                 cause, latencyMs, requestId,
             });

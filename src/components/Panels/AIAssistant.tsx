@@ -1072,6 +1072,14 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
 
         try {
+            // Fast path: greetings and file-identity queries are unambiguous —
+            // skip the semantic-planner AI round trip entirely (saves ~8s) and
+            // go straight to chat. The planner only helps for edit/explain
+            // intents, which these patterns never are.
+            const fastTrimmedLower = userMessageText.trim().toLowerCase();
+            const skipPlanner =
+                (/^(hello|hi|hey|hello ai|hi there|hey there|greetings)[\s!?.]*$/i.test(userMessageText.trim()) && fastTrimmedLower.length <= 20) ||
+                /what file|which file|current file|active file|file is this|file name/i.test(userMessageText);
             // Determine operation type via semantic planner first (for loading status)
             const { generateSemanticPlan, semanticPlanToAIOperationType } = await import('../../core/ai/semanticPlanner');
             let operationForStatus: import('../../core/ai/aiRequestStore').AIOperationType = 'chat';
@@ -1080,6 +1088,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             let plannerResponseMessage = '';
 
             try {
+                if (!skipPlanner) {
                 const planWithTimeout = (async () => {
                     const timeout = new Promise<null>((_, reject) => {
                         const t = setTimeout(() => reject(new Error('Semantic planner timed out')), 12000);
@@ -1097,6 +1106,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                     isExplain = semanticPlan.analysis.operation === 'explain';
                     plannerResponseMessage = semanticPlan.responseMessage || '';
                     if (import.meta.env.DEV) console.log('[SemanticPlanner] plan:', semanticPlan);
+                }
                 }
             } catch (e: any) {
                 if (e.name === 'AbortError') throw e;

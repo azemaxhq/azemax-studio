@@ -2,9 +2,8 @@
  * Premium Triple-Slash Pipeline — from-base rebuild for `///` AI commenting.
  *
  * Principles (premium architecture):
- *  - No hardcoded templates. Every byte of generated code comes from DeepSeek-V4-Flash
- *    (nvidia/deepseek-ai/deepseek-v4-flash-0731, temp=1, top_p=0.95, max_tokens=16384, thinking high)
- *    with server fallback chain: Kilo → Groq → OpenRouter → HF.
+ *  - No hardcoded templates. Generated code comes from the model chain
+ *    (fast Groq first, OpenRouter free second, DeepSeek last).
  *  - No artificial delays. Processing indicator is immediate, AI streaming is frame-coalesced
  *    with first-token sync, idle timeout 15s, hard timeout 15/25s.
  *  - Clean snapshot: the `///...;` marker is stripped from the file view sent to AI, so the
@@ -18,8 +17,8 @@ import { getActiveEditorContext } from '../editor/activeEditorStore';
 import { createExecutorDeps, captureSnapshot, type WorkspaceBridgeActions } from '../editor/workspaceBridge';
 import { executeActionPlan, type AIAction } from './aiToolExecutor';
 import { sendChat } from './AIClient';
-import { sanitizeEditorOutputWithPolicy } from './AIOutputPolicy';
-import { getCommentSyntax } from './commentSyntax';
+import { sanitizeEditorOutputWithPolicy, isCommentingIntent, isDocumentingIntent } from './AIOutputPolicy';
+import { getCommentSyntax, applyCommentSyntax } from './commentSyntax';
 import type { FileNode } from '../../utils/mockFileSystem';
 
 export interface TripleSlashRequest {
@@ -38,6 +37,87 @@ export interface TripleSlashResult {
 }
 
 const TRIPLE_SLASH_RE = /^(.*?)\/\/\/\s*(.+);$/;
+
+/**
+ * Code-edit verbs: when the instruction contains one of these, the user wants
+ * the code transformed (AI path). Anything else on an inline `code ///text;`
+ * line is literal comment text ("pass different inputs") — handled
+ * deterministically without any AI round trip.
+ */
+const EDIT_VERB_RE = /\b(fix|fixes|fixing|refactor|refactors|rename|renames|remove|removes|removing|delete|deletes|deleting|insert|inserts|replace|replaces|replacing|change|changes|changing|update|updates|updating|convert|converts|generate|generates|create|creates|creating|optimiz|optimis|simplify|simplifies|implement|implements|extract|extracts|move|moves|moving|wrap|wraps|sort|sorts|reverse|reverses)\b/i;
+
+/**
+ * Deterministic literal-comment builder for inline `code ///text;`.
+ *
+ * Returns `code // text` with the language's canonical comment marker — no AI
+ * needed, instant, and always syntactically valid. Returns null when the AI
+ * path is required instead:
+ *   - standalone `///cmd;` (no code prefix — nothing to attach to),
+ *   - commenting/documenting intents ("add comments") — the model must
+ *     *generate* the comment content,
+ *   * - edit-verb instructions ("fix the loop") — the code must be transformed,
+ *   - multi-line / overlong text, or languages without line-comment syntax.
+ */
+export function buildLiteralInlineComment(prefix: string, commandText: string, language: string): string | null {
+    const code = (prefix ?? '').trimEnd();
+    if (!code) return null;
+    const syntax = getCommentSyntax(language);
+    if (!syntax || !syntax.supported || !syntax.line) return null;
+    // The trailing `;` belongs to the /// trigger syntax, never to the comment.
+    const text = (commandText ?? '').trim().replace(/;+\s*$/, '').trim();
+    if (!text || text.includes('\n') || text.length > 140) return null;
+    if (EDIT_VERB_RE.test(text)) return null;
+    if (isCommentingIntent(text) || isDocumentingIntent(text)) return null;
+    const comment = applyCommentSyntax(text, language);
+    if (!comment || !comment.trim() || comment.includes('\n')) return null;
+    return `${code} ${comment.trim()}`;
+}
+
+/**
+ * Deterministic repair for AI-produced `///` glitches. The model sometimes
+ * echoes the trigger (`code;///text;`) or returns a comment-only line and
+ * drops the code — writing either into the file is never acceptable.
+ * Returns the repaired replacement, or null when unrecoverable.
+ */
+export function repairTripleSlashOutput(
+    output: string,
+    prefix: string,
+    commandText: string,
+    language: string,
+    triggerLine: string,
+): string | null {
+    const raw = output ?? '';
+    // Preserve leading indentation (the caller re-validates it); only trailing
+    // whitespace is insignificant here.
+    const out = raw.trimEnd();
+    const flat = out.trim();
+    if (!flat) return null;
+    const code = (prefix ?? '').trimEnd();
+    const triggerFlat = (triggerLine ?? '').trim();
+    // Echoed /// remnant: rebuild deterministically when the instruction is
+    // literal text, otherwise cut the trigger tail and keep the code side.
+    // (Checked before the no-op test so an echoed trigger still resolves to a
+    // proper comment instead of being rejected.)
+    if (/\/\/\//.test(flat)) {
+        const literal = buildLiteralInlineComment(prefix, commandText, language);
+        if (literal) return literal;
+        if (flat === triggerFlat) return null;
+        const cut = flat.replace(/\/\/\/\s*.+;?\s*$/, '').trimEnd();
+        return cut || null;
+    }
+    // No-op echo of the trigger line carries no value — reject it.
+    if (flat === triggerFlat) return null;
+    // Comment-only output while the line had code: the model dropped the code
+    // — reattach instead of deleting the user's code.
+    if (code) {
+        const lines = out.split('\n').filter(l => l.trim() !== '');
+        const allComments = lines.length > 0 && lines.every(l => /^(\/\/|#|--|;|%|\/\*|<!--)/.test(l.trimStart()));
+        if (allComments && !out.includes(code.slice(0, 24))) {
+            return `${code} ${lines.join(' ').trim()}`;
+        }
+    }
+    return out;
+}
 
 function getLanguage(fileName: string): string {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -99,6 +179,8 @@ function buildPrompt(
         `- Output ONLY the code to replace the target line(s). No markdown, no fences, no explanations, no reasoning.`,
         `- Preserve indentation of the target line (use same leading spaces/tabs as the prefix).`,
         `- Do NOT include the /// instruction, do NOT duplicate existing #include or surrounding code.`,
+        `- NEVER output /// — the trigger marker must not appear in your output. For comments use ${syntax?.line || '//'}.`,
+        `- If the instruction is literal text for a trailing comment (no code change asked), return the target code followed by a single ${syntax?.line || '//'} comment with that text, e.g. \`code ${syntax?.line || '//'} text\`.`,
         `- Replace in place — never append a duplicate of existing lines.`,
         `- Keep it concise and correct for ${language}. ${commentHint}`,
         `- If the file is otherwise empty and the user asks for hello world, generate the minimal idiomatic ${language} hello world program with class "${expectedClass ?? 'Main'}" derived from filename "${fileName}", not hard-coded.`,
@@ -139,21 +221,29 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
     const filePath = ctx?.filePath ?? fileName;
     const className = ctx?.className ?? null;
 
+    // Fast path: inline `code ///literal text;` needs no AI — apply the
+    // canonical comment deterministically (instant, always valid syntax).
+    // Edit/comment-generation intents fall through to the model below.
+    let finalCode: string | null = buildLiteralInlineComment(prefix, commandText, language);
+    let generated = '';
+    let lastError: any = null;
+
+    if (finalCode === null) {
     // Clean snapshot for AI — never send the /// marker as code
     const cleanCode = buildCleanSnapshot(rawCode, lineNumber, lineContent);
     const { system, user } = buildPrompt(cleanCode, language, fileName, commandText, prefix, lineNumber, lineCount, { filePath, className, moduleName: ctx?.moduleName ?? null });
 
-    // Minimax via OpenRouter as primary (user request), DeepSeek/Groq as fallbacks.
+    // Fast Groq first (measured ~0.3s), OpenRouter free second, DeepSeek last.
+    // Worst case ~31s, typical case sub-second — previously the slowest,
+    // most rate-limited model was first (up to 41s worst case).
     const tryModels: Array<{ model: string; task: 'simple_edit' | 'deep_reasoning'; maxTokens: number }> = [
-        { model: 'or:minimax/minimax-m3:free', task: 'simple_edit', maxTokens: 1024 },
+        { model: 'qwen/qwen3.8-27b', task: 'simple_edit', maxTokens: 1024 },
+        { model: 'or:nvidia/nemotron-3-super-120b-a12b:free', task: 'simple_edit', maxTokens: 1024 },
         { model: 'deepseek-ai/deepseek-v4-flash-0731', task: 'deep_reasoning', maxTokens: 2048 },
-        { model: 'groq/compound-mini', task: 'simple_edit', maxTokens: 512 },
     ];
-    let generated = '';
-    let lastError: any = null;
     for (const { model: tryModel, task, maxTokens } of tryModels) {
         const controller = new AbortController();
-        const timeoutMs = tryModel!.includes('deepseek') ? 25000 : 8000;
+        const timeoutMs = tryModel!.includes('deepseek') ? 15000 : 8000;
         const timeoutId = setTimeout(() => controller.abort(new DOMException(`Inline ${tryModel} timeout after ${timeoutMs}ms`, 'TimeoutError')), timeoutMs);
         try {
             generated = await sendChat(
@@ -211,8 +301,18 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
         preserve: cleanCode,
     });
 
-    let finalCode = sanitized && sanitized.trim() ? sanitized.trim() : generated.trim();
-    if (!finalCode) return { success: false, message: 'Sanitized output empty' };
+    let candidate = sanitized && sanitized.trim() ? sanitized.trim() : generated.trim();
+    if (!candidate) return { success: false, message: 'Sanitized output empty' };
+    // Deterministic repair: never write an echoed /// trigger, a no-op echo,
+    // or a code-deleting comment-only line into the file.
+    finalCode = repairTripleSlashOutput(candidate, prefix, commandText, language, lineContent);
+    if (!finalCode) {
+        // Last resort: literal comment when eligible, else fail loudly and
+        // leave the trigger line untouched (user can rephrase).
+        finalCode = buildLiteralInlineComment(prefix, commandText, language);
+        if (!finalCode) return { success: false, message: lastError?.message || 'AI output unusable — try rephrasing' };
+    }
+    } // end AI path (fast path set finalCode above)
 
     // Use the *current* Monaco content as snapshot for validation (includes the /// line)
     const currentContent = ctx?.code ?? model.getValue();

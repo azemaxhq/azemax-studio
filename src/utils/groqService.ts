@@ -18,6 +18,7 @@ import {
     buildChatMessages,
     buildSystemPrompt as runtimeBuildSystemPrompt,
     getSmartModel as runtimeGetSmartModel,
+    FAST_EDITOR_MODEL,
     taskKeyForType as runtimeTaskKeyForType,
     NO_AUTO_COMMENTS_INSTRUCTION,
     COMMENT_TASK_INSTRUCTION,
@@ -352,7 +353,10 @@ ${javaPreserveRule ? javaPreserveRule + '\n' : ''}${commenting || documenting ? 
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
         ],
-        { model: getSmartModel('code-gen'), task: commenting || documenting ? 'comment' : 'simple_edit', signal, allowFallback: false },
+        // Latency-critical /// ghost path: pin the fast Groq model (measured
+        // ~0.3s vs ~8-13s on the premium default). The premium auto-replace
+        // pipeline handles the final apply; this is preview-only.
+        { model: FAST_EDITOR_MODEL, task: commenting || documenting ? 'comment' : 'simple_edit', signal, allowFallback: false },
     );
 
     const edits = parseStructuredEdits(response);
