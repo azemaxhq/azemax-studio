@@ -7,10 +7,13 @@ const { getLanguageConfig } = require('./languageConfig.cjs');
 const { resolveFileName } = require('./fileNaming.cjs');
 const { EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS } = require('./constants.cjs');
 
+const MAX_OUTPUT_BYTES = Number(process.env.MAX_OUTPUT_BYTES) || 512 * 1024; // 512KB cap
+
 function runCommand(cmd, args, { cwd, stdin, timeout = EXECUTION_TIMEOUT_MS }) {
     return new Promise((resolve) => {
         let stdout = '';
         let stderr = '';
+        let truncated = false;
         const proc = spawn(cmd, args, { cwd });
 
         const timer = setTimeout(() => {
@@ -18,8 +21,30 @@ function runCommand(cmd, args, { cwd, stdin, timeout = EXECUTION_TIMEOUT_MS }) {
             stderr += '\nExecution timed out';
         }, timeout);
 
-        proc.stdout.on('data', (d) => { stdout += d.toString(); });
-        proc.stderr.on('data', (d) => { stderr += d.toString(); });
+        function append(target, chunk) {
+            const str = chunk.toString();
+            if (target === 'stdout') {
+                if (Buffer.byteLength(stdout, 'utf8') + Buffer.byteLength(str, 'utf8') > MAX_OUTPUT_BYTES) {
+                    if (!truncated) {
+                        stdout += '\n[output truncated — exceeds limit]';
+                        truncated = true;
+                    }
+                    return;
+                }
+                stdout += str;
+            } else {
+                if (Buffer.byteLength(stderr, 'utf8') + Buffer.byteLength(str, 'utf8') > MAX_OUTPUT_BYTES) {
+                    if (!truncated) {
+                        stderr += '\n[output truncated — exceeds limit]';
+                        truncated = true;
+                    }
+                    return;
+                }
+                stderr += str;
+            }
+        }
+        proc.stdout.on('data', (d) => append('stdout', d));
+        proc.stderr.on('data', (d) => append('stderr', d));
 
         proc.on('error', (err) => {
             clearTimeout(timer);

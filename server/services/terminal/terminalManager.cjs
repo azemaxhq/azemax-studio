@@ -356,7 +356,7 @@ class TerminalManager {
     async executeCode(session, { language, code, stdinInput = '', preStdin = null }) {
         const lang = String(language).toLowerCase();
 
-        // Wandbox fallback for unsupported/remote
+        // Wandbox fallback for unsupported/remote (also forced in production when local execution is disabled)
         const runViaWandbox = (stdinData = '', _wasInteractive = false) => {
             session.state = STATES.RUNNING;
             const wb = {
@@ -391,7 +391,12 @@ class TerminalManager {
         };
 
         const initialConfig = getLanguageConfig(lang, path.join(os.tmpdir(), 'main'), os.tmpdir());
-        if (!canRunLocally(initialConfig)) {
+        const allowLocal = process.env.ALLOW_LOCAL_EXECUTION === 'true'
+            ? true
+            : process.env.ALLOW_LOCAL_EXECUTION === 'false'
+                ? false
+                : process.env.NODE_ENV !== 'production';
+        if (!allowLocal || !canRunLocally(initialConfig)) {
             this.setState(session.id, STATES.STARTING);
             if (stdinInput || preStdin) {
                 runViaWandbox(stdinInput || preStdin);

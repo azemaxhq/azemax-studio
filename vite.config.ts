@@ -4,9 +4,45 @@ import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'node:path'
 
 // https://vite.dev/config/
+function productionSecretGuard() {
+  return {
+    name: 'azemax-prod-secret-guard',
+    config(_config: any, { command }: any) {
+      if (command !== 'build') return;
+      const rawBackend = process.env.VITE_USE_BACKEND_AI;
+      const backendAI = rawBackend === undefined ? 'true' : rawBackend;
+      if (backendAI === 'false') return;
+      // Strip provider keys from the Vite define/env so they are never inlined into dist/
+      // even if .env contains them.  Vite reads .env into process.env AND into its
+      // internal `env` object — we blank both.  The blanking is done via `define`
+      // override which wins over Vite's env injection.
+      const hasViteKeys = !!(process.env.VITE_GROQ_API_KEY || process.env.VITE_OPENROUTER_API_KEY || process.env.VITE_HF_TOKEN || process.env.VITE_KILO_API_KEY);
+      if (hasViteKeys) {
+        console.warn('\n⚠️  [azemax] VITE_ provider keys detected — blanking for production bundle (backend holds keys).');
+      }
+      delete process.env.VITE_GROQ_API_KEY;
+      delete process.env.VITE_OPENROUTER_API_KEY;
+      delete process.env.VITE_HF_TOKEN;
+      delete process.env.VITE_KILO_API_KEY;
+      // Force Vite's define to blank them even if .env is re-loaded internally
+      const blank = JSON.stringify('');
+      return {
+        define: {
+          'import.meta.env.VITE_GROQ_API_KEY': blank,
+          'import.meta.env.VITE_OPENROUTER_API_KEY': blank,
+          'import.meta.env.VITE_HF_TOKEN': blank,
+          'import.meta.env.VITE_KILO_API_KEY': blank,
+          'import.meta.env.VITE_HF_BASE_URL': blank,
+        },
+      };
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    productionSecretGuard(),
     ...(process.env.ANALYZE ? [visualizer({
       filename: 'dist/stats.html',
       open: false,

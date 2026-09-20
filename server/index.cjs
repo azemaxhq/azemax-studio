@@ -30,7 +30,12 @@ lifecycle.installGracefulShutdown({
 // ---- Startup (entrypoint owns it; exactly one listen per process) ----
 const { siblingPid } = lifecycle.acquireLock(PORT);
 
-lifecycle.listenWithRetry(server, PORT)
+const HOST = process.env.HOST || '0.0.0.0';
+
+// In production the platform assigns PORT; bind to 0.0.0.0 so external traffic reaches us.
+const listenOpts = process.env.NODE_ENV === 'production' ? { port: PORT, host: HOST } : PORT;
+
+lifecycle.listenWithRetry(server, listenOpts)
     .then(() => {
         // The port is now ours; make sure the single-instance lock is too.
         lifecycle.reclaimLock(PORT);
@@ -38,11 +43,15 @@ lifecycle.listenWithRetry(server, PORT)
             console.log(`[server] Port ${PORT} was released by a previous instance (PID ${siblingPid}); this instance is now serving.`);
         }
         const runtimes = listDetectedRuntimes();
+        const displayHost = process.env.NODE_ENV === 'production' ? HOST : 'localhost';
+        const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+        const wsProto = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
         console.log(`\n🚀 Azemax API`);
-        console.log(`   HTTP:      http://localhost:${PORT}/api`);
-        console.log(`   Health:    http://localhost:${PORT}/api/health`);
-        console.log(`   WebSocket: ws://localhost:${PORT}`);
-        console.log(`   Runtimes:  ${runtimes.length} local language(s) detected\n`);
+        console.log(`   HTTP:      ${proto}://${displayHost}:${PORT}/api`);
+        console.log(`   Health:    ${proto}://${displayHost}:${PORT}/api/health`);
+        console.log(`   WebSocket: ${wsProto}://${displayHost}:${PORT}`);
+        console.log(`   Runtimes:  ${runtimes.length} local language(s) detected`);
+        console.log(`   Env:       ${process.env.NODE_ENV || 'development'}\n`);
     })
     .catch(async (err) => {
         if (err && err.code === 'EADDRINUSE') {

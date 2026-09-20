@@ -39,5 +39,7 @@ secrets/
 .gcp/
 .azure/
 
-# Server data
-data/
+# Server data (ephemeral on Render free tier)
+data/workspaces/*.json
+data/workspaces/*.log
+!data/workspaces/.gitkeep

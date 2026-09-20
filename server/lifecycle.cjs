@@ -128,7 +128,7 @@ function pidListeningOn(port) {
  * retrying instead of crashing heals that race. Resolves on success, rejects
  * with the error if the port is still occupied after the window.
  */
-function listenWithRetry(server, port, { retryMs = BIND_RETRY_MS, interval = BIND_RETRY_INTERVAL } = {}) {
+function listenWithRetry(server, portOrOpts, { retryMs = BIND_RETRY_MS, interval = BIND_RETRY_INTERVAL } = {}) {
     return new Promise((resolve, reject) => {
         const started = Date.now();
         const attempt = () => {
@@ -147,7 +147,12 @@ function listenWithRetry(server, port, { retryMs = BIND_RETRY_MS, interval = BIN
             };
             server.once('listening', onListening);
             server.once('error', onError);
-            server.listen(port);
+            // Support both `port` (number) and `{ port, host }` for production
+            if (portOrOpts && typeof portOrOpts === 'object') {
+                server.listen(portOrOpts);
+            } else {
+                server.listen(portOrOpts);
+            }
         };
         attempt();
     });

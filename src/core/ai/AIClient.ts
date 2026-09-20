@@ -54,7 +54,7 @@ const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const OR_BASE_URL = 'https://openrouter.ai/api/v1';
 const KILO_BASE_URL = 'https://api.kilocode.ai/v1';
 
-const backendEnabled = import.meta.env?.VITE_USE_BACKEND_AI !== 'false';
+const backendEnabled = (import.meta.env?.VITE_USE_BACKEND_AI ?? 'true') !== 'false';
 
 export const isBackendAiEnabled = (): boolean => backendEnabled;
 

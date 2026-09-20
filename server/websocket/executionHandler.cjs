@@ -95,7 +95,16 @@ function attachExecutionWebSocket(wss) {
                     sendRaw({ sessionId: id, type: 'terminal.ready', state: session.state });
 
                     if (data.kind === 'shell') {
-                        // Interactive shell session: real PTY + default shell.
+                        // Interactive shell is disabled in production by default (ephemeral free host).
+                        // Set ALLOW_SHELL=true to re-enable if your host supports persistent PTY.
+                        const isProdShell = process.env.NODE_ENV === 'production';
+                        const allowShell = process.env.ALLOW_SHELL === 'true' || (process.env.ALLOW_SHELL !== 'false' && !isProdShell);
+                        if (!allowShell) {
+                            sendRaw({ sessionId: id, type: 'terminal.error', message: 'Interactive shell is unavailable in this beta environment. Code execution (Run) still works via sandboxed execution.\r\n' });
+                            sendRaw({ sessionId: id, type: 'terminal.exit', code: 1, signal: null });
+                            manager.dispose(id);
+                            return;
+                        }
                         manager.setState(id, STATES.STARTING);
                         manager.spawnPty(session, '/bin/zsh', ['-l']);
                     } else if (data.kind === 'code') {

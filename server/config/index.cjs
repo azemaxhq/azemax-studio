@@ -7,9 +7,14 @@ const PORT = Number(process.env.PORT) || 3001;
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'workspaces');
 
+// Production guard: never allow VITE_ keys to be read server-side in production.
+// In production the browser must call /api/ai/* — provider keys must be server-only.
+const isProd = process.env.NODE_ENV === 'production';
+if (isProd && (process.env.VITE_GROQ_API_KEY || process.env.VITE_OPENROUTER_API_KEY || process.env.VITE_HF_TOKEN)) {
+    console.warn('[config] VITE_ provider keys detected in production environment — ignoring. Use server-only keys (GROQ_API_KEY, OPENROUTER_API_KEY, HF_TOKEN).');
+}
+
 const AI_MODELS = {
-    // Default AI provider: NVIDIA Nemotron 3 Super (premium + efficient, verified 950ms) — DeepSeek Flash via NVIDIA currently hangs >12s (verified), so primary is fast Nemotron for instant ///.
-    // DeepSeek Flash remains available via OpenRouter fallback (or:deepseek/deepseek-chat 1.1s) for premium reasoning when needed.
     nvidia: {
         baseUrl: process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1',
         default: process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-super-120b-a12b',
@@ -17,11 +22,11 @@ const AI_MODELS = {
     },
     groq: {
         default: 'qwen/qwen3.8-27b',
-        apiKey: process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || '',
+        apiKey: isProd ? (process.env.GROQ_API_KEY || '') : (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || ''),
     },
     openRouter: {
         baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
-        apiKey: process.env.OPENROUTER_API_KEY || process.env.VITE_OPENROUTER_API_KEY || '',
+        apiKey: isProd ? (process.env.OPENROUTER_API_KEY || '') : (process.env.OPENROUTER_API_KEY || process.env.VITE_OPENROUTER_API_KEY || ''),
         fallbacks: [
             'nvidia/nemotron-3-super-120b-a12b:free',
             'nvidia/nemotron-3.5-lightning:free',
@@ -30,7 +35,7 @@ const AI_MODELS = {
     },
     huggingFace: {
         baseUrl: 'https://router.huggingface.co/v1/chat/completions',
-        apiKey: process.env.HF_TOKEN || process.env.VITE_HF_TOKEN || '',
+        apiKey: isProd ? (process.env.HF_TOKEN || '') : (process.env.HF_TOKEN || process.env.VITE_HF_TOKEN || ''),
         defaultModel: 'deepseek-ai/DeepSeek-R1:novita',
     },
     kiloCode: {
@@ -42,10 +47,19 @@ const AI_MODELS = {
 const rawCORS = process.env.CORS_ORIGIN || 'http://localhost:5173';
 const CORS_ORIGIN = rawCORS.includes(',') ? rawCORS.split(',').map(s => s.trim()).filter(Boolean) : rawCORS;
 
+// Beta safety: local execution must be explicitly allowed in production.
+const ALLOW_LOCAL_EXECUTION = (() => {
+    if (process.env.ALLOW_LOCAL_EXECUTION === 'true') return true;
+    if (process.env.ALLOW_LOCAL_EXECUTION === 'false') return false;
+    // Default: allow locally (dev/test), deny in production
+    return process.env.NODE_ENV !== 'production';
+})();
+
 module.exports = {
     PORT,
     DATA_DIR,
     WORKSPACES_DIR,
     AI_MODELS,
     CORS_ORIGIN,
+    ALLOW_LOCAL_EXECUTION,
 };

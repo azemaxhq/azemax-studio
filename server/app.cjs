@@ -41,11 +41,20 @@ function createApp() {
         res.setHeader('X-XSS-Protection', '0');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        // HSTS only in production (HTTPS)
+        if (process.env.NODE_ENV === 'production') {
+            res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
         res.removeHeader('X-Powered-By');
         next();
     });
 
     app.disable('x-powered-by');
+
+    // Trust Render/Vercel proxies so req.ip / secure cookies work correctly
+    if (process.env.NODE_ENV === 'production') {
+        app.set('trust proxy', 1);
+    }
 
     app.use(cors({
         origin: CORS_ORIGIN,

@@ -2,6 +2,7 @@ const { WANDBOX_LANGUAGES } = require('./constants.cjs');
 const { getLanguageConfig, canRunLocally } = require('./languageConfig.cjs');
 const { executeLocally } = require('./localExecutor.cjs');
 const { compileViaWandbox } = require('./wandboxExecutor.cjs');
+const { ALLOW_LOCAL_EXECUTION } = require('../../config/index.cjs');
 
 async function executeCode({ language, files, stdin = '' }) {
     if (!language || !files?.length) {
@@ -14,13 +15,17 @@ async function executeCode({ language, files, stdin = '' }) {
     const lang = language.toLowerCase();
     const initialConfig = getLanguageConfig(lang, 'main', '/tmp');
 
-    if (canRunLocally(initialConfig)) {
+    // Public beta: local execution is disabled by default in production to avoid
+    // arbitrary code running on the host.  Use Wandbox sandbox instead.
+    if (ALLOW_LOCAL_EXECUTION && canRunLocally(initialConfig)) {
         try {
             const result = await executeLocally({ language: lang, code, stdin });
             return { run: result };
         } catch (err) {
             console.warn(`[EXEC] Local run failed for ${lang}, trying Wandbox:`, err.message);
         }
+    } else if (!ALLOW_LOCAL_EXECUTION && canRunLocally(initialConfig)) {
+        // Intentionally skip local execution — fall through to Wandbox
     }
 
     if (!WANDBOX_LANGUAGES[lang]) {

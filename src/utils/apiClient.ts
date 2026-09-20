@@ -1,6 +1,7 @@
 // Defensive reads: Vite always provides import.meta.env, but server-side runs
 // (tests, SSR tooling) may not — never crash on a missing env bag.
-export const API_BASE = import.meta.env?.VITE_API_URL || '/api';
+// In production VITE_API_URL should be an absolute URL like https://api.example.com/api
+export const API_BASE = (import.meta.env?.VITE_API_URL || '/api').replace(/\/$/, '');
 
 export class ApiError extends Error {
     status: number;
@@ -42,13 +43,25 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 }
 
 export function getWebSocketUrl(): string {
+    // 1) Explicit override wins
     if (import.meta.env?.VITE_WS_URL) {
-        return import.meta.env.VITE_WS_URL;
+        return import.meta.env.VITE_WS_URL.replace(/\/$/, '');
     }
+    // 2) Derive from VITE_API_URL when it is absolute (production)
+    const apiUrl = import.meta.env?.VITE_API_URL || '';
+    if (/^https?:\/\//i.test(apiUrl)) {
+        try {
+            const u = new URL(apiUrl);
+            const wsProtocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+            // Preserve host + port if present, drop /api path — WS is at root
+            return `${wsProtocol}//${u.host}`;
+        } catch {
+            // fall through to hostname logic
+        }
+    }
+    // 3) Development / relative API: use localhost + port
     const port = import.meta.env?.VITE_WS_PORT || '3001';
     const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
-    // In development, always use localhost since backend runs on same machine.
-    // window.location.hostname can be a network IP (e.g., 172.20.10.8) which the backend may not bind to.
     const hostname = import.meta.env?.DEV
         ? 'localhost'
         : (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
