@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, startTransition, useCallback, useMemo, useState } from 'react';
 import { FolderTree, Code2, Bot, Terminal, AlertCircle } from 'lucide-react';
 import { useRevealAnimation } from '../hooks/useRevealAnimation';
 
@@ -178,10 +178,14 @@ const ZoneTile = memo(function ZoneTile({
   isActive: boolean;
   onActivate: (zone: EngineZone) => void;
 }) {
+  const handleActivate = useCallback(() => {
+    onActivate(zoneId);
+  }, [onActivate, zoneId]);
+
   return (
     <div
-      onMouseEnter={() => onActivate(zoneId)}
-      onClick={() => onActivate(zoneId)}
+      onMouseEnter={handleActivate}
+      onClick={handleActivate}
       className={`${ZONE_TILE_SPANS[zoneId]} rounded-lg p-3 transition-[background-color,border-color,opacity,box-shadow] duration-300 cursor-pointer flex flex-col justify-between gap-3 border ${zoneTileClass(isActive)}`}
     >
       {ZONE_TILE_BODIES[zoneId]}
@@ -199,9 +203,13 @@ const ZonePill = memo(function ZonePill({
   onSelect: (zone: EngineZone) => void;
 }) {
   const Icon = zone.icon;
+  const handleSelect = useCallback(() => {
+    onSelect(zone.id);
+  }, [onSelect, zone.id]);
+
   return (
     <button
-      onClick={() => onSelect(zone.id)}
+      onClick={handleSelect}
       className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-2 min-h-[44px] sm:min-h-0 rounded-md text-xs font-mono transition-[background-color,border-color,color,box-shadow] duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF] ${
         isCurrent
           ? 'bg-[#12223D] text-white border border-[#4F8CFF]/60 shadow-[0_0_20px_rgba(79,140,255,0.25)]'
@@ -256,17 +264,18 @@ const ZoneDetail = memo(function ZoneDetail({ zone }: { zone: EngineZone }) {
 export const ProductSystem: React.FC = memo(() => {
   const [activeZone, setActiveZone] = useState<EngineZone>('editor');
 
-  // Scroll reveal hooks
-  const [headerTarget, headerVisible] = useRevealAnimation({ threshold: 0.12 });
-  const [pillsTarget, pillsVisible] = useRevealAnimation({ threshold: 0.1, delay: 120 });
-  const [blueprintTarget, blueprintVisible] = useRevealAnimation({ threshold: 0.06, delay: 200 });
-  const [detailTarget, detailVisible] = useRevealAnimation({ threshold: 0.1, delay: 300 });
+  // Consolidated scroll reveal hook: 1 render instead of 4
+  const [sectionTarget, isVisible] = useRevealAnimation({ threshold: 0.08 });
 
-  const handleSelectZone = useCallback((zone: EngineZone) => setActiveZone(zone), []);
+  const handleSelectZone = useCallback((zone: EngineZone) => {
+    startTransition(() => {
+      setActiveZone(zone);
+    });
+  }, []);
   const activeTech = ZONE_DETAILS[activeZone].tech;
 
   return (
-    <section id="system" className="relative py-16 sm:py-24 lg:py-32 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#000204] overflow-hidden border-t border-[rgba(79,140,255,0.08)]">
+    <div ref={sectionTarget} className="relative py-16 sm:py-24 lg:py-32 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#000204] overflow-hidden border-t border-[rgba(79,140,255,0.08)]">
 
       {/* Background Soft Blue Lighting Beam — compositor-only */}
       <div
@@ -278,8 +287,7 @@ export const ProductSystem: React.FC = memo(() => {
 
         {/* Section Header */}
         <div
-          ref={headerTarget}
-          className={`max-w-3xl mb-10 sm:mb-16 az-reveal-left ${headerVisible ? 'az-visible' : ''}`}
+          className={`max-w-3xl mb-10 sm:mb-16 az-reveal-left ${isVisible ? 'az-visible' : ''}`}
         >
           <div className="flex items-center gap-2 mb-4">
             <span className="w-4 h-[1px] bg-[var(--az-blue-electric)]" />
@@ -301,8 +309,7 @@ export const ProductSystem: React.FC = memo(() => {
 
         {/* Engine Zone Selector Pills */}
         <div
-          ref={pillsTarget}
-          className={`flex flex-wrap items-center gap-2 sm:gap-3 mb-8 sm:mb-10 az-reveal ${pillsVisible ? 'az-visible' : ''}`}
+          className={`flex flex-wrap items-center gap-2 sm:gap-3 mb-8 sm:mb-10 az-reveal az-delay-1 ${isVisible ? 'az-visible' : ''}`}
         >
           {ZONES.map((zone) => (
             <ZonePill key={zone.id} zone={zone} isCurrent={activeZone === zone.id} onSelect={handleSelectZone} />
@@ -314,8 +321,7 @@ export const ProductSystem: React.FC = memo(() => {
 
           {/* Main Blueprint Viewport */}
           <div
-            ref={blueprintTarget}
-            className={`lg:col-span-8 az-glass-surface rounded-xl border border-[rgba(79,140,255,0.2)] p-2.5 sm:p-3 relative overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.9)] flex flex-col justify-between az-reveal-scale ${blueprintVisible ? 'az-visible' : ''}`}
+            className={`lg:col-span-8 az-glass-surface rounded-xl border border-[rgba(79,140,255,0.2)] p-2.5 sm:p-3 relative overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.9)] flex flex-col justify-between az-reveal-scale az-delay-2 ${isVisible ? 'az-visible' : ''}`}
           >
 
             {/* Blueprint Header */}
@@ -345,8 +351,7 @@ export const ProductSystem: React.FC = memo(() => {
 
           {/* Detailed Zone Specification Card */}
           <div
-            ref={detailTarget}
-            className={`lg:col-span-4 bg-[#060B14] border border-[rgba(79,140,255,0.2)] rounded-xl p-5 sm:p-8 flex flex-col justify-between gap-6 shadow-2xl az-reveal ${detailVisible ? 'az-visible' : ''}`}
+            className={`lg:col-span-4 bg-[#060B14] border border-[rgba(79,140,255,0.2)] rounded-xl p-5 sm:p-8 flex flex-col justify-between gap-6 shadow-2xl az-reveal az-delay-3 ${isVisible ? 'az-visible' : ''}`}
           >
             <ZoneDetail zone={activeZone} />
 
@@ -359,7 +364,7 @@ export const ProductSystem: React.FC = memo(() => {
         </div>
 
       </div>
-    </section>
+    </div>
   );
 });
 

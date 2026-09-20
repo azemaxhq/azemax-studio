@@ -7,14 +7,11 @@ interface FinalCTAProps {
 }
 
 export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => {
-  const [eyebrowTarget, eyebrowVisible] = useRevealAnimation({ threshold: 0.2 });
-  const [headlineTarget, headlineVisible] = useRevealAnimation({ threshold: 0.15, delay: 100 });
-  const [bodyTarget, bodyVisible] = useRevealAnimation({ threshold: 0.12, delay: 200 });
-  const [ctaTarget, ctaVisible] = useRevealAnimation({ threshold: 0.1, delay: 350 });
-  const [badgesTarget, badgesVisible] = useRevealAnimation({ threshold: 0.1, delay: 500 });
+  // Consolidated scroll reveal hook: 1 render instead of 5
+  const [sectionTarget, isVisible] = useRevealAnimation({ threshold: 0.1 });
 
   return (
-    <section id="initiation" className="relative py-20 sm:py-28 lg:py-36 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#000204] overflow-hidden text-center flex flex-col items-center justify-center border-t border-[rgba(79,140,255,0.1)]">
+    <div ref={sectionTarget} className="relative py-20 sm:py-28 lg:py-36 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#000204] overflow-hidden text-center flex flex-col items-center justify-center border-t border-[rgba(79,140,255,0.1)]">
 
       {/* Subtle Localized Planetary Blue Horizon Glow (Echoing Hero) — compositor-only */}
       <div
@@ -38,8 +35,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
         
         {/* Eyebrow — Scroll Reveal */}
         <div
-          ref={eyebrowTarget}
-          className={`flex items-center gap-3 mb-6 az-reveal ${eyebrowVisible ? 'az-visible' : ''}`}
+          className={`flex items-center gap-3 mb-6 az-reveal ${isVisible ? 'az-visible' : ''}`}
         >
           <span className="w-8 h-[1px] bg-[var(--az-blue-electric)] opacity-50" />
           <span className="az-mono-badge text-[11px] font-mono tracking-[0.25em] text-[#8FB4FF] uppercase">
@@ -50,8 +46,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
 
         {/* Campaign Headline — Scroll Reveal */}
         <h2
-          ref={headlineTarget}
-          className={`text-4xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight text-white font-normal mb-6 sm:mb-8 leading-[1.06] sm:leading-[1.04] text-balance az-reveal ${headlineVisible ? 'az-visible' : ''}`}
+          className={`text-4xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight text-white font-normal mb-6 sm:mb-8 leading-[1.06] sm:leading-[1.04] text-balance az-reveal az-delay-1 ${isVisible ? 'az-visible' : ''}`}
         >
           <span className="az-display-serif block">Build</span>
           <span className="az-display-serif-italic az-text-shimmer block mt-1">
@@ -61,8 +56,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
 
         {/* Supporting Copy — Scroll Reveal */}
         <p
-          ref={bodyTarget}
-          className={`text-[15px] sm:text-lg text-[var(--az-muted)] font-normal leading-relaxed max-w-xl px-1 mb-8 sm:mb-12 font-sans text-balance az-reveal ${bodyVisible ? 'az-visible' : ''}`}
+          className={`text-[15px] sm:text-lg text-[var(--az-muted)] font-normal leading-relaxed max-w-xl px-1 mb-8 sm:mb-12 font-sans text-balance az-reveal az-delay-2 ${isVisible ? 'az-visible' : ''}`}
         >
           The environment is ready. Open the workspace and start from where you left off.
           Writing, running, understanding, and improving code in one continuous flow.
@@ -71,8 +65,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
 
         {/* Action Controls — Scroll Reveal */}
         <div
-          ref={ctaTarget}
-          className={`flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-center gap-3 sm:gap-4 w-full sm:w-auto max-w-sm sm:max-w-none mx-auto mb-10 sm:mb-16 az-reveal-scale ${ctaVisible ? 'az-visible' : ''}`}
+          className={`flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-center gap-3 sm:gap-4 w-full sm:w-auto max-w-sm sm:max-w-none mx-auto mb-10 sm:mb-16 az-reveal-scale az-delay-3 ${isVisible ? 'az-visible' : ''}`}
         >
           <button
             onClick={onEnterWorkspace}
@@ -93,8 +86,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
 
         {/* Architectural Badges — Scroll Reveal */}
         <div
-          ref={badgesTarget}
-          className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:gap-6 px-2 text-[11px] font-mono text-[var(--az-muted)] border-t border-[rgba(255,255,255,0.06)] pt-6 sm:pt-8 w-full max-w-xl az-reveal ${badgesVisible ? 'az-visible' : ''}`}
+          className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:gap-6 px-2 text-[11px] font-mono text-[var(--az-muted)] border-t border-[rgba(255,255,255,0.06)] pt-6 sm:pt-8 w-full max-w-xl az-reveal az-delay-4 ${isVisible ? 'az-visible' : ''}`}
         >
           <span>v1.0.0-beta</span>
           <span aria-hidden="true">•</span>
@@ -106,7 +98,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
         </div>
 
       </div>
-    </section>
+    </div>
   );
 });
 

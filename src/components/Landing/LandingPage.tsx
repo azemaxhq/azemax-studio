@@ -101,9 +101,11 @@ export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp }
         </div>
 
         {/* 02 — THE CORE LOOP: Write -> Run -> Understand -> Improve */}
-        <Suspense fallback={<BelowFoldFallback minHeight={700} />}>
-          <Philosophy />
-        </Suspense>
+        <section id="philosophy" className="w-full">
+          <Suspense fallback={<BelowFoldFallback minHeight={700} />}>
+            <Philosophy />
+          </Suspense>
+        </section>
 
         {/* Animated Section Separator */}
         <div className="relative w-full h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
@@ -111,9 +113,11 @@ export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp }
         </div>
 
         {/* 03 — INTERACTIVE WORKSPACE: One environment, Four modes */}
-        <Suspense fallback={<BelowFoldFallback minHeight={800} />}>
-          <WorkspaceShowcase />
-        </Suspense>
+        <section id="modes" className="w-full">
+          <Suspense fallback={<BelowFoldFallback minHeight={800} />}>
+            <WorkspaceShowcase />
+          </Suspense>
+        </section>
 
         {/* Animated Section Separator */}
         <div className="relative w-full h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
@@ -121,14 +125,18 @@ export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp }
         </div>
 
         {/* 04 — ARCHITECTURAL UNIFICATION: The Machine Behind the File */}
-        <Suspense fallback={<BelowFoldFallback minHeight={800} />}>
-          <ProductSystem />
-        </Suspense>
+        <section id="system" className="w-full">
+          <Suspense fallback={<BelowFoldFallback minHeight={800} />}>
+            <ProductSystem />
+          </Suspense>
+        </section>
 
         {/* 05 — RETURN TO BUILD: Final Campaign Call to Action */}
-        <Suspense fallback={<BelowFoldFallback minHeight={600} />}>
-          <FinalCTA onEnterWorkspace={onNavigateToApp} />
-        </Suspense>
+        <section id="initiation" className="w-full">
+          <Suspense fallback={<BelowFoldFallback minHeight={600} />}>
+            <FinalCTA onEnterWorkspace={onNavigateToApp} />
+          </Suspense>
+        </section>
       </main>
 
       {/* Minimal Landing Footer */}

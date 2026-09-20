@@ -1,6 +1,6 @@
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useState } from 'react';
 import { PenTool, Play, Cpu, Sparkles, ChevronRight } from 'lucide-react';
-import { useRevealAnimation, useStaggerReveal } from '../hooks/useRevealAnimation';
+import { useRevealAnimation } from '../hooks/useRevealAnimation';
 
 const STAGES = [
   {
@@ -47,11 +47,13 @@ const StageCard = memo(function StageCard({
   stage,
   isActive,
   isVisible,
+  delayMs = 0,
   onActivate,
 }: {
   stage: Stage;
   isActive: boolean;
   isVisible: boolean;
+  delayMs?: number;
   onActivate: () => void;
 }) {
   const Icon = stage.icon;
@@ -62,7 +64,8 @@ const StageCard = memo(function StageCard({
       tabIndex={0}
       role="region"
       aria-label={`${stage.title} stage`}
-      className={`group relative flex flex-col p-6 rounded-lg transition-[border-color,background-color,box-shadow,transform] duration-300 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF] az-card-lift az-reveal-scale ${isVisible ? 'az-visible' : ''} ${
+      style={{ transitionDelay: isVisible ? `${delayMs}ms` : '0ms' }}
+      className={`group relative flex flex-col p-6 rounded-lg transition-[border-color,background-color,box-shadow,transform,opacity] duration-300 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF] az-card-lift az-reveal-scale ${isVisible ? 'az-visible' : ''} ${
         isActive
           ? 'bg-[rgba(11,23,40,0.7)] border border-[rgba(79,140,255,0.35)] shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_24px_rgba(79,140,255,0.12)]'
           : 'bg-[rgba(7,16,29,0.35)] border border-[rgba(79,140,255,0.08)] hover:border-[rgba(79,140,255,0.2)]'
@@ -115,26 +118,17 @@ const StageCard = memo(function StageCard({
 export const Philosophy: React.FC = memo(() => {
   const [activeStage, setActiveStage] = useState<number>(0);
 
-  // Scroll reveal hooks
-  const [headerTarget, headerVisible] = useRevealAnimation({ threshold: 0.15 });
-  const [cardsContainerTarget, cardVisible] = useStaggerReveal(4, 120);
+  // Single consolidated reveal hook: 1 render instead of 5
+  const [sectionTarget, isVisible] = useRevealAnimation({ threshold: 0.08 });
 
-  const progressWidth = useMemo(
-    () => `${((activeStage + 1) / STAGES.length) * 100}%`,
-    [activeStage],
-  );
-  // Stable per-card callbacks: a `useCallback(idx => () => ...)` factory still
-  // allocates a NEW closure on every parent render, which would defeat
-  // StageCard's memo (all 4 cards re-render on every hover). Prebuilding the
-  // array once keeps every onActivate identity stable for the page lifetime,
-  // so only the two cards whose isActive flips actually re-render.
-  const activateCallbacks = useMemo(
+  // Stable per-card callbacks: keeps every onActivate identity stable
+  const activateCallbacks = React.useMemo(
     () => STAGES.map((_, idx) => () => setActiveStage(idx)),
     [],
   );
 
   return (
-    <section id="philosophy" className="relative py-16 sm:py-20 md:py-28 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#000204] overflow-hidden">
+    <div ref={sectionTarget} className="relative py-16 sm:py-20 md:py-28 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#000204] overflow-hidden">
 
       {/* Background Subtle Atmosphere — compositor-only layer */}
       <div
@@ -146,8 +140,7 @@ export const Philosophy: React.FC = memo(() => {
 
         {/* Section Header — Scroll Reveal */}
         <div
-          ref={headerTarget}
-          className={`max-w-2xl mb-10 sm:mb-16 md:mb-20 az-reveal ${headerVisible ? 'az-visible' : ''}`}
+          className={`max-w-2xl mb-10 sm:mb-16 md:mb-20 az-reveal ${isVisible ? 'az-visible' : ''}`}
         >
           <div className="flex items-center gap-2 mb-4">
             <span className="w-4 h-[1px] bg-[var(--az-blue-electric)]" />
@@ -168,25 +161,26 @@ export const Philosophy: React.FC = memo(() => {
         </div>
 
         {/* Continuous Pipeline Visualization */}
-        <div className="relative" ref={cardsContainerTarget}>
+        <div className="relative">
 
-          {/* Central Connecting Line — transform-only progress */}
+          {/* Central Connecting Line — scaleX compositor progress */}
           <div className="hidden lg:block absolute top-[52px] left-8 right-8 h-[1px] bg-[rgba(79,140,255,0.15)] z-0">
-            {/* Dynamic illuminated track according to active step */}
+            {/* Dynamic illuminated track according to active step — scaleX via CSS var */}
             <div
-              className="h-full bg-gradient-to-r from-[#3B82F6] to-[#4F8CFF] shadow-[0_0_12px_#4F8CFF] az-progress-track"
-              style={{ width: progressWidth }}
+              className={`h-full bg-gradient-to-r from-[#3B82F6] to-[#4F8CFF] shadow-[0_0_12px_#4F8CFF] az-progress-track ${isVisible ? 'az-visible' : ''}`}
+              style={{ '--az-progress': `${(activeStage + 1) / STAGES.length}` } as React.CSSProperties}
             />
           </div>
 
-          {/* Connected Sequence Grid — Staggered Reveal */}
+          {/* Connected Sequence Grid — GPU Compositor Stagger */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 lg:gap-6 relative z-10">
             {STAGES.map((stage, idx) => (
               <StageCard
                 key={stage.id}
                 stage={stage}
                 isActive={activeStage === idx}
-                isVisible={cardVisible[idx] ?? false}
+                isVisible={isVisible}
+                delayMs={idx * 90}
                 onActivate={activateCallbacks[idx]}
               />
             ))}
@@ -194,7 +188,7 @@ export const Philosophy: React.FC = memo(() => {
         </div>
 
       </div>
-    </section>
+    </div>
   );
 });
 

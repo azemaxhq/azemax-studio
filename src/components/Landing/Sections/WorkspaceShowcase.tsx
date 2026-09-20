@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PenTool, Play, Cpu, Sparkles, Terminal, CheckCircle2, RotateCcw } from 'lucide-react';
 import { useRevealAnimation } from '../hooks/useRevealAnimation';
 
@@ -198,9 +198,13 @@ const UnderstandLine = memo(function UnderstandLine({
   onSelect: (line: number) => void;
   children: React.ReactNode;
 }) {
+  const handleClick = useCallback(() => {
+    onSelect(line);
+  }, [onSelect, line]);
+
   return (
     <div
-      onClick={() => onSelect(line)}
+      onClick={handleClick}
       className={`cursor-pointer p-1.5 rounded transition-[background-color,border-color,box-shadow] ${indented ? 'pl-6' : ''} ${
         selected
           ? 'bg-[#13233D] border border-[#4F8CFF]/50 text-white shadow-[0_0_12px_rgba(79,140,255,0.2)]'
@@ -359,6 +363,10 @@ const ModeTab = memo(function ModeTab({
   onSelect: (mode: ModeType) => void;
 }) {
   const Icon = mode.icon;
+  const handleClick = useCallback(() => {
+    onSelect(mode.id);
+  }, [onSelect, mode.id]);
+
   return (
     <button
       role="tab"
@@ -366,7 +374,7 @@ const ModeTab = memo(function ModeTab({
       aria-selected={isSelected}
       aria-controls={`panel-${mode.id}`}
       tabIndex={isSelected ? 0 : -1}
-      onClick={() => onSelect(mode.id)}
+      onClick={handleClick}
       className={`flex items-center justify-center gap-1.5 sm:gap-2 py-3 sm:py-2.5 px-2 sm:px-3 min-h-[44px] rounded-md font-mono text-[11px] sm:text-xs transition-[background-color,border-color,color,box-shadow] duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF] ${
         isSelected
           ? 'bg-[#0E1A2E] text-white border border-[#4F8CFF]/40 shadow-[0_0_16px_rgba(79,140,255,0.2)]'
@@ -451,22 +459,37 @@ export const WorkspaceShowcase: React.FC = memo(() => {
 
   // UNDERSTAND Mode States
   const [selectedLine, setSelectedLine] = useState<number>(4);
-  const handleSelectLine = useCallback((line: number) => setSelectedLine(line), []);
+  const handleSelectLine = useCallback((line: number) => {
+    startTransition(() => {
+      setSelectedLine(line);
+    });
+  }, []);
 
   // IMPROVE Mode States
   const [improveTab, setImproveTab] = useState<'before' | 'after'>('after');
-  const handleImproveTab = useCallback((tab: 'before' | 'after') => () => setImproveTab(tab), []);
+  const handleSelectBefore = useCallback(() => {
+    startTransition(() => {
+      setImproveTab('before');
+    });
+  }, []);
+  const handleSelectAfter = useCallback(() => {
+    startTransition(() => {
+      setImproveTab('after');
+    });
+  }, []);
 
-  // Scroll reveal hooks
-  const [headerTarget, headerVisible] = useRevealAnimation({ threshold: 0.12 });
-  const [tabTarget, tabVisible] = useRevealAnimation({ threshold: 0.1, delay: 150 });
-  const [frameTarget, frameVisible] = useRevealAnimation({ threshold: 0.08, delay: 250 });
+  // Consolidated scroll reveal hook: 1 render instead of 3
+  const [sectionTarget, isVisible] = useRevealAnimation({ threshold: 0.08 });
 
-  const handleSelectMode = useCallback((mode: ModeType) => setActiveMode(mode), []);
+  const handleSelectMode = useCallback((mode: ModeType) => {
+    startTransition(() => {
+      setActiveMode(mode);
+    });
+  }, []);
   const activeFile = useMemo(() => MODE_FILES[activeMode], [activeMode]);
 
   return (
-    <section id="modes" className="relative py-16 sm:py-20 md:py-28 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#020409] border-t border-[rgba(79,140,255,0.08)] overflow-hidden">
+    <div ref={sectionTarget} className="relative py-16 sm:py-20 md:py-28 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#020409] border-t border-[rgba(79,140,255,0.08)] overflow-hidden">
 
       {/* Atmosphere wash — compositor-only */}
       <div
@@ -478,8 +501,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
 
         {/* Section Header */}
         <div
-          ref={headerTarget}
-          className={`flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 mb-8 sm:mb-12 az-reveal-left ${headerVisible ? 'az-visible' : ''}`}
+          className={`flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 mb-8 sm:mb-12 az-reveal-left ${isVisible ? 'az-visible' : ''}`}
         >
           <div>
             <div className="flex items-center gap-2 mb-4">
@@ -501,10 +523,9 @@ export const WorkspaceShowcase: React.FC = memo(() => {
 
         {/* Mode Selector Tabs (Keyboard Accessible) */}
         <div
-          ref={tabTarget}
           role="tablist"
           aria-label="Workspace Modes"
-          className={`grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2 p-1.5 bg-[#060A12] border border-[rgba(79,140,255,0.15)] rounded-lg mb-6 sm:mb-8 max-w-xl az-reveal ${tabVisible ? 'az-visible' : ''}`}
+          className={`grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2 p-1.5 bg-[#060A12] border border-[rgba(79,140,255,0.15)] rounded-lg mb-6 sm:mb-8 max-w-xl az-reveal az-delay-1 ${isVisible ? 'az-visible' : ''}`}
         >
           {MODES.map((mode) => (
             <ModeTab key={mode.id} mode={mode} isSelected={activeMode === mode.id} onSelect={handleSelectMode} />
@@ -513,11 +534,10 @@ export const WorkspaceShowcase: React.FC = memo(() => {
 
         {/* Persistent Unified Workspace Frame */}
         <div
-          ref={frameTarget}
           id={`panel-${activeMode}`}
           role="tabpanel"
           aria-labelledby={`tab-${activeMode}`}
-          className={`az-glass-surface rounded-xl border border-[rgba(79,140,255,0.2)] overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] az-reveal-scale ${frameVisible ? 'az-visible' : ''}`}
+          className={`az-glass-surface rounded-xl border border-[rgba(79,140,255,0.2)] overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] az-reveal-scale az-delay-2 ${isVisible ? 'az-visible' : ''}`}
         >
           {/* Workstation Frame Header */}
           <div className="min-h-[2.5rem] bg-[#070D18] border-b border-[rgba(79,140,255,0.12)] px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -559,7 +579,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
               {activeMode === 'improve' && (
                 <div className="flex items-center bg-[#070D18] border border-[rgba(79,140,255,0.2)] rounded p-0.5">
                   <button
-                    onClick={handleImproveTab('before')}
+                    onClick={handleSelectBefore}
                     className={`px-2.5 py-0.5 rounded text-[11px] transition-colors ${
                       improveTab === 'before' ? 'bg-[#2A1515] text-[#FF8585]' : 'text-[var(--az-muted)]'
                     }`}
@@ -567,7 +587,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
                     Original
                   </button>
                   <button
-                    onClick={handleImproveTab('after')}
+                    onClick={handleSelectAfter}
                     className={`px-2.5 py-0.5 rounded text-[11px] transition-colors ${
                       improveTab === 'after' ? 'bg-[#0E281C] text-[#55EB9B]' : 'text-[var(--az-muted)]'
                     }`}
@@ -579,8 +599,9 @@ export const WorkspaceShowcase: React.FC = memo(() => {
             </div>
           </div>
 
-          {/* Workstation Frame Body — only the active panel mounts */}
-          <div className="p-3 sm:p-6 bg-[#040810] min-h-[380px] font-mono text-[11px] sm:text-xs overflow-x-hidden">
+          {/* Workstation Frame Body — only the active panel mounts,
+              key forces a remount so .az-tab-panel-enter triggers each switch */}
+          <div key={activeMode} className="p-3 sm:p-6 bg-[#040810] min-h-[380px] font-mono text-[11px] sm:text-xs overflow-x-hidden az-tab-panel-enter">
             {activeMode === 'write' && <WritePanel acceptedGhost={acceptedGhost} />}
             {activeMode === 'run' && (
               <RunPanel isRunning={isRunning} runLogs={runLogs} hasRun={hasRun} onClear={handleClearRun} />
@@ -599,7 +620,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
         </div>
 
       </div>
-    </section>
+    </div>
   );
 });
 

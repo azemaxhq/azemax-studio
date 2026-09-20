@@ -8,22 +8,6 @@ interface RevealOptions {
   once?: boolean;
 }
 
-/**
- * Render-optimized scroll-reveal.
- *
- * - One shared IntersectionObserver per (threshold, rootMargin) bucket.
- *   Callbacks are fanned out to subscribed elements — Blink/WebKit pay for
- *   a single observer instead of a dozen.
- * - Single cached prefers-reduced-motion query (no per-hook listeners).
- * - Reduced-motion state is computed lazily in useState initializers, never
- *   via synchronous setState inside effects (no cascading renders).
- * - No setState after unmount (mounted ref + timeout cleanup).
- * - Tuple return `[target, isVisible]`: returning a plain object with a
- *   `.ref` field makes the react-hooks/refs lint rule treat the whole
- *   object as a ref and flag every read during render. A tuple keeps the
- *   RefObject in a plain local binding, which is lint-clean.
- */
-
 let cachedReducedMotion: boolean | null = null;
 function isReducedMotion(): boolean {
   if (cachedReducedMotion !== null) return cachedReducedMotion;
@@ -37,85 +21,74 @@ function isReducedMotion(): boolean {
   return cachedReducedMotion;
 }
 
-type RevealEntry = {
-  el: Element;
+type RevealRecord = {
   onVisible: () => void;
   once: boolean;
 };
 
-type ObserverBucket = {
-  observer: IntersectionObserver;
-  entries: Map<Element, RevealEntry>;
-};
+// Keyed by threshold and rootMargin so observers can be shared safely
+const observerPool = new Map<string, { observer: IntersectionObserver; targets: Map<Element, RevealRecord> }>();
 
-const buckets = new Map<string, ObserverBucket>();
+function getObserverFor(threshold: number, rootMargin: string) {
+  const key = `${threshold}_${rootMargin}`;
+  let poolItem = observerPool.get(key);
 
-function getBucket(threshold: number, rootMargin: string): ObserverBucket {
-  const key = `${threshold}|${rootMargin}`;
-  const existing = buckets.get(key);
-  if (existing) return existing;
-
-  const entries: ObserverBucket['entries'] = new Map();
-  const observer = new IntersectionObserver(
-    (ioEntries) => {
-      for (const ioEntry of ioEntries) {
-        if (!ioEntry.isIntersecting) continue;
-        const record = entries.get(ioEntry.target);
-        if (!record) continue;
-        record.onVisible();
-        if (record.once) {
-          entries.delete(ioEntry.target);
-          observer.unobserve(ioEntry.target);
+  if (!poolItem) {
+    const targets = new Map<Element, RevealRecord>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const record = targets.get(entry.target);
+            if (record) {
+              record.onVisible();
+              if (record.once) {
+                targets.delete(entry.target);
+                try {
+                  observer.unobserve(entry.target);
+                } catch {
+                  // Ignore if element detached
+                }
+              }
+            }
+          }
         }
-      }
-      // Release idle buckets so Blink/WebKit can GC the observer when
-      // every section has revealed (common after full scroll-through).
-      if (entries.size === 0) {
-        observer.disconnect();
-        buckets.delete(key);
-      }
-    },
-    { threshold, rootMargin },
-  );
-  const bucket: ObserverBucket = { observer, entries };
-  buckets.set(key, bucket);
-  return bucket;
-}
+      },
+      { threshold, rootMargin }
+    );
+    poolItem = { observer, targets };
+    observerPool.set(key, poolItem);
+  }
 
-function unsubscribe(bucket: ObserverBucket, key: string, el: Element): void {
-  bucket.entries.delete(el);
-  try {
-    bucket.observer.unobserve(el);
-  } catch {
-    // Element may already be detached — non-fatal.
-  }
-  if (bucket.entries.size === 0) {
-    bucket.observer.disconnect();
-    buckets.delete(key);
-  }
+  return { key, poolItem };
 }
 
 export function useRevealAnimation(
   options: RevealOptions = {},
 ): [RefObject<HTMLDivElement | null>, boolean] {
-  const { threshold = 0.12, rootMargin = '0px 0px -60px 0px', delay = 0, once = true } = options;
+  const { threshold = 0.1, rootMargin = '0px 0px -40px 0px', delay = 0, once = true } = options;
   const target = useRef<HTMLDivElement | null>(null);
-  // Reduced-motion users start visible: no effect-time setState needed.
-  const [isVisible, setIsVisible] = useState<boolean>(() => isReducedMotion());
+
+  // If reduced motion is active or IntersectionObserver is missing, start visible
+  const [isVisible, setIsVisible] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return true;
+    return isReducedMotion();
+  });
 
   useEffect(() => {
+    if (isVisible) return;
     const el = target.current;
-    if (!el || isReducedMotion()) return;
+    if (!el) return;
 
     let mounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const bucketKey = `${threshold}|${rootMargin}`;
-    const bucket = getBucket(threshold, rootMargin);
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const { poolItem } = getObserverFor(threshold, rootMargin);
 
     const onVisible = () => {
       if (!mounted) return;
       if (delay > 0) {
-        timeoutId = setTimeout(() => {
+        timerId = setTimeout(() => {
           if (mounted) setIsVisible(true);
         }, delay);
       } else {
@@ -123,68 +96,63 @@ export function useRevealAnimation(
       }
     };
 
-    bucket.entries.set(el, { el, onVisible, once });
-    bucket.observer.observe(el);
+    poolItem.targets.set(el, { onVisible, once });
+    poolItem.observer.observe(el);
 
     return () => {
       mounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
-      unsubscribe(bucket, bucketKey, el);
+      if (timerId) clearTimeout(timerId);
+      poolItem.targets.delete(el);
+      try {
+        poolItem.observer.unobserve(el);
+      } catch {
+        // Element already detached
+      }
     };
-  }, [threshold, rootMargin, delay, once]);
+  }, [threshold, rootMargin, delay, once, isVisible]);
 
   return [target, isVisible];
 }
 
 /**
- * Staggered reveal for a group of children.
- * Chained timeouts flip one boolean slot per tick and bail out early if
- * unmounted; a single shared observer via the pool. Item count is small
- * (4) so per-tick copies are trivial. itemCount is expected to be constant
- * for the lifetime of the component (all call sites pass literals).
+ * Retained for backwards compatibility; returns boolean array.
  */
 export function useStaggerReveal(
   itemCount: number,
   staggerMs = 80,
 ): [RefObject<HTMLDivElement | null>, boolean[]] {
-  const container = useRef<HTMLDivElement | null>(null);
-  const [visibleItems, setVisibleItems] = useState<boolean[]>(() =>
-    new Array(itemCount).fill(isReducedMotion()),
-  );
+  const [containerRef, isVisible] = useRevealAnimation({ threshold: 0.08 });
+  const [items, setItems] = useState<boolean[]>(() => new Array(itemCount).fill(isReducedMotion()));
 
   useEffect(() => {
-    const el = container.current;
-    if (!el || isReducedMotion()) return;
+    if (!isVisible) return;
+    if (isReducedMotion()) {
+      setItems(new Array(itemCount).fill(true));
+      return;
+    }
 
     let mounted = true;
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    const bucketKey = '0.08|0px 0px -40px 0px';
-    const bucket = getBucket(0.08, '0px 0px -40px 0px');
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
-    const onVisible = () => {
-      for (let i = 0; i < itemCount; i++) {
-        const tid = setTimeout(() => {
-          if (!mounted) return;
-          setVisibleItems((prev) => {
-            if (prev[i]) return prev;
-            const next = [...prev];
-            next[i] = true;
-            return next;
-          });
-        }, i * staggerMs);
-        timeouts.push(tid);
-      }
-    };
-
-    bucket.entries.set(el, { el, onVisible, once: true });
-    bucket.observer.observe(el);
+    for (let i = 0; i < itemCount; i++) {
+      const tid = setTimeout(() => {
+        if (!mounted) return;
+        setItems((prev) => {
+          if (prev[i]) return prev;
+          const next = [...prev];
+          next[i] = true;
+          return next;
+        });
+      }, i * staggerMs);
+      timers.push(tid);
+    }
 
     return () => {
       mounted = false;
-      timeouts.forEach(clearTimeout);
-      unsubscribe(bucket, bucketKey, el);
+      timers.forEach(clearTimeout);
     };
-  }, [itemCount, staggerMs]);
+  }, [isVisible, itemCount, staggerMs]);
 
-  return [container, visibleItems];
+  return [containerRef, items];
 }
+
