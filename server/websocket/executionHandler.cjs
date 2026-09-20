@@ -120,6 +120,7 @@ function attachExecutionWebSocket(wss) {
                             code: data.code,
                             stdinInput: stdinValue,
                             preStdin: data.preStdin || null,
+                            filename: data.filename || null,
                         });
                     }
                     return;
@@ -181,6 +182,7 @@ function attachExecutionWebSocket(wss) {
                         return;
                     }
                     const code = files[0].content || '';
+                    const legacyFilename = files[0].name || data.filename || null;
                     const id = Math.random().toString(36).substring(2, 10);
                     const session = manager.createSession(id, {
                         kind: 'code',
@@ -197,6 +199,7 @@ function attachExecutionWebSocket(wss) {
                         code,
                         stdinInput: stdinInput || '',
                         preStdin: stdinInput || null,
+                        filename: legacyFilename,
                     });
                     return;
                 }

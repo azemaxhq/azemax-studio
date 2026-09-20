@@ -1,17 +1,38 @@
 const https = require('https');
 const { WANDBOX_LANGUAGES } = require('./constants.cjs');
 
-function compileViaWandbox({ language, code, stdin = '' }) {
+function buildWandboxPayload(compilerId, language, code, stdin, filename) {
+    const lang = String(language).toLowerCase();
+    if (lang === 'java') {
+        // Resolve safe Java filename: public type takes precedence, otherwise sanitized editor filename
+        const { resolveJavaFileName } = require('./fileNaming.cjs');
+        const effective = resolveJavaFileName(code, filename);
+        // Wandbox's main file is prog.java; to support public class filename matching we send
+        // the user code as a correctly-named file via `codes` and compile that file explicitly.
+        // Empty main `code` avoids public-class mismatch in prog.java.
+        return {
+            compiler: compilerId,
+            code: '',
+            codes: [{ file: effective, code }],
+            stdin,
+            'compiler-option-raw': effective,
+        };
+    }
+    return {
+        compiler: compilerId,
+        code,
+        stdin,
+    };
+}
+
+function compileViaWandbox({ language, code, stdin = '', filename = null }) {
     const compilerId = WANDBOX_LANGUAGES[language.toLowerCase()];
     if (!compilerId) {
         return Promise.reject(new Error(`Unsupported language for Wandbox: ${language}`));
     }
 
-    const postData = JSON.stringify({
-        compiler: compilerId,
-        code,
-        stdin,
-    });
+    const payload = buildWandboxPayload(compilerId, language, code, stdin, filename);
+    const postData = JSON.stringify(payload);
 
     return new Promise((resolve, reject) => {
         const req = https.request(
@@ -47,7 +68,7 @@ function compileViaWandbox({ language, code, stdin = '' }) {
     });
 }
 
-function streamViaWandbox({ language, code, stdin = '', onEvent }) {
+function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent }) {
     const compilerId = WANDBOX_LANGUAGES[language.toLowerCase()];
     if (!compilerId) {
         onEvent({ type: 'error', data: `Unsupported language: ${language}\r\n` });
@@ -55,7 +76,8 @@ function streamViaWandbox({ language, code, stdin = '', onEvent }) {
         return Promise.resolve();
     }
 
-    const postData = JSON.stringify({ compiler: compilerId, code, stdin });
+    const payload = buildWandboxPayload(compilerId, language, code, stdin, filename);
+    const postData = JSON.stringify(payload);
 
     return new Promise((resolve, reject) => {
         const req = https.request(

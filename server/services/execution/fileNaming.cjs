@@ -1,10 +1,75 @@
-function resolveFileName(language, code, ext) {
+function isValidJavaIdentifier(name) {
+    return typeof name === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+}
+
+function sanitizeJavaFilename(filename) {
+    if (!filename || typeof filename !== 'string') return null;
+    // Strip path components, handle both slash styles
+    const trimmed = filename.trim();
+    if (!trimmed) return null;
+    // Prevent null bytes and traversal
+    if (trimmed.includes('\0')) return null;
+    // Take basename only
+    const base = trimmed.split('/').pop().split('\\').pop();
+    if (!base || base.includes('..')) return null;
+    // Allow only safe chars, no dirs
+    if (!/^[a-zA-Z0-9_.-]+$/.test(base)) return null;
+    if (base.includes('/') || base.includes('\\')) return null;
+    let name = base;
+    let ext = '';
+    const dot = base.lastIndexOf('.');
+    if (dot > 0) {
+        name = base.slice(0, dot);
+        ext = base.slice(dot).toLowerCase();
+    }
+    // For Java, extension should be .java if present, else we normalize
+    if (ext && ext !== '.java') {
+        // If extension is not .java, treat whole base as name if it's a valid identifier
+        // e.g., "test.java" ok, "test.txt" => name would be "test", but we only allow .java
+        // For safety, only accept .java, otherwise fallback to identifier check on name
+        // If user passed "HelloWorld.java " trimmed, ext is .java, ok
+        // Otherwise if they passed weird ext, we still sanitize name
+        if (!isValidJavaIdentifier(name)) return null;
+        return `${name}.java`;
+    }
+    if (!isValidJavaIdentifier(name)) return null;
+    return `${name}.java`;
+}
+
+function extractPublicTopLevelTypes(code) {
+    // Handles: public [modifiers] class|interface|enum|record|@interface Name
+    // Modifiers: final, abstract, sealed, static, strictfp (common Java modifiers)
+    const re = /\bpublic\s+(?:(?:final|abstract|sealed|static|strictfp)\s+)*(?:class|interface|enum|record|@interface)\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+    const types = [];
+    let m;
+    while ((m = re.exec(code)) !== null) {
+        const name = m[1];
+        if (isValidJavaIdentifier(name)) types.push(name);
+    }
+    return types;
+}
+
+function resolveJavaFileName(code, editorFilename) {
+    const publicTypes = extractPublicTopLevelTypes(code);
+    if (publicTypes.length === 1) {
+        return `${publicTypes[0]}.java`;
+    }
+    // If multiple or zero public types, try sanitized editor filename
+    if (editorFilename) {
+        const sanitized = sanitizeJavaFilename(editorFilename);
+        if (sanitized) return sanitized;
+    }
+    // Fallbacks: if no public type but code has a single package-private class, using Main.java is safe (Wandbox prog.java can hold package-private)
+    // But per task, generic safe filename is acceptable when no public type
+    return 'Main.java';
+}
+
+function resolveFileName(language, code, ext, editorFilename) {
     let fileName = `main${ext || ''}`;
 
     switch (language) {
         case 'java': {
-            const classMatch = code.match(/(?:public\s+)?class\s+(\w+)/);
-            if (classMatch) fileName = `${classMatch[1]}.java`;
+            fileName = resolveJavaFileName(code, editorFilename);
             break;
         }
         case 'kotlin': {
@@ -88,4 +153,4 @@ function codeNeedsStdin(language, code) {
     return pattern ? pattern.test(code) : false;
 }
 
-module.exports = { resolveFileName, codeNeedsStdin };
+module.exports = { resolveFileName, codeNeedsStdin, isValidJavaIdentifier, sanitizeJavaFilename, extractPublicTopLevelTypes, resolveJavaFileName };

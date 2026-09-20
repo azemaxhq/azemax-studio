@@ -353,7 +353,7 @@ class TerminalManager {
     }
 
     /** Full code-execution path: compile (if needed), then run in PTY. */
-    async executeCode(session, { language, code, stdinInput = '', preStdin = null }) {
+    async executeCode(session, { language, code, stdinInput = '', preStdin = null, filename = null }) {
         const lang = String(language).toLowerCase();
 
         // Wandbox fallback for unsupported/remote (also forced in production when local execution is disabled)
@@ -369,6 +369,7 @@ class TerminalManager {
                 language: lang,
                 code,
                 stdin: wb.stdinData,
+                filename: filename || null,
                 onEvent: (event) => {
                     if (!owner()) return;
                     if (event.type === 'stdout') this.send(session.id, { type: 'terminal.output', data: event.data });
@@ -419,7 +420,7 @@ class TerminalManager {
         this.setState(session.id, STATES.STARTING);
         session.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coderun-ses-'));
 
-        const fileName = resolveFileName(lang, code, initialConfig.ext);
+        const fileName = resolveFileName(lang, code, initialConfig.ext, filename);
         // Path-traversal guard: fileName must be a plain filename, no dirs
         if (!/^[a-zA-Z0-9_.-]+$/.test(fileName) || fileName.includes('..')) {
             throw Object.assign(new Error('Invalid filename'), { failCompile: true });

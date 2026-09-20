@@ -113,7 +113,7 @@ export class TerminalSessionController {
 
     // --- Program execution ----------------------------------------------------
 
-    startCode(code: string, language: string, preStdin: string, cols: number, rows: number, cwd?: string) {
+    startCode(code: string, language: string, preStdin: string, cols: number, rows: number, cwd?: string, filename?: string) {
         // Fully detach any previous transport/timers. `settled` refers to the
         // current execution only: a reused controller must start clean.
         this.teardown();
@@ -161,6 +161,7 @@ export class TerminalSessionController {
                 cwd: cwd || undefined,
                 preStdin: preStdin || undefined,
                 stdinInput: preStdin || '',
+                filename: filename || undefined,
                 cols,
                 rows,
             }));

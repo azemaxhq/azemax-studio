@@ -77,7 +77,8 @@ export const getRuntimes = async (): Promise<Language[]> => {
 export const executeCode = async (
     code: string,
     language: string,
-    stdin: string = ''
+    stdin: string = '',
+    filename?: string
 ): Promise<ExecutionResult> => {
     try {
         // First get available runtimes to find the correct version
@@ -91,6 +92,31 @@ export const executeCode = async (
             throw new Error(`Language "${language}" not supported. Available languages: ${runtimes.map(r => r.language).join(', ')}`);
         }
 
+        const extMap: Record<string, string> = {
+            python: 'py',
+            javascript: 'js',
+            typescript: 'ts',
+            java: 'java',
+            c: 'c',
+            cpp: 'cpp',
+            csharp: 'cs',
+            go: 'go',
+            rust: 'rs',
+            ruby: 'rb',
+            php: 'php',
+            swift: 'swift',
+            kotlin: 'kt',
+            scala: 'scala',
+            r: 'r',
+            lua: 'lua',
+            perl: 'pl',
+            bash: 'sh',
+        };
+        const defaultExt = extMap[runtime.language] || runtime.language;
+        // Preserve editor filename when provided (critical for Java public-class matching)
+        // filename is the editor's selected file name e.g., "Factorial.java"
+        const effectiveName = (filename && filename.trim()) ? filename.trim().split('/').pop()?.split('\\').pop() || `main.${defaultExt}` : `main.${defaultExt}`;
+
         const response = await fetch(`${EXECUTION_API_URL}/execute`, {
             method: 'POST',
             headers: {
@@ -101,10 +127,11 @@ export const executeCode = async (
                 version: runtime.version,
                 files: [
                     {
-                        name: `main.${language === 'python' ? 'py' : language === 'javascript' ? 'js' : language}`,
+                        name: effectiveName,
                         content: code,
                     },
                 ],
+                filename: effectiveName,
                 stdin,
             }),
         });

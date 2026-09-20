@@ -63,7 +63,7 @@ function runCommand(cmd, args, { cwd, stdin, timeout = EXECUTION_TIMEOUT_MS }) {
     });
 }
 
-async function executeLocally({ language, code, stdin = '' }) {
+async function executeLocally({ language, code, stdin = '', filename = null }) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coderun-http-'));
 
     const cleanup = () => {
@@ -76,7 +76,7 @@ async function executeLocally({ language, code, stdin = '' }) {
             throw new Error(`Unsupported language: ${language}`);
         }
 
-        const fileName = resolveFileName(language, code, initialConfig.ext);
+        const fileName = resolveFileName(language, code, initialConfig.ext, filename);
         const filePath = path.join(tmpDir, fileName);
         fs.writeFileSync(filePath, code);
 

@@ -652,6 +652,7 @@ const handleRunData = (e: Event) => {
                 termX ? termX.cols : 120,
                 termX ? termX.rows : 30,
                 runCwd,
+                rawFilename,
             );
         };
 
