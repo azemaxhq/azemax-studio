@@ -9,6 +9,7 @@ import { loadPrism, tryHighlight } from '../../utils/prismLoader';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
 import { buildWorkspaceSnapshot } from '../../core/workspace/workspaceContext';
+import { buildDynamicWorkspaceContext } from '../../core/workspace/dynamicContext';
 import { useAILoading } from '../../hooks/useAILoading';
 import { AILoadingIndicator } from '../AI/AILoadingIndicator';
 import { SmoothStreamingBubble } from '../AI/SmoothStreamingBubble';
@@ -610,8 +611,18 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const isLoading = aiLoading.isLoading;
     const [currentOperation, setCurrentOperation] = useState<import('../../core/ai/aiRequestStore').AIOperationType>('chat');
 
-    // UI State
-    const [input, setInput] = useState('');
+    // UI State — persist draft across refresh
+    const COMPOSER_DRAFT_KEY = 'azemax:composer:draft';
+    const COMPOSER_MODE_KEY = 'azemax:composer:mode';
+    const [input, setInput] = useState(() => {
+        try { return localStorage.getItem(COMPOSER_DRAFT_KEY) || ''; } catch { return ''; }
+    });
+    const [composerMode, setComposerMode] = useState<'Agent' | 'Ask' | 'Edit'>(() => {
+        try {
+            const v = localStorage.getItem(COMPOSER_MODE_KEY);
+            return (v === 'Agent' || v === 'Ask' || v === 'Edit') ? v : 'Agent';
+        } catch { return 'Agent'; }
+    });
     const [showSidebar, setShowSidebar] = useState(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [streamingText, setStreamingText] = useState('');
@@ -633,6 +644,26 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     // Deferred value for streaming performance (kept for future use; loading now uses streamingText directly for immediate transition)
     const deferredStreamingText = useDeferredValue(streamingText);
     void deferredStreamingText;
+
+    // Persist composer draft/mode across refresh (survives reload, cleared on send)
+    useEffect(() => {
+        try {
+            if (input) localStorage.setItem(COMPOSER_DRAFT_KEY, input);
+            else localStorage.removeItem(COMPOSER_DRAFT_KEY);
+        } catch { /* ignore */ }
+    }, [input]);
+    useEffect(() => {
+        try { localStorage.setItem(COMPOSER_MODE_KEY, composerMode); } catch { /* ignore */ }
+    }, [composerMode]);
+
+    // Restore textarea height after draft restore
+    useEffect(() => {
+        if (input && inputRef.current) {
+            const ta = inputRef.current;
+            ta.style.height = '40px';
+            ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+        }
+    }, []);
 
     // Time-based greeting
     const getGreeting = () => {
@@ -976,6 +1007,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         }
 
         setInput('');
+        // Keep chips until we capture them for context (cleared after capture)
         // Debounce rapid duplicate sends (e.g., double-clicked quick-action)
         if (lastSentRef.current && lastSentRef.current.text === userMessageText && Date.now() - lastSentRef.current.at < 1500) {
             isSendingRef.current = false;
@@ -1023,27 +1055,108 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         const activeFile = getActiveFile();
         const fileTree = getFileTree();
         const editorCtx = getActiveEditorContext();
-        const fileContent = editorCtx?.code ?? activeFile?.content ?? '';
-        const fileName = editorCtx?.fileName ?? activeFile?.name ?? '';
-        const filePathPinned = editorCtx?.filePath ?? fileName;
-        const language = editorCtx?.language ?? 'plaintext';
+        // If user mentioned a file via pill (@ file), that file is the intended context — not just the current editor file
+        let chipMentionPath: string | null = null;
+        try {
+            const raw = localStorage.getItem('azemax:composer:chips');
+            if (raw) {
+                const chips = JSON.parse(raw) as Array<{ id: string; label: string }>;
+                const firstAt = chips.find(c => c.id?.startsWith('at-') && c.label);
+                if (firstAt) chipMentionPath = firstAt.label.trim();
+            }
+        } catch { /* ignore */ }
+        const rawFileContent = editorCtx?.code ?? activeFile?.content ?? '';
+        const rawFileName = editorCtx?.fileName ?? activeFile?.name ?? '';
+        const rawFilePath = editorCtx?.filePath ?? rawFileName;
+        const rawLanguage = editorCtx?.language ?? 'plaintext';
+        let fileContent = rawFileContent;
+        let fileName = rawFileName;
+        let filePathPinned = rawFilePath;
+        let language = rawLanguage;
+        let effectiveFileId: string | null = editorCtx?.fileId ?? activeFile?.id ?? null;
+        let effectiveClassName = editorCtx?.className ?? null;
+        let effectiveModuleName = editorCtx?.moduleName ?? null;
+        if (chipMentionPath) {
+            // Resolve chip file in tree to get fresh content/language
+            const clean = chipMentionPath.replace(/^\//, '');
+            const walkFind = (nodes: any[], prefix = ''): any | null => {
+                for (const n of nodes) {
+                    if (n.id === 'root') { if (n.children) { const f = walkFind(n.children, ''); if (f) return f; } continue; }
+                    const full = prefix ? `${prefix}/${n.name}` : n.name;
+                    if (full === clean || n.name === clean) return n;
+                    if (n.children) { const f = walkFind(n.children, full); if (f) return f; }
+                }
+                return null;
+            };
+            const chipNode = walkFind(fileTree as any, '');
+            if (chipNode && chipNode.type === 'file') {
+                fileName = chipNode.name ?? chipMentionPath.split('/').pop() ?? chipMentionPath;
+                filePathPinned = chipMentionPath;
+                effectiveFileId = chipNode.id ?? effectiveFileId;
+                // Prefer live editor content if chip happens to be active file
+                fileContent = editorCtx && editorCtx.fileName === chipNode.name ? editorCtx.code : (chipNode.content ?? rawFileContent);
+                // Derive language from extension if possible
+                const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+                if (ext) {
+                    const map: Record<string, string> = { py: 'python', java: 'java', js: 'javascript', ts: 'typescript', tsx: 'typescript', jsx: 'javascript', html: 'html', css: 'css', json: 'json', md: 'markdown' };
+                    language = map[ext] ?? ext;
+                }
+                effectiveClassName = null;
+                effectiveModuleName = null;
+            } else {
+                fileName = chipMentionPath.split('/').pop() ?? chipMentionPath;
+                filePathPinned = chipMentionPath;
+            }
+        }
         const requestContext = {
             fileName,
             filePath: filePathPinned,
-            fileId: editorCtx?.fileId ?? activeFile?.id ?? null,
+            fileId: effectiveFileId,
             language,
             documentVersionId: editorCtx?.documentVersionId ?? null,
-            extension: editorCtx?.extension ?? (fileName.split('.').pop()?.toLowerCase() ?? ''),
-            className: editorCtx?.className ?? null,
-            moduleName: editorCtx?.moduleName ?? null,
+            extension: fileName.split('.').pop()?.toLowerCase() ?? '',
+            className: effectiveClassName,
+            moduleName: effectiveModuleName,
             selectionText: editorCtx?.selectionText ?? null,
             selection: editorCtx?.selection ?? null,
             requestId,
         } as const;
         // Collect @File referenced files (bounded, fresh) for context-aware @File
+        // Chips are now source of truth (no "@file " left in input after pill selection) — merge @-text + chips
         const referencedContents: Array<{ path: string; content: string }> = [];
+        let atPaths: string[] = [];
         try {
-            const atPaths = [...userMessageText.matchAll(/@([^\s@,;]+)/g)].map(m => m[1].trim()).filter(Boolean).slice(0,3);
+            const userAtPaths = [...userMessageText.matchAll(/@([^\s@,;]+)/g)].map(m => m[1].trim()).filter(Boolean);
+            const chipPaths: string[] = [];
+            try {
+                const raw = localStorage.getItem('azemax:composer:chips');
+                if (raw) {
+                    const chips = JSON.parse(raw) as Array<{ id: string; label: string }>;
+                    for (const c of chips) if (c.id?.startsWith('at-') && c.label) chipPaths.push(c.label.trim());
+                }
+            } catch { /* ignore */ }
+            // Bare filename mentions without @ (e.g., "what is in the hello.py file") — treat as context too
+            const bareMentions: string[] = [];
+            try {
+                const extPat = /\b([\w\-\/]+\.(?:py|java|js|ts|jsx|tsx|json|md|txt|cpp|c|html|css))\b/gi;
+                // Collect basenames from fileTree to verify existence
+                const allNames = new Set<string>();
+                const walkNames = (nodes: any[]) => {
+                    for (const n of nodes) {
+                        if (n.type === 'file' && n.name) allNames.add(n.name.toLowerCase());
+                        if (n.children) walkNames(n.children);
+                    }
+                };
+                walkNames(fileTree as any);
+                for (const m of userMessageText.matchAll(extPat)) {
+                    const cand = m[1].trim();
+                    const base = cand.split('/').pop()!.toLowerCase();
+                    if (allNames.has(base) && !userAtPaths.includes(cand) && !chipPaths.includes(cand)) {
+                        bareMentions.push(cand);
+                    }
+                }
+            } catch { /* ignore */ }
+            atPaths = [...new Set([...userAtPaths, ...chipPaths, ...bareMentions])].filter(Boolean).slice(0, 3);
             const findByPath = (tree: any[], target: string): any | null => {
                 const clean = target.replace(/^\//,'');
                 const walk = (nodes: any[], prefix: string): any | null => {
@@ -1066,6 +1179,13 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                 }
             }
         } catch { /* ignore context parse errors */ }
+
+        // Dynamic full-workspace context — not just single file, scored by mentions/active/recent/keywords, token-budgeted
+        let dynamicContext: ReturnType<typeof buildDynamicWorkspaceContext> | null = null;
+        try {
+            const snapForDynamic = buildWorkspaceSnapshot(editorCtx, fileTree);
+            dynamicContext = buildDynamicWorkspaceContext(snapForDynamic, userMessageText, atPaths, { maxFiles: 8, maxTotalChars: 20000, maxPerFileChars: 3500 });
+        } catch { /* ignore */ }
 
         // Convert chat history to ChatMessage[] for the pipeline
         const historyForPipeline: ChatMessage[] = messages
@@ -1113,22 +1233,60 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                 if (import.meta.env.DEV) console.warn('[SemanticPlanner] failed:', e);
             }
 
+            // Composer mode overrides planner decision
+            if (composerMode === 'Ask') {
+                wantsModification = false;
+                isExplain = false;
+                operationForStatus = 'chat';
+                plannerResponseMessage = '';
+            } else if (composerMode === 'Edit') {
+                // In Edit mode, even casual prompts should attempt file edits when file exists
+                if (!wantsModification && fileContent && userMessageText.trim().length > 3) {
+                    wantsModification = true;
+                    operationForStatus = 'edit';
+                }
+            }
+
             setCurrentOperation(operationForStatus);
 
             let responseText = '';
 
-            if (wantsModification) {
+            // Direct file-read fast path: "what is hello.py" with pill/file should stream file content realtime, not just activity
+            const isFileContentRequest = referencedContents.length > 0 && /(what is|what's|show me|^show$|show |read|display|content of).*\.?(py|java|js|ts|txt|md|json)/i.test(userMessageText.toLowerCase());
+            if (isFileContentRequest && referencedContents.length > 0) {
+                aiLoading.setGenerating();
+                aiLoading.setStreaming();
+                const fileReadText = referencedContents.map(r => `**${r.path}** — ${r.content.split('\n').length} lines:\n\`\`\`\n${r.content.slice(0, 4500)}\n\`\`\``).join('\n\n');
+                // Simulate realtime streaming: chunked updates via scheduleStreamUpdate
+                let acc = '';
+                const chunks = fileReadText.match(/.{1,240}[\n ]|.+$/g) ?? [fileReadText];
+                for (const ch of chunks) {
+                    if (abortController.signal.aborted) break;
+                    acc += ch;
+                    scheduleStreamUpdate(requestId, acc);
+                    // small delay to make streaming visible
+                    await new Promise<void>(r => setTimeout(r, 14));
+                }
+                // Ensure final full content is set
+                scheduleStreamUpdate(requestId, fileReadText);
+                await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+                responseText = fileReadText;
+            } else if (wantsModification && composerMode !== 'Ask') {
                 // EDIT PATH — Cursor-style Agent Controller (Intent → Live Context → Tools → Execute → Verify)
+                // Full workspace context is injected so agent sees all files, not just active one
                 aiLoading.setGenerating();
                 setAgentActivities([]);
                 const { runAgentController } = await import('../../core/ai/agentController');
+                const enrichedHistory = dynamicContext
+                    ? [...historyForPipeline, { role: 'user', content: `Full workspace context (dynamic, ${dynamicContext.included.length} files):\n${dynamicContext.fragments.slice(0, 10000)}` } as ChatMessage]
+                    : historyForPipeline;
                 // Verify still-current before applying: pass pinned requestContext so late file switch doesn't corrupt wrong file
                 const result = await runAgentController({
                     userMessage: userMessageText,
                     workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent, setActiveFile } as unknown as import('../../core/editor/workspaceBridge').WorkspaceBridgeActions & { setActiveFile?: unknown },
                     fileName: requestContext.fileName || null,
                     fileId: requestContext.fileId,
-                    history: historyForPipeline,
+                    history: enrichedHistory,
                     signal: abortController.signal,
                     requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
                     onActivity: (act) => {
@@ -1198,22 +1356,28 @@ Provide a warm, concise explanation. Keep to 2-4 bullets or short paragraphs. Do
                 const systemPrompt = isFastChat
                     ? `You are ${BRAND.name} AI — a warm, natural coding buddy. Greet briefly and offer help. 1-2 sentences, friendly, no file talk.`
                     : `You are ${BRAND.name} AI — warm and efficient. Be conversational, concise, and genuinely helpful.
+You have FULL workspace context (not just active file) — use it.
 Natural: Talk like a friendly teammate, not a formal doc. Use contractions, a little warmth, an emoji when fitting.
 Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Code only when needed.`;
-                const refBlock = referencedContents.length ? `\nReferenced files:\n${referencedContents.map(r => `@${r.path}:\n\`\`\`\n${r.content}\n\`\`\``).join('\n')}` : '';
-                // Use pinned requestContext for file identity so switches mid-stream don't corrupt context
+                // Dynamic full-workspace context — replaces single-file refBlock + treeSnapshot
                 const pinnedCtxForChat = requestContext;
                 const chatFileName = pinnedCtxForChat.fileName || fileName;
-                const chatFileContent = pinnedCtxForChat.selectionText != null ? (getActiveEditorContext()?.code ?? fileContent) : fileContent; // fallback
                 const chatLanguage = pinnedCtxForChat.language || language;
-                // Build tree snapshot from pinned filePath's view (still read current tree structure)
-                const treeSnapshot = buildWorkspaceSnapshot(getActiveEditorContext() ?? null, fileTree).fileTreeString.slice(0, 1500);
-                const fileContext = isCodeRelated && fileContent && fileContent.length > 10
-                    ? `File: ${chatFileName} (${chatLanguage}, ${fileContent.split('\n').length} lines)\nPath: ${pinnedCtxForChat.filePath}\nLanguage: ${chatLanguage}\nCurrent class: ${pinnedCtxForChat.className ?? '(none)'}\n\`\`\`${chatLanguage}\n${fileContent.slice(0, 6000)}\n\`\`\`${refBlock}\nTree: ${treeSnapshot}\n\nQ: "${userMessageText}"`
-                    : isCodeRelated && chatFileName
-                        ? `File: ${chatFileName} (${chatLanguage}) Path: ${pinnedCtxForChat.filePath} | Q: "${userMessageText}"${refBlock} | Tree: ${treeSnapshot}`
-                        : referencedContents.length ? `${userMessageText}${refBlock}` : userMessageText;
-                void chatFileContent;
+                let fileContext: string;
+                if (dynamicContext && !isFastChat) {
+                    // Rich dynamic context already contains tree, active file, mentioned files, recent edits, visible window
+                    fileContext = `${dynamicContext.fragments}\n\n---\nMode: ${composerMode} | Mentioned: ${atPaths.join(', ') || '(none)'} | Question: "${userMessageText}"`;
+                } else {
+                    const refBlock = referencedContents.length ? `\nReferenced files:\n${referencedContents.map(r => `@${r.path}:\n\`\`\`\n${r.content}\n\`\`\``).join('\n')}` : '';
+                    const treeSnapshot = buildWorkspaceSnapshot(getActiveEditorContext() ?? null, fileTree).fileTreeString.slice(0, 1500);
+                    const chatFileContent = pinnedCtxForChat.selectionText != null ? (getActiveEditorContext()?.code ?? fileContent) : fileContent;
+                    void chatFileContent;
+                    fileContext = isCodeRelated && fileContent && fileContent.length > 10
+                        ? `File: ${chatFileName} (${chatLanguage}, ${fileContent.split('\n').length} lines)\nPath: ${pinnedCtxForChat.filePath}\nLanguage: ${chatLanguage}\nCurrent class: ${pinnedCtxForChat.className ?? '(none)'}\n\`\`\`${chatLanguage}\n${fileContent.slice(0, 6000)}\n\`\`\`${refBlock}\nTree: ${treeSnapshot}\n\nQ: "${userMessageText}"`
+                        : isCodeRelated && chatFileName
+                            ? `File: ${chatFileName} (${chatLanguage}) Path: ${pinnedCtxForChat.filePath} | Q: "${userMessageText}"${refBlock} | Tree: ${treeSnapshot}`
+                            : referencedContents.length ? `${userMessageText}${refBlock}` : userMessageText;
+                }
 
                 // Super-fast local handling for file identity queries — instant, no network, fully context-aware
                 if (isFileQuery && fileName) {
@@ -1346,8 +1510,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
             if (pendingStreamFrameRef.current !== null) { cancelAnimationFrame(pendingStreamFrameRef.current); pendingStreamFrameRef.current = null; }
             abortControllerRef.current = null;
             currentRequestIdRef.current = null;
+            try { localStorage.removeItem('azemax:composer:chips'); } catch { /* ignore */ }
+            window.dispatchEvent(new Event('azemax:clear-chips'));
         }
-    }, [input, sessions, currentSessionId, aiLoading, handleNewChat, settings, getActiveFile, getFileTree]);
+    }, [input, sessions, currentSessionId, aiLoading, handleNewChat, settings, getActiveFile, getFileTree, composerMode]);
 
     handleSendRef.current = handleSend;
 
@@ -1985,6 +2151,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             isLoading={isLoading}
                             inputRef={inputRef}
                             disabled={!settings.ai.enabled}
+                            mode={composerMode}
+                            onModeChange={setComposerMode}
                         />
                     </div>
                 </div>

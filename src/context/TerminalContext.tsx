@@ -34,13 +34,19 @@ interface TerminalContextType {
     stopProcess: (id: string) => void;
     writeToTerminal: (id: string, text: string) => void;
 
-    // UI State
-    isRunning: boolean;
-    setIsRunning: (running: boolean) => void; // Allow ShellTerminal to update this
+    // UI State — per-terminal (vscode ITerminalInstance ProcessState pattern)
+    isRunning: boolean; // derived: running for activeTerminalId (kept for backward compat)
+    setIsRunning: (running: boolean) => void; // sets for active terminal only
+    runningTerminalIds: Set<string>;
+    isTerminalRunning: (id: string) => boolean;
+    setTerminalRunning: (id: string, running: boolean) => void;
 
-    // Execution data for performance analysis
-    lastExecutionData: ExecutionData | null;
-    setLastExecutionData: (data: ExecutionData | null) => void;
+    // Execution data for performance analysis — per-terminal
+    lastExecutionData: ExecutionData | null; // derived for active terminal
+    setLastExecutionData: (data: ExecutionData | null) => void; // sets for active terminal
+    executionDataMap: Map<string, ExecutionData>;
+    getExecutionData: (id: string) => ExecutionData | null;
+    setExecutionData: (id: string, data: ExecutionData | null) => void;
 
     // Directory management
     updateTerminalCwd: (terminalId: string, newCwd: string) => void;
@@ -62,13 +68,27 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
             const saved = localStorage.getItem(TERMINALS_STORAGE_KEY) || localStorage.getItem(LEGACY_TERMINALS_STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // Defensive: stored terminals are untrusted. Keep only
-                // well-formed session objects so corrupt data can never
-                // crash terminal rendering.
+                // Defensive: stored terminals are untrusted. VS Code validates via
+                // terminalStorageKeys + isString/isNumber guards for every field.
                 if (Array.isArray(parsed)) {
-                    const valid = parsed.filter((t: unknown): t is TerminalSession =>
-                        !!t && typeof t === 'object' && typeof (t as TerminalSession).id === 'string'
-                    );
+                    const valid = parsed.filter((t: unknown): t is TerminalSession => {
+                        if (!t || typeof t !== 'object') return false;
+                        const c = t as Record<string, unknown>;
+                        if (typeof c.id !== 'string' || !c.id) return false;
+                        if (c.title !== undefined && typeof c.title !== 'string') return false;
+                        if (c.cwd !== undefined && typeof c.cwd !== 'string') return false;
+                        if (c.directoryHistory !== undefined && !Array.isArray(c.directoryHistory)) return false;
+                        // Clamp history length to prevent unbounded growth on corrupt payload
+                        if (Array.isArray(c.directoryHistory) && c.directoryHistory.length > 200) {
+                            c.directoryHistory = (c.directoryHistory as string[]).slice(-200);
+                        }
+                        return true;
+                    }).map(t => {
+                        const c = t as TerminalSession;
+                        // Normalize missing title (old payloads)
+                        if (!c.title) c.title = `Terminal ${c.id}`;
+                        return c;
+                    });
                     if (valid.length > 0) return valid;
                 }
             }
@@ -79,11 +99,47 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     });
 
     const [activeTerminalId, setActiveTerminalId] = useState<string | null>(() => {
-        return localStorage.getItem(ACTIVE_TERMINAL_KEY) || localStorage.getItem(LEGACY_ACTIVE_TERMINAL_KEY) || '1';
+        const saved = localStorage.getItem(ACTIVE_TERMINAL_KEY) || localStorage.getItem(LEGACY_ACTIVE_TERMINAL_KEY) || '1';
+        // Validate existence will be handled by the effect below; return raw for now
+        return saved;
     });
 
-    const [isRunning, setIsRunning] = useState(false);
-    const [lastExecutionData, setLastExecutionData] = useState<ExecutionData | null>(null);
+    // vscode-aligned: per-terminal running state (ProcessState.Running per instance) + per-terminal execution data
+    // Global isRunning/lastExecutionData are derived for the active terminal to keep existing consumers working.
+    const [runningTerminalIds, setRunningTerminalIds] = useState<Set<string>>(() => new Set());
+    const [executionDataMap, setExecutionDataMap] = useState<Map<string, ExecutionData>>(() => new Map());
+
+    const isRunning = useMemo(() => activeTerminalId ? runningTerminalIds.has(activeTerminalId) : false, [activeTerminalId, runningTerminalIds]);
+    const lastExecutionData = useMemo(() => activeTerminalId ? (executionDataMap.get(activeTerminalId) ?? null) : null, [activeTerminalId, executionDataMap]);
+
+    const isTerminalRunning = useCallback((id: string) => runningTerminalIds.has(id), [runningTerminalIds]);
+    const setTerminalRunning = useCallback((id: string, running: boolean) => {
+        setRunningTerminalIds(prev => {
+            const next = new Set(prev);
+            if (running) next.add(id); else next.delete(id);
+            // Avoid re-render if no change
+            if (next.size === prev.size && [...next].every(v => prev.has(v))) return prev;
+            return next;
+        });
+    }, []);
+    // Legacy global setter: operates on active terminal only (mirrors vscode's instance-specific state)
+    const setIsRunning = useCallback((running: boolean) => {
+        if (!activeTerminalId) return;
+        setTerminalRunning(activeTerminalId, running);
+    }, [activeTerminalId, setTerminalRunning]);
+
+    const getExecutionData = useCallback((id: string) => executionDataMap.get(id) ?? null, [executionDataMap]);
+    const setExecutionData = useCallback((id: string, data: ExecutionData | null) => {
+        setExecutionDataMap(prev => {
+            const next = new Map(prev);
+            if (data) next.set(id, data); else next.delete(id);
+            return next;
+        });
+    }, []);
+    const setLastExecutionData = useCallback((data: ExecutionData | null) => {
+        if (!activeTerminalId) return;
+        setExecutionData(activeTerminalId, data);
+    }, [activeTerminalId, setExecutionData]);
 
     // Event bus to send commands directly to ShellTerminal instances
     const [terminalEventEmitter] = useState(() => new EventTarget());
@@ -91,28 +147,43 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     // Terminal instances whose ShellTerminal listener is currently registered (mounted)
     const mountedTerminalsRef = useRef<Set<string>>(new Set());
 
-    // Buffer the latest run until its target terminal is mounted & listening.
-    // This eliminates the race where runData is dispatched before the target
-    // ShellTerminal has registered its listener (run silently lost, no output).
-    const pendingRunRef = useRef<{
-        termId: string;
-        payload: { id: string; language: string; code: string; fileName?: string; stdinInput?: string; cwd?: string };
-    } | null>(null);
+    // Buffer pending runs per-terminal (vs single pendingRunRef which drops concurrent runs on different terminals)
+    const pendingRunsRef = useRef<Map<string, { id: string; language: string; code: string; fileName?: string; stdinInput?: string; cwd?: string }>>(new Map());
 
-    const deliverPendingRun = useCallback(() => {
-        const pending = pendingRunRef.current;
-        if (!pending) return;
-        pendingRunRef.current = null;
-        terminalEventEmitter.dispatchEvent(new CustomEvent('runData', { detail: pending.payload }));
+    const deliverPendingRun = useCallback((termId: string) => {
+        const payload = pendingRunsRef.current.get(termId);
+        if (!payload) return;
+        pendingRunsRef.current.delete(termId);
+        terminalEventEmitter.dispatchEvent(new CustomEvent('runData', { detail: payload }));
     }, [terminalEventEmitter]);
+
+    // Helper: vscode-like instanceId generation (crypto-backed, collision-free)
+    const generateTerminalId = useCallback(() => {
+        try {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                return crypto.randomUUID().slice(0, 8);
+            }
+        } catch { /* fallback */ }
+        return Math.random().toString(36).substring(2, 9);
+    }, []);
+
+    const nextTerminalTitle = useCallback((prev: TerminalSession[]) => {
+        // vscode: sequence-based, not length-based (avoids duplicate after deletions)
+        const nums = prev.map(t => {
+            const m = t.title.match(/Terminal\s+(\d+)/);
+            return m ? parseInt(m[1], 10) : 0;
+        });
+        const max = nums.length ? Math.max(...nums) : 0;
+        return `Terminal ${max + 1}`;
+    }, []);
 
     useEffect(() => {
         const onTerminalReady = (e: Event) => {
             const id = (e as CustomEvent).detail?.id;
             if (!id) return;
             mountedTerminalsRef.current.add(id);
-            if (pendingRunRef.current?.termId === id) {
-                deliverPendingRun();
+            if (pendingRunsRef.current.has(id)) {
+                deliverPendingRun(id);
             }
         };
         const onTerminalUnmounted = (e: Event) => {
@@ -150,17 +221,17 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     }, [terminals, activeTerminalId]);
 
     const createTerminal = useCallback((cwd?: string) => {
-        const id = Math.random().toString(36).substring(2, 9);
+        const id = generateTerminalId();
         const initialCwd = cwd || 'root';
         setTerminals(prev => [...prev, { 
             id, 
-            title: `Terminal ${prev.length + 1}`, 
+            title: nextTerminalTitle(prev), 
             cwd: initialCwd,
             directoryHistory: [initialCwd],
             historyIndex: 0
         }]);
         setActiveTerminalId(id);
-    }, []);
+    }, [generateTerminalId, nextTerminalTitle]);
 
     const removeTerminal = useCallback((id: string) => {
         // Dispatch kill event so the specific ShellTerminal can clean up its connection
@@ -168,24 +239,30 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
 
         setTerminals(prev => {
             const newTerminals = prev.filter(t => t.id !== id);
-            if (activeTerminalId === id && newTerminals.length > 0) {
-                setActiveTerminalId(newTerminals[newTerminals.length - 1].id);
-            } else if (newTerminals.length === 0) {
-                setActiveTerminalId(null);
+            // Derive new active id synchronously from the snapshot to avoid stale closure
+            const shouldSwitch = activeTerminalId === id;
+            if (shouldSwitch) {
+                const nextActive = newTerminals.length > 0 ? newTerminals[newTerminals.length - 1].id : null;
+                // Defer setActiveTerminalId to avoid setState during render of setTerminals updater
+                queueMicrotask(() => setActiveTerminalId(nextActive));
             }
             return newTerminals;
         });
 
-        // Reset running state if we killed the active one
-        if (activeTerminalId === id) setIsRunning(false);
-    }, [activeTerminalId, terminalEventEmitter]);
+        // Per-terminal: clear running state for the removed terminal only (vs global clear that killed other terminals' indicator)
+        setTerminalRunning(id, false);
+        setExecutionData(id, null);
+        pendingRunsRef.current.delete(id);
+        mountedTerminalsRef.current.delete(id);
+    }, [activeTerminalId, terminalEventEmitter, setTerminalRunning, setExecutionData]);
 
     const clearTerminal = useCallback((id: string) => {
         terminalEventEmitter.dispatchEvent(new CustomEvent('clear', { detail: { id } }));
     }, [terminalEventEmitter]);
 
     const stopProcess = useCallback(async (id: string) => {
-        if (getSettings().terminal.confirmBeforeKill && isRunning) {
+        const targetRunning = runningTerminalIds.has(id);
+        if (getSettings().terminal.confirmBeforeKill && targetRunning) {
             const confirmed = await dialogConfirm({
                 title: 'Stop process?',
                 message: 'A process is still running in this terminal. Are you sure you want to stop it?',
@@ -199,30 +276,40 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
         // controller (signal/kill -> backend process termination -> exit frame).
         // isRunning is cleared authoritatively by the session EXITED/FAILED state.
         terminalEventEmitter.dispatchEvent(new CustomEvent('stop', { detail: { id } }));
-    }, [terminalEventEmitter, isRunning]);
+    }, [terminalEventEmitter, runningTerminalIds]);
 
     const writeToTerminal = useCallback((id: string, text: string) => {
         terminalEventEmitter.dispatchEvent(new CustomEvent('writeText', { detail: { id, text } }));
     }, [terminalEventEmitter]);
 
+    // Terminal existence check via ref to avoid stale closure on terminals array (vscode uses instance registry)
+    const terminalsRef = useRef(terminals);
+    useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
+
     const runCode = useCallback(async (code: string, language: string, filename?: string, cwd?: string, stdinInput?: string) => {
         let termId = activeTerminalId;
 
         // Auto-create terminal if none exists
-        if (!termId || !terminals.find(t => t.id === termId)) {
+        if (!termId || !terminalsRef.current.find(t => t.id === termId)) {
             if (!getSettings().terminal.autoOpenTerminal) {
                 return Promise.resolve();
             }
-            termId = Math.random().toString(36).substring(2, 9);
-            setTerminals(prev => [...prev, { id: termId as string, title: `Run: ${filename || 'script'}`, cwd }]);
+            termId = generateTerminalId();
+            const capturedId = termId;
+            const capturedTitle = `Run: ${filename || 'script'}`;
+            setTerminals(prev => {
+                // Guard: if another run already created this id, don't duplicate
+                if (prev.find(t => t.id === capturedId)) return prev;
+                return [...prev, { id: capturedId, title: capturedTitle, cwd }];
+            });
             setActiveTerminalId(termId);
 
             // Immediate — no delay for faster AI terminal feedback
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        // Set running state immediately to trigger tab switching
-        setIsRunning(true);
+        // Per-terminal running state (vs global) — mirrors vscode ProcessState.Running
+        setTerminalRunning(termId as string, true);
 
         const safeLang = language || 'plaintext';
         let runLang = safeLang.toLowerCase();
@@ -236,22 +323,18 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
         if (runLang === 'cs' || runLang === 'c#') runLang = 'csharp';
         if (runLang === 'rb') runLang = 'ruby';
 
-        const payload = { id: termId, code, language: runLang, filename, stdinInput, cwd };
-        pendingRunRef.current = { termId, payload };
+        const payload = { id: termId as string, code, language: runLang, filename, stdinInput, cwd };
+        pendingRunsRef.current.set(termId as string, payload);
 
         // Deliver immediately if the target terminal is already mounted & listening;
         // otherwise flush when that terminal mounts (via terminalReady).
-        // NOTE: an existing terminal's ShellTerminal registers its runData listener on
-        // mount, even if this provider missed the terminalReady frame (child effects run
-        // before the provider's listener is attached on reload). So if the tab already
-        // exists we can dispatch now; only auto-created tabs need the terminalReady flush.
-        const tabExists = Boolean(termId && terminals.find(t => t.id === termId));
-        if (tabExists || mountedTerminalsRef.current.has(termId)) {
-            deliverPendingRun();
+        const tabExists = Boolean(termId && terminalsRef.current.find(t => t.id === termId));
+        if (tabExists || mountedTerminalsRef.current.has(termId as string)) {
+            deliverPendingRun(termId as string);
         }
 
         return Promise.resolve();
-    }, [activeTerminalId, terminals, terminalEventEmitter, deliverPendingRun]);
+    }, [activeTerminalId, terminalEventEmitter, deliverPendingRun, generateTerminalId, setTerminalRunning]);
 
     const updateTerminalCwd = useCallback((terminalId: string, newCwd: string) => {
         setTerminals(prev => prev.map(terminal => {
@@ -273,15 +356,15 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     }, []);
 
     const syncTerminalToFileExplorer = useCallback((terminalId: string) => {
-        const terminal = terminals.find(t => t.id === terminalId);
+        const terminal = terminalsRef.current.find(t => t.id === terminalId);
         if (terminal?.cwd) {
-            // Emit event to sync with file explorer
+            // Emit event to sync with file explorer (mirrors VS Code's workspace folder sync)
             const event = new CustomEvent('sync-cwd-to-explorer', { 
                 detail: { cwd: terminal.cwd } 
             });
             window.dispatchEvent(event);
         }
-    }, [terminals]);
+    }, []);
 
     const value = useMemo(() => ({
         terminals,
@@ -295,12 +378,18 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
         writeToTerminal,
         isRunning,
         setIsRunning,
+        runningTerminalIds,
+        isTerminalRunning,
+        setTerminalRunning,
         lastExecutionData,
         setLastExecutionData,
+        executionDataMap,
+        getExecutionData,
+        setExecutionData,
         updateTerminalCwd,
         syncTerminalToFileExplorer,
         terminalEventEmitter,
-    }), [terminals, activeTerminalId, createTerminal, removeTerminal, setActiveTerminalId, runCode, clearTerminal, stopProcess, writeToTerminal, isRunning, setIsRunning, lastExecutionData, setLastExecutionData, updateTerminalCwd, syncTerminalToFileExplorer, terminalEventEmitter]);
+    }), [terminals, activeTerminalId, createTerminal, removeTerminal, setActiveTerminalId, runCode, clearTerminal, stopProcess, writeToTerminal, isRunning, setIsRunning, runningTerminalIds, isTerminalRunning, setTerminalRunning, lastExecutionData, setLastExecutionData, executionDataMap, getExecutionData, setExecutionData, updateTerminalCwd, syncTerminalToFileExplorer, terminalEventEmitter]);
 
     return (
         <TerminalContext.Provider value={value}>

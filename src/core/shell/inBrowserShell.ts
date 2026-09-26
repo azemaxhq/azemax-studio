@@ -176,10 +176,15 @@ const COMMANDS: Record<string, CommandHandler> = {
     if (r.error) d.term.write(`mkdir: ${a[1]}: ${r.error.message}`);
   },
   rm: (a, d) => {
-    if (!a[1]) { d.term.write('rm: missing operand'); return; }
-    const n = findNode(a[1], d);
-    if (!n) d.term.write(`rm: ${a[1]}: No such file or directory`);
+    // VS Code fileService requires explicit -r/-rf for directories; mirror that to avoid accidental tree loss
+    const raw = a.slice(1).filter(x => !x.startsWith('-'));
+    const flags = a.slice(1).filter(x => x.startsWith('-'));
+    const recursive = flags.some(f => f.includes('r'));
+    if (!raw[0]) { d.term.write('rm: missing operand'); return; }
+    const n = findNode(raw[0], d);
+    if (!n) d.term.write(`rm: ${raw[0]}: No such file or directory`);
     else if (n.id === 'root') d.term.write(`rm: cannot remove root directory`);
+    else if (n.type === 'folder' && !recursive) d.term.write(`rm: cannot remove '${raw[0]}': Is a directory (use rm -r)`);
     else d.deleteNode(n.id);
   },
   tree: handleTree,
@@ -225,11 +230,42 @@ function handleGrep(args: string[], deps: ShellDeps): void {
 COMMANDS['find'] = handleFind;
 COMMANDS['grep'] = handleGrep;
 
+/**
+ * VS Code-like shell tokenization: respects single/double quotes so
+ * `echo "hello world"` and `touch "my file.txt"` work. Mirrors the
+ * preparePathForShell / shellIntegration tokenization in
+ * src/vs/platform/terminal/common/terminalEnvironment.ts (quote-aware).
+ */
+function splitArgs(input: string): string[] {
+  const args: string[] = [];
+  let cur = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (escaped) { cur += ch; escaped = false; continue; }
+    if (ch === '\\' && !inSingle) { escaped = true; continue; }
+    if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
+    if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+    if (!inSingle && !inDouble && /\s/.test(ch)) {
+      if (cur) { args.push(cur); cur = ''; }
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur) args.push(cur);
+  return args;
+}
+
 export function createShellExecutor(deps: ShellDeps) {
   return async (cmd: string): Promise<void> => {
-    const args = cmd.trim().split(/\s+/);
-    const command = args[0];
+    const trimmed = cmd.trim();
+    // Preserve empty command feedback (just newline + prompt) like VS Code's shell integration
     deps.term.write('\r\n');
+    if (!trimmed) return;
+    const args = splitArgs(trimmed);
+    const command = args[0];
     if (!command) return;
     const handler = COMMANDS[command];
     if (handler) await handler(args, deps);

@@ -241,8 +241,10 @@ export class TerminalSessionController {
                 }
                 break;
             case 'terminal.ready':
+                // VS Code: ptyProcessReady -> ProcessState Launching/Running. We model as CONNECTED -> STARTING
+                // Use setState for both so isActive reflects STARTING and listeners get consistent transitions.
                 this.setState('CONNECTED');
-                this.listeners.onState('STARTING');
+                this.setState('STARTING');
                 break;
             case 'terminal.exit':
                 this.listeners.onExit(res.code ?? null, res.signal ?? null);

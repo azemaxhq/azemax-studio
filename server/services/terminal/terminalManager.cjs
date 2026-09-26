@@ -584,7 +584,11 @@ class TerminalManager {
     _garbageCollect() {
         for (const [id, session] of this.sessions) {
             const procAlive = session.proc && (session.proc.exitCode === null) && (session.proc.signalCode === null);
-            const transportAlive = session.transport && session.transport.readyState === session.transport.OPEN;
+            // VS Code: remoteAuthority transport alive check uses WebSocket.OPEN (1). `ws` lib keeps OPEN on constructor, not instance.
+            // Use numeric 1 and fallback to instance.OPEN for mocks (tests use MockWS with static OPEN=1).
+            const OPEN = 1;
+            const transportAlive = session.transport
+                && (session.transport.readyState === OPEN || session.transport.readyState === session.transport.OPEN);
             // Sessions that are EXITED/FAILED/DISPOSED with no process and no transport are stale.
             if (!procAlive && !transportAlive && (session.state === STATES.EXITED || session.state === STATES.FAILED || session.state === STATES.DISPOSED)) {
                 this.sessions.delete(id);

@@ -50,6 +50,10 @@ export interface CodeSettings {
 export interface TerminalSettings {
   fontSize: number;
   fontFamily: string;
+  letterSpacing: number;
+  lineHeight: number;
+  fontWeight: string;
+  fontWeightBold: string;
   cursorStyle: TerminalCursorStyle;
   cursorBlink: boolean;
   allowTransparency: boolean;

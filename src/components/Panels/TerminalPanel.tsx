@@ -18,6 +18,7 @@ export const TerminalPanel: React.FC = () => {
         runCode,
         clearTerminal,
         isRunning,
+        isTerminalRunning,
         stopProcess,
         terminalEventEmitter
     } = useTerminal();
@@ -75,47 +76,48 @@ export const TerminalPanel: React.FC = () => {
         setContextMenu({ x: e.clientX, y: e.clientY });
     };
 
-    const handleContextAction = (action: 'clean' | 'copy' | 'copy-selection' | 'paste' | 'kill') => {
-        if (!activeTerminalId) return;
+    // VS Code gates terminal keybindings via context keys (terminalFocus). Use stable
+    // callback + ref to avoid stale activeTerminalId closure (mirrors DisposableStore pattern).
+    const activeTerminalIdRef = React.useRef(activeTerminalId);
+    React.useEffect(() => { activeTerminalIdRef.current = activeTerminalId; }, [activeTerminalId]);
+    const handleContextAction = React.useCallback((action: 'clean' | 'copy' | 'copy-selection' | 'paste' | 'kill') => {
+        const target = activeTerminalIdRef.current;
+        if (!target) return;
         switch (action) {
             case 'clean':
-                clearTerminal(activeTerminalId);
+                clearTerminal(target);
                 break;
             case 'copy':
-                terminalEventEmitter.dispatchEvent(new CustomEvent('copyAll', { detail: { id: activeTerminalId } }));
+                terminalEventEmitter.dispatchEvent(new CustomEvent('copyAll', { detail: { id: target } }));
                 break;
             case 'copy-selection':
-                terminalEventEmitter.dispatchEvent(new CustomEvent('copySelection', { detail: { id: activeTerminalId } }));
+                terminalEventEmitter.dispatchEvent(new CustomEvent('copySelection', { detail: { id: target } }));
                 break;
             case 'paste':
-                terminalEventEmitter.dispatchEvent(new CustomEvent('paste', { detail: { id: activeTerminalId } }));
+                terminalEventEmitter.dispatchEvent(new CustomEvent('paste', { detail: { id: target } }));
                 break;
             case 'kill':
-                removeTerminal(activeTerminalId);
+                removeTerminal(target);
                 break;
         }
         setContextMenu(null);
-    };
+    }, [clearTerminal, removeTerminal, terminalEventEmitter]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (!activeTerminalId) return;
-
-            // Cmd+K to Clear
+            if (!activeTerminalIdRef.current) return;
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
                 handleContextAction('clean');
             }
-            // Cmd+Shift+C to Copy All
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
                 e.preventDefault();
                 handleContextAction('copy');
             }
         };
-
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeTerminalId]);
+    }, [handleContextAction]);
 
     return (
         <div className="h-full flex flex-col relative overflow-hidden group" style={{ background: "var(--az-surface)"}}>
@@ -137,9 +139,9 @@ export const TerminalPanel: React.FC = () => {
                                     : 'text-[var(--az-text-muted)] border-transparent hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)]'}
                             `}
                         >
-                            {/* Status Icon */}
-                            {activeTerminalId === term.id && isRunning ? (
-                                <div className="w-2 h-2 rounded-full" style={{ background: "var(--az-warning)"}} />
+                            {/* Status Icon — per-terminal (vscode ITerminalStatus) */}
+                            {isTerminalRunning(term.id) ? (
+                                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--az-warning)"}} title="Running" />
                             ) : (
                                 <Terminal size={13} style={{ color: activeTerminalId === term.id ? "var(--az-text)" : "var(--az-text-muted)"}} />
                             )}

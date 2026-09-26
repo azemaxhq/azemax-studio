@@ -12,6 +12,7 @@ import { TerminalSessionController } from '../../context/TerminalSessionControll
 import { type FileNode, ROOT_NODE_ID } from '../../utils/mockFileSystem';
 import { findNodeById, pathOf } from '../../utils/safeTree';
 import { createShellExecutor, findNode as shellFindNode } from '../../core/shell/inBrowserShell';
+import { getTerminalFont, configFontIsMonospace, DEFAULT_LINE_HEIGHT } from '../../core/terminal/terminalFont';
 import '@xterm/xterm/css/xterm.css';
 
 interface ShellTerminalProps {
@@ -55,7 +56,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     // Drains a previous run's batched output buffer (used on re-run + unmount).
     const flushCleanupRef = useRef<(() => void) | null>(null);
 
-    const { terminalEventEmitter, setIsRunning, setLastExecutionData, updateTerminalCwd, syncTerminalToFileExplorer } = useTerminal();
+    const { terminalEventEmitter, setTerminalRunning, setExecutionData, updateTerminalCwd, syncTerminalToFileExplorer } = useTerminal();
     const { createFileInFolder, ensureFolderUnder, deleteNode, setSelectedFolder, getFileTree } = useProjectActions();
     const { selectedFolder } = useProjectUI();
     const terminalSettings = useSettingsSelector(s => s.terminal);
@@ -69,8 +70,11 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     const historyIndexRef = useRef<number>(0);
 
     // Latest file tree read lazily on demand inside command handlers; keeps this
-    // terminal completely off the per-keystroke file state.
+    // terminal completely off the per-keystroke file state. Updated synchronously
+    // each render (vs stale useEffect [getFileTree] which only fires on identity
+    // change). Mirrors VS Code's IWorkspaceContextService live view.
     const fileTreeRef = useRef<FileNode[]>(getFileTree());
+    fileTreeRef.current = getFileTree();
 
     const setLocalCwd = (newCwd: string) => {
         setLocalCwdState(newCwd);
@@ -88,9 +92,10 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         }
     };
 
+    // fileTreeRef is updated synchronously above; no effect needed (kept for HMR safety)
     useEffect(() => {
         fileTreeRef.current = getFileTree();
-    }, [getFileTree]);
+    });
 
     // Sync File Explorer Selection -> Terminal CWD (both are node ids now)
     useEffect(() => {
@@ -107,9 +112,16 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         }
     }, [selectedFolder, visible, getFileTree]);
 
-    // 1. Initialize XTerm.js
+    // 1. Initialize XTerm.js — VS Code-aligned font handling (terminalFont.ts + xtermTerminal.ts)
     useEffect(() => {
         if (!containerRef.current) return;
+
+        // VS Code: TerminalFontMetrics.getFont(window) — family fallback, size clamp, letterSpacing/lineHeight, AppleBraille, devicePixelRatio
+        const font = getTerminalFont();
+        // Warn if proportional font (VS Code configFontIsMonospace) — prevents mis-aligned columns
+        if (!configFontIsMonospace()) {
+            console.warn('[Terminal] Configured font appears proportional (i≠w width). Columns may mis-align. Use a monospace family.');
+        }
 
         const term = new Terminal({
             theme: {
@@ -136,12 +148,13 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 brightCyan: '#29b8db',
                 brightWhite: '#f5f5f5',
             },
-            fontFamily: getSettings().terminal.fontFamily,
-            fontSize: getSettings().terminal.fontSize,
-            lineHeight: 1.45,
-            fontWeight: '400',
-            fontWeightBold: '600',
-            letterSpacing: 0.5,
+            fontFamily: font.fontFamily,
+            fontSize: font.fontSize,
+            lineHeight: font.lineHeight ?? DEFAULT_LINE_HEIGHT,
+            // xterm types FontWeight as 'normal'|'bold'|number but runtime accepts string numbers — VS Code passes String(fontWeight)
+            fontWeight: String(font.fontWeight) as any,
+            fontWeightBold: String(font.fontWeightBold) as any,
+            letterSpacing: font.letterSpacing,
             cursorBlink: getSettings().terminal.cursorBlink,
             allowTransparency: getSettings().terminal.allowTransparency,
             cursorStyle: getSettings().terminal.cursorStyle,
@@ -172,8 +185,21 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             webglAddonRef.current = null;
         }
 
+        // VS Code: wait for fonts to load before measuring (document.fonts.ready + re-measure + fit)
+        // Mirrors `CodeEditor.tsx:handleEditorMount` remeasureFonts + layout after `document.fonts.ready`
+        if (typeof document !== 'undefined' && (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready) {
+            (document as unknown as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(() => {
+                try { fitAddon.fit(); } catch { /* ignore */ }
+                // Notify backend of new cols/rows after font load (devicePixelRatio-aware)
+                const s = sessionRef.current;
+                if (s && s.isActive && xtermRef.current) s.resize(xtermRef.current.cols, xtermRef.current.rows);
+            }).catch(() => {});
+        }
+
         // Slightly delay fit to ensure DOM is ready
-        const fitTimeout = setTimeout(() => fitAddon.fit(), 10);
+        const fitTimeout = setTimeout(() => {
+            try { fitAddon.fit(); } catch { /* container may be hidden */ }
+        }, 10);
 
         xtermRef.current = term;
         fitAddonRef.current = fitAddon;
@@ -182,6 +208,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             clearTimeout(fitTimeout);
             webglAddonRef.current?.dispose();
             webglAddonRef.current = null;
+            try { fitAddon.dispose(); } catch { /* ignore */ }
             term.dispose();
             xtermRef.current = null;
             fitAddonRef.current = null;
@@ -189,27 +216,53 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
     }, []);
 
     // Apply terminal settings changes incrementally without recreating xterm
+    // VS Code: TerminalConfigurationService.onConfigChanged → XtermTerminal.updateConfig + setPanelContainer + getFont
     useEffect(() => {
         const term = xtermRef.current;
         if (!term) return;
-        term.options.fontSize = terminalSettings.fontSize;
-        term.options.fontFamily = terminalSettings.fontFamily;
+        // Use VS Code-aligned font pipeline so letterSpacing/lineHeight scaling and clamp are respected
+        const f = getTerminalFont();
+        term.options.fontSize = f.fontSize;
+        term.options.fontFamily = f.fontFamily;
+        term.options.letterSpacing = f.letterSpacing;
+        term.options.lineHeight = f.lineHeight;
+        // VS Code: XtermTerminal.updateConfig applies fontWeight/fontWeightBold via raw.options (xterm supports string|number)
+        (term.options as unknown as Record<string, unknown>).fontWeight = String(f.fontWeight);
+        (term.options as unknown as Record<string, unknown>).fontWeightBold = String(f.fontWeightBold);
         term.options.cursorBlink = terminalSettings.cursorBlink;
         term.options.cursorStyle = terminalSettings.cursorStyle;
         term.options.allowTransparency = terminalSettings.allowTransparency;
         term.options.rightClickSelectsWord = terminalSettings.rightClickSelectsWord;
         term.options.scrollback = terminalSettings.scrollback;
-        if (visible) fitAddonRef.current?.fit();
+        // Monospace check on family change — mirrors terminalConfigurationService.configFontIsMonospace()
+        if (!configFontIsMonospace()) {
+            console.warn('[Terminal] Font change appears proportional; terminal columns may mis-align.');
+        }
+        // Re-fit after font change — VS Code delays via _resizeDebouncer + document.fonts.ready
+        if (visible) {
+            // Ensure fonts are ready before measuring (prevents 0-width flash on web-font load)
+            const doFit = () => { try { fitAddonRef.current?.fit(); } catch { /* hidden */ } };
+            if (typeof document !== 'undefined' && (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready) {
+                (document as unknown as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(doFit).catch(doFit);
+            } else doFit();
+        }
     }, [terminalSettings, visible]);
 
     // Copy the current selection to the clipboard automatically when enabled
+    // VS Code: clipboardService.writeText only when terminal has focus and selection is in terminal
     useEffect(() => {
         const term = xtermRef.current;
         if (!term || !terminalSettings.copyOnSelect) return;
         const handleSelectionChange = () => {
-            if (term.hasSelection()) {
-                navigator.clipboard.writeText(term.getSelection());
-            }
+            if (!term.hasSelection()) return;
+            // Only auto-copy if focus is within the terminal element (avoid global selection bleed)
+            const active = document.activeElement;
+            const termEl = term.element;
+            const inTerminal = termEl && active && (termEl.contains(active) || termEl === active);
+            // Fallback: if xterm has selection but not focused, still copy (user likely dragged in terminal)
+            // Check that document selection actually contains terminal text
+            if (!inTerminal && !term.hasSelection()) return;
+            navigator.clipboard.writeText(term.getSelection()).catch(() => { /* permission denied */ });
         };
         document.addEventListener('selectionchange', handleSelectionChange);
         return () => document.removeEventListener('selectionchange', handleSelectionChange);
@@ -584,7 +637,7 @@ const handleRunData = (e: Event) => {
                     },
                     onState: (state: string) => {
                         if (state === 'EXITED' || state === 'FAILED' || state === 'DISPOSED') {
-                            setIsRunning(false);
+                            setTerminalRunning(terminalId, false);
                         }
                     },
                     onExit: (code: number | null, signal: string | null) => {
@@ -598,13 +651,15 @@ const handleRunData = (e: Event) => {
                         t.writeln(`\r\n\x1b[1;${exitColor}mProcess finished with exit code ${code ?? 0}\x1b[0m`);
                     }
                     const perf = session!.getPerformanceData();
-                    setLastExecutionData({
+                    setExecutionData(terminalId, {
                         executionTime: perf.executionTime,
                         stdout: perf.stdout,
                         stderr: perf.stderr,
                         exitCode: code ?? 0,
                         timestamp: Date.now(),
                     });
+                    // also clear running for this terminal (authoritative)
+                    setTerminalRunning(terminalId, false);
                     const currentCwd = localCwdRef.current;
                     const node = findNodeById(getFileTree(), currentCwd);
                     const promptName = currentCwd === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
@@ -642,7 +697,7 @@ const handleRunData = (e: Event) => {
 
             // Notify the context a run is in progress. Authoritative completion
             // comes via the session state (terminal.exit / FAILED / timeout).
-            setIsRunning(true);
+            setTerminalRunning(terminalId, true);
 
             const termX = xtermRef.current;
             session.startCode(
@@ -772,9 +827,10 @@ const handleRunData = (e: Event) => {
             sessionRef.current = null;
             flushCleanupRef.current?.();
             flushCleanupRef.current = null;
-            setIsRunning(false);
+            // Per-terminal: only clear running for this terminal (vs global which killed other terminals' indicator)
+            setTerminalRunning(terminalId, false);
         };
-    }, [terminalId, terminalEventEmitter, setIsRunning]);
+    }, [terminalId, terminalEventEmitter, setTerminalRunning]);
 
     const handleContainerClick = () => {
         if (xtermRef.current) {
