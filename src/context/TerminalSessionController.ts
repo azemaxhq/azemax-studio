@@ -143,7 +143,10 @@ export class TerminalSessionController {
 
         this.connectTimer = setTimeout(() => {
             if (current() && ws.readyState !== WebSocket.OPEN) {
-                this.listeners.onError('[error] Could not connect to the execution server. Is the backend running on port 3001?');
+                // VS Code: error via INotificationService with derived host, not hard-coded 3001
+                let target = 'the execution server';
+                try { target = getWebSocketUrl(); } catch { /* ignore */ }
+                this.listeners.onError(`[error] Could not connect to ${target}. Is the backend running?`);
                 this.setState('FAILED');
                 this.finish();
             }

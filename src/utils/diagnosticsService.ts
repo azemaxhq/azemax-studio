@@ -160,15 +160,26 @@ function stripStringsAndComments(code: string, language: string): string {
 // Large-file AI context builder (replaces 8k cliff)
 // ─────────────────────────────────────────────
 export function buildAIContext(code: string, fileName: string, language: string, cursorLine?: number | null): string {
+    // VS Code fix: never lie about line numbers. For large files, return line-numbered slices
+    // so the model's `line: 45` maps to the original file, not the truncated view.
+    // Mirrors `vscode-main/src/vs/workbench/contrib/chat/common/model/chatModel.ts` line-numbered context
+    // and `semanticPlanner.ts:buildLineNumberedCode` (pad + " | " prefix).
     const MAX_FULL = 12000;
-    if (code.length <= MAX_FULL) return code;
+    if (code.length <= MAX_FULL) {
+        // Even for small files, ensure the AI sees line numbers when we later ask for precise diagnostics
+        // — but keep raw for backwards compat when not needed; diagnostics prompt already adds line numbers via context
+        return code;
+    }
 
     const lines = code.split('\n');
     const totalLines = lines.length;
     const cursor = cursorLine && cursorLine >= 1 && cursorLine <= totalLines ? cursorLine : Math.floor(totalLines / 2);
 
-    // Helper to slice lines join
-    const sliceLines = (start: number, end: number) => lines.slice(start, end).join('\n');
+    // Helper: slice lines and prefix with original line numbers (VS Code style "  12 | code")
+    const pad = String(totalLines).length;
+    const numbered = (start: number, end: number) =>
+        lines.slice(start, end).map((l, i) => `${String(start + i + 1).padStart(pad, ' ')} | ${l}`).join('\n');
+    const sliceLines = (start: number, end: number) => numbered(start, end);
 
     // File summary: extract top-level symbols for context preservation
     const symbols: string[] = [];

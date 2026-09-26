@@ -11,8 +11,10 @@ import { dialogConfirm } from '../UI/dialogService';
 import { TerminalSessionController } from '../../context/TerminalSessionController';
 import { type FileNode, ROOT_NODE_ID } from '../../utils/mockFileSystem';
 import { findNodeById, pathOf } from '../../utils/safeTree';
-import { createShellExecutor, findNode as shellFindNode } from '../../core/shell/inBrowserShell';
+import { createShellExecutor, findNode as shellFindNode, getAvailableCommands } from '../../core/shell/inBrowserShell';
 import { getTerminalFont, configFontIsMonospace, DEFAULT_LINE_HEIGHT } from '../../core/terminal/terminalFont';
+import { getXtermTheme, onDidChangeTheme } from '../../core/terminal/terminalTheme';
+import { getDefaultShell, getShellLabel } from '../../core/terminal/terminalProfiles';
 import '@xterm/xterm/css/xterm.css';
 
 interface ShellTerminalProps {
@@ -107,7 +109,8 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 const promptName = selectedFolder === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
                 const dir = pathOf(getFileTree(), selectedFolder);
                 xtermRef.current.write(`\r\n\x1b[3;33m[Directory changed to /${dir}]\x1b[0m`);
-                xtermRef.current.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
+                const host2 = (() => { try { return getShellLabel(getDefaultShell()); } catch { return 'azemax'; } })();
+                xtermRef.current.write(`\r\n\x1b[1;32mguest@${host2}\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
             }
         }
     }, [selectedFolder, visible, getFileTree]);
@@ -124,30 +127,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         }
 
         const term = new Terminal({
-            theme: {
-                // VS Code Dark+ inspired, tuned to your background
-                background: '#0d1117',
-                foreground: '#d4d4d4',
-                cursor: '#ffffff',
-                cursorAccent: '#0d1117',
-                selectionBackground: 'rgba(255, 255, 255, 0.18)',
-                black: '#000000',
-                red: '#cd3131',
-                green: '#0dbc79',
-                yellow: '#e5e510',
-                blue: '#2472c8',
-                magenta: '#bc3fbc',
-                cyan: '#11a8cd',
-                white: '#e5e5e5',
-                brightBlack: '#666666',
-                brightRed: '#f14c4c',
-                brightGreen: '#23d18b',
-                brightYellow: '#f5f543',
-                brightBlue: '#3b8eea',
-                brightMagenta: '#d670d6',
-                brightCyan: '#29b8db',
-                brightWhite: '#f5f5f5',
-            },
+            theme: getXtermTheme() as unknown as Record<string, string>,
             fontFamily: font.fontFamily,
             fontSize: font.fontSize,
             lineHeight: font.lineHeight ?? DEFAULT_LINE_HEIGHT,
@@ -248,6 +228,21 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         }
     }, [terminalSettings, visible]);
 
+    // Theme changes — mirrors `XtermTerminal._updateTheme` subscribed to `IThemeService.onDidColorThemeChange`
+    useEffect(() => {
+        const term = xtermRef.current;
+        if (!term) return;
+        const unsub = onDidChangeTheme(() => {
+            const t = xtermRef.current;
+            if (t) {
+                try { (t.options as unknown as Record<string, unknown>).theme = getXtermTheme() as unknown as Record<string, string>; } catch { /* ignore */ }
+                // VS Code: _decorationAddon.refreshLayouts() on theme change — fit is enough for us
+                try { fitAddonRef.current?.fit(); } catch { /* ignore */ }
+            }
+        });
+        return unsub;
+    }, []);
+
     // Copy the current selection to the clipboard automatically when enabled
     // VS Code: clipboardService.writeText only when terminal has focus and selection is in terminal
     useEffect(() => {
@@ -302,7 +297,9 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             const currentCwd = localCwdRef.current;
             const node = findNodeById(getFileTree(), currentCwd);
             const promptName = currentCwd === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
-            term.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
+            // VS Code: prompt from shell (PS1), not hard-coded "guest@editor" — derive host from profile
+            const host = (() => { try { return getShellLabel(getDefaultShell()); } catch { return 'azemax'; } })();
+            term.write(`\r\n\x1b[1;32mguest@${host}\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
         };
 
         const shellDeps = {
@@ -322,8 +319,15 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         const executeCommand = createShellExecutor(shellDeps);
         const findNode = (path: string) => shellFindNode(path, shellDeps);
 
-        // Welcome message and first prompt
-        term.writeln('\x1b[1;36mWelcome to Azemax Terminal\x1b[0m');
+        // Welcome banner — not hard-coded "Azemax Terminal" shell name; derive from profile (VS Code shows profile name)
+        // The real PTY shell (when kind=='shell') emits its own banner; this is only for the in-browser mock fallback.
+        try {
+            const sh = getDefaultShell();
+            const label = getShellLabel(sh);
+            term.writeln(`\x1b[1;36mWelcome to ${label} — Azemax Terminal\x1b[0m`);
+        } catch {
+            term.writeln('\x1b[1;36mWelcome to Azemax Terminal\x1b[0m');
+        }
         term.writeln('Type \x1b[1;32mhelp\x1b[0m to see available commands.');
         writePrompt();
 
@@ -382,7 +386,8 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 const lastArg = args[args.length - 1];
 
                 if (args.length === 1) {
-                    const cmds = ['ls', 'cd', 'pwd', 'cat', 'echo', 'touch', 'mkdir', 'rm', 'clear', 'help', 'find', 'grep', 'tree'];
+                    // VS Code: completionProviders are registered via extensions, not a hard-coded array — derive from shell registry
+                    const cmds = getAvailableCommands();
                     const matches = cmds.filter((c: string) => c.startsWith(lastArg));
                     if (matches.length === 1) {
                         const newData = matches[0].slice(lastArg.length) + ' ';
@@ -663,7 +668,8 @@ const handleRunData = (e: Event) => {
                     const currentCwd = localCwdRef.current;
                     const node = findNodeById(getFileTree(), currentCwd);
                     const promptName = currentCwd === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
-                    t.write(`\r\n\x1b[1;32mguest@editor\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
+                    const host3 = (() => { try { return getShellLabel(getDefaultShell()); } catch { return 'azemax'; } })();
+                    t.write(`\r\n\x1b[1;32mguest@${host3}\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
                 },
                 onStdinRequired: (interactive: boolean) => {
                     const t = xtermRef.current;
@@ -700,12 +706,19 @@ const handleRunData = (e: Event) => {
             setTerminalRunning(terminalId, true);
 
             const termX = xtermRef.current;
+            // VS Code: Constants.DefaultCols=80 DefaultRows=30, not 120 — and prefer live fit dimensions
+            let cols = 80, rows = 30;
+            if (termX) { cols = termX.cols; rows = termX.rows; }
+            else if (fitAddonRef.current) {
+                // Fallback: derive from fit's proposed dimensions if xterm not yet measured (mirrors getXtermScaledDimensions)
+                try { const dim = (fitAddonRef.current as unknown as { proposeDimensions?: () => { cols:number; rows:number } | undefined }).proposeDimensions?.(); if (dim) { cols = dim.cols; rows = dim.rows; } } catch { /* ignore */ }
+            }
             session.startCode(
                 ce.detail.code,
                 runLanguage,
                 preStdin,
-                termX ? termX.cols : 120,
-                termX ? termX.rows : 30,
+                cols,
+                rows,
                 runCwd,
                 rawFilename,
             );

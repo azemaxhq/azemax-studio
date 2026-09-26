@@ -157,11 +157,12 @@ TOOL SELECTION RULES (Cursor-style Agent):
 
 EDIT DECISION RULES:
 - Choose the smallest sufficient operation set: prefer line/range ops (replace_code, delete_code, insert_code) and comment metadata over full-file rewrites.
-- NEVER output update_file (whole-file content) unless the user explicitly asks to rewrite/regenerate/replace the ENTIRE file.
-- Every line/range number MUST come from the line-numbered CURRENT file content below. Never invent line numbers; never reuse numbers from earlier turns if the file may have changed.
-- For each targeted op include payload.anchor = the EXACT current text (without the line-number prefix) of the FIRST line in the target range. This lets the executor verify the target before editing.
+- For refactor/simplify intents that fundamentally change structure (e.g., "make simple", "remove class", "flatten", "without boilerplate", "direct print"), WHOLE-FILE rewrites ARE allowed and preferred: use update_file with complete new content OR replace_code with startLine=1 endLine=N covering the entire file. This is the correct tool for class->script simplification.
+- NEVER invent line numbers; every number MUST come from the CURRENT line-numbered file below. For whole-file update_file, no line numbers are needed — just path + content.
+- For each targeted range op include payload.anchor = the EXACT current text (without the line-number prefix) of the FIRST line in the target range. This lets the executor verify the target before editing.
 - If the user asks to change/replace/remove something identifiable by surrounding context ("this", "the selected", "that function", "the print"), locate it precisely using the selection range (if any), the cursor position, and nearby code. Resolve references to exact line numbers.
 - Replacing means REPLACING: the new content takes the place of the old — never append a copy of existing lines.
+- For "make simple" example: Python class hello with greet() printing Hello World -> update_file with print("Hello, World!") is correct. Do not preserve class boilerplate when user explicitly asks to simplify.
 - Multiple independent changes in one request → multiple actions with distinct, non-overlapping ranges, ordered top-to-bottom by position.
 
 COMMENT OPERATION RULES (metadata only — comments never alter executable code):

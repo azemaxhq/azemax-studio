@@ -118,11 +118,45 @@ export async function runEditPipeline(request: EditPipelineRequest): Promise<Edi
     }
 
     if (!actions || actions.length === 0) {
-        return {
-            success: false,
-            appliedCount: 0,
-            message: `Understood "${plan.analysis.summary}" but could not build a safe edit for the current file. No changes were made.`,
-        };
+        // Fallback: for clearly-understood refactor/simplify intents where the JSON planner
+        // produced no concrete ops (often due to "whole-file forbidden" hesitation), synthesize
+        // the simplified file directly. This mirrors how a human would handle hello.py -> print.
+        const summaryL = plan.analysis.summary.toLowerCase();
+        const isSimplify = summaryL.includes('simpl') || summaryL.includes('remove the class') || summaryL.includes('without class') || summaryL.includes('direct print') || /make.*simple/.test(request.userMessage.toLowerCase());
+        if (isSimplify && fileContent && fileName) {
+            try {
+                const { sendChat } = await import('./AIClient');
+                const fallbackPrompt = `Rewrite the file "${fileName}" to satisfy: "${request.userMessage}"
+
+Current file (${language}):
+\`\`\`${language}
+${fileContent.slice(0, 8000)}
+\`\`\`
+
+For "make simple" with Python class hello, output should be just print("Hello, World!") (no class, no def, no if __name__). Preserve output behavior.
+
+Respond ONLY with the complete new file content, no JSON, no fences, no explanation.`;
+                const rawContent = await sendChat(
+                    [
+                        { role: 'system', content: `You are a code rewrite engine for ${language}. Output ONLY the complete new file content. No JSON, no markdown, no explanation. Preserve output, remove boilerplate when asked to simplify.` },
+                        { role: 'user', content: fallbackPrompt },
+                    ],
+                    { signal: request.signal, task: 'simple_edit', temperature: 0.1, maxTokens: 2000 },
+                );
+                const cleaned = rawContent ? rawContent.replace(/^```(?:\w+)?\s*/m, '').replace(/\s*```$/m, '').trim() : '';
+                if (cleaned && cleaned !== fileContent.trim() && cleaned.length < fileContent.length * 2) {
+                    // Basic sanity: must be valid non-empty and not absurdly larger
+                    actions = [{ action: 'update_file', path: fileName, content: cleaned }];
+                }
+            } catch { /* ignore fallback errors */ }
+        }
+        if (!actions || actions.length === 0) {
+            return {
+                success: false,
+                appliedCount: 0,
+                message: `Understood "${plan.analysis.summary}" but could not build a safe edit for the current file. No changes were made.`,
+            };
+        }
     }
 
     // [4] EXECUTE — atomic resolve→validate→apply→verify with rollback
@@ -184,13 +218,14 @@ AUTHORITATIVE FILE IDENTITY (derive class from filename, never hard-code):
 CRITICAL: For Java, public class MUST exactly equal expectedClass "${expectedClass ?? '-'}" derived from fileName. File "${fileName}" must contain "public class ${expectedClass ?? '-'}" . Do NOT generate "public class BinarySearch" inside "${fileName}" — if user wants BinarySearch, create "BinarySearch.java" with that class. Keep class == filename.
 
 RULES:
-- Output ONLY JSON: {"actions":[...]} with types: add_comments, remove_comments, insert_code, replace_code, delete_code.
+- Output ONLY JSON: {"actions":[...]} with types: add_comments, remove_comments, insert_code, replace_code, delete_code, update_file.
 - Comment ops are metadata only: {"type":"add_comments","payload":{"comments":[{"line":N,"text":"...","mode":"add"|"replace"|"remove","anchor":"<exact current line N text>"}]}} — never source code, never whole files.
 - Line/range ops: {"type":"replace_code","payload":{"startLine":N,"endLine":M,"content":"new lines","anchor":"<exact current line N text>"}}. Content replaces the range in place — NEVER duplicate existing lines.
-- All line numbers MUST match the numbered CURRENT content below. Include "anchor" for every op.
-- Use the smallest sufficient edit. Whole-file rewrites are forbidden.
+- For refactor/simplify intents (e.g., "make simple", "remove class", "flatten"): update_file is ALLOWED and often correct. Example: Python class hello (9 lines) -> update_file with print("Hello, World!"). Use update_file {"type":"update_file","payload":{"path":"${filePath}","content":"<complete simplified file>"}} OR replace_code 1..N. Do NOT preserve class boilerplate when user explicitly asks to simplify.
+- All line numbers MUST match the numbered CURRENT content below. Include "anchor" for every range op. update_file needs no line numbers.
+- Use the smallest sufficient edit, BUT for whole-file simplifications, whole-file is the smallest correct edit — prefer update_file in that case.
 - For Java: if user says "add binary search" while editing "${fileName}" (expected class "${expectedClass ?? '-'}"), add the method INSIDE "public class ${expectedClass ?? '-'}". Do NOT output "public class BinarySearch" inside "${fileName}". Only emit create_file for a NEW file when user explicitly says "create a separate BinarySearch class/file".
-- Constraints: ${constraintDesc || 'none'}
+- Constraints: ${constraintDesc || 'none'} — but "preserve the existing output" is satisfied by the simplified print (same output, simpler code), so do NOT let it block simplification.
 - If the request cannot be mapped to safe concrete operations, output {"actions":[]}.
 
 Respond ONLY with the JSON.`;

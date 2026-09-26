@@ -327,13 +327,44 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     }
 
     if (!actions || actions.length === 0) {
-        return {
-            success: false,
-            appliedCount: 0,
-            message: `Understood "${plan.analysis.summary}" but could not build a safe edit for the current file. No changes were made.`,
-            activities,
-            planSummary: plan.analysis.summary,
-        };
+        // Fallback for simplify/refactor that the JSON planner missed (same as editPipeline's direct synthesis)
+        const summaryL = plan.analysis.summary.toLowerCase();
+        const isSimplify = summaryL.includes('simpl') || summaryL.includes('remove the class') || summaryL.includes('without class') || summaryL.includes('direct print') || /make.*simple/.test(req.userMessage.toLowerCase());
+        if (isSimplify && pinnedContent && fileName) {
+            try {
+                const { sendChat } = await import('./AIClient');
+                const fallbackPrompt = `Rewrite the file "${fileName}" to satisfy: "${req.userMessage}"
+
+Current file (${language}):
+\`\`\`${language}
+${pinnedContent.slice(0, 8000)}
+\`\`\`
+
+Respond ONLY with the complete new file content, no JSON, no fences, no explanation. For Python class hello -> just print Hello World, remove class boilerplate. Preserve output.`;
+                const raw = await sendChat(
+                    [
+                        { role: 'system', content: `You are a code rewrite engine for ${language}. Output ONLY the complete new file content. No JSON, no markdown.` },
+                        { role: 'user', content: fallbackPrompt },
+                    ],
+                    { signal: req.signal, task: 'simple_edit', temperature: 0.1, maxTokens: 2000 },
+                );
+                const cleaned = raw ? raw.replace(/^```(?:\w+)?\s*/m, '').replace(/\s*```$/m, '').trim() : '';
+                if (cleaned && cleaned !== pinnedContent.trim() && cleaned.length < pinnedContent.length * 2) {
+                    actions = [{ action: 'update_file', path: fileName, content: cleaned } as unknown as import('./aiToolExecutor').AIAction];
+                    const gen = makeActivity('generate', 'done', `Synthesized fallback for ${fileName}`);
+                    push(gen);
+                }
+            } catch { /* ignore */ }
+        }
+        if (!actions || actions.length === 0) {
+            return {
+                success: false,
+                appliedCount: 0,
+                message: `Understood "${plan.analysis.summary}" but could not build a safe edit for the current file. No changes were made.`,
+                activities,
+                planSummary: plan.analysis.summary,
+            };
+        }
     }
 
     // Filter out read-only actions that slipped through (they are already handled)

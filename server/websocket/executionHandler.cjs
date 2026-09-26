@@ -1,4 +1,4 @@
-const { TerminalManager, STATES } = require('../services/terminal/terminalManager.cjs');
+const { TerminalManager, STATES, getDefaultShell, getDefaultShellArgs } = require('../services/terminal/terminalManager.cjs');
 
 // Terminal states after which the session id is safely reusable (process gone
 // or being torn down). STOPPING is included so Run->Stop->Run works immediately:
@@ -85,7 +85,7 @@ function attachExecutionWebSocket(wss) {
                         language: data.language,
                         code: data.code,
                         cwd: data.cwd,
-                        cols: data.cols || 120,
+                        cols: data.cols || 80,
                         rows: data.rows || 30,
                         stdinInput: data.stdinInput || '',
                         preStdin: data.preStdin || null,
@@ -106,7 +106,10 @@ function attachExecutionWebSocket(wss) {
                             return;
                         }
                         manager.setState(id, STATES.STARTING);
-                        manager.spawnPty(session, '/bin/zsh', ['-l']);
+                        // VS Code: ITerminalProfileService.getDefaultProfile per OS, not hard-coded '/bin/zsh'
+                        const shell = getDefaultShell();
+                        const shellArgs = getDefaultShellArgs(shell);
+                        manager.spawnPty(session, shell, shellArgs);
                     } else if (data.kind === 'code') {
                         if (!data.language || !data.code) {
                             manager.setState(id, STATES.FAILED);

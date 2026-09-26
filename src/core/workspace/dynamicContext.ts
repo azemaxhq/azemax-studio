@@ -145,11 +145,12 @@ export function buildDynamicWorkspaceContext(
         totalChars += trimmed.length;
     }
 
-    // Build fragments
+    // Build fragments — VS Code ChatVariables style: active file is line-numbered so edits map correctly,
+    // @-mentioned files are explicit variable entries (score 120), recent/keyword matches are supplemental.
     const lines: string[] = [];
     lines.push(`Workspace: ${snapshot.allFilePaths.length} files | Tree (depth 3):\n${snapshot.fileTreeString.slice(0, 2200)}`);
     if (snapshot.selectionText) {
-        lines.push(`Selection [${snapshot.selectionRange?.startLine}-${snapshot.selectionRange?.endLine}] in ${snapshot.fileName}:\n\`\`\`${snapshot.language}\n${snapshot.selectionText.slice(0, 2500)}\n\`\`\``);
+        lines.push(`Selection [${snapshot.selectionRange?.startLine}-${snapshot.selectionRange?.endLine}] in ${snapshot.fileName}:\n\`\`\`${snapshot.language}\n${snapshot.selectionText.slice(0, 2500)}\n\`\`\` (selection is primary context — prefer it for line numbers)`);
     }
     if (live.visibleCode && live.visibleRange) {
         lines.push(`Visible window [${live.visibleRange.startLine}-${live.visibleRange.endLine}] around cursor:\n\`\`\`${snapshot.language}\n${live.visibleCode.slice(0, 3500)}\n\`\`\``);
@@ -160,7 +161,16 @@ export function buildDynamicWorkspaceContext(
     lines.push(`\n=== FILES (${included.length} included, scored) ===`);
     for (const f of included) {
         const lang = langFromPath(f.path);
-        lines.push(`\n--- ${f.path} [score ${f.score}: ${f.reason}] ---\n\`\`\`${lang}\n${f.content}\n\`\`\``);
+        const isActive = f.path === snapshot.fileName || f.path.toLowerCase() === (snapshot.fileName?.toLowerCase() ?? '');
+        if (isActive) {
+            // Active file: line-numbered like VS Code's ChatModel active editor variable (prevents drift)
+            const fLines = f.content.split('\n');
+            const pad = String(fLines.length).length;
+            const numbered = fLines.map((l, i) => `${String(i + 1).padStart(pad, ' ')} | ${l}`).join('\n');
+            lines.push(`\n--- ${f.path} [score ${f.score}: ${f.reason} — ACTIVE, line-numbered] ---\n\`\`\`${lang}\n${numbered}\n\`\`\``);
+        } else {
+            lines.push(`\n--- ${f.path} [score ${f.score}: ${f.reason}] ---\n\`\`\`${lang}\n${f.content}\n\`\`\``);
+        }
     }
 
     return {

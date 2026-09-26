@@ -5,6 +5,7 @@ import { useTerminal } from '../../context/TerminalContext';
 import { ShellTerminal } from './ShellTerminal';
 import { motion } from 'framer-motion';
 import { ContextMenu } from '../UI/ContextMenu';
+import { languageFromExtension } from '../../core/terminal/terminalProfiles';
 
 export const TerminalPanel: React.FC = () => {
     const { selectedFolder, activeFileMeta } = useProjectUI();
@@ -37,35 +38,8 @@ export const TerminalPanel: React.FC = () => {
         const name = activeFile.name || 'script.js';
         const ext = name.split('.').pop()?.toLowerCase() || 'js';
 
-        // Normalized language ids expected by the backend
-        const extensionToLanguage: Record<string, string> = {
-            js: 'javascript',
-            jsx: 'javascript',
-            ts: 'typescript',
-            tsx: 'typescript',
-            py: 'python',
-            python: 'python',
-            c: 'c',
-            cpp: 'cpp',
-            cc: 'cpp',
-            cxx: 'cpp',
-            rs: 'rust',
-            go: 'go',
-            java: 'java',
-            rb: 'ruby',
-            php: 'php',
-            pl: 'perl',
-            swift: 'swift',
-            kt: 'kotlin',
-            scala: 'scala',
-            r: 'r',
-            lua: 'lua',
-            cs: 'csharp',
-            sh: 'bash',
-            bash: 'bash',
-        };
-
-        const lang = extensionToLanguage[ext] || 'javascript';
+        // VS Code: language via ITerminalProfileService / getLanguageFromFilename — centralized, not duplicated
+        const lang = languageFromExtension(ext);
         runCode(content, lang, name, undefined, stdinContent);
     };
 

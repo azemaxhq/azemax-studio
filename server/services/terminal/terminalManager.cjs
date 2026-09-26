@@ -12,7 +12,23 @@ const { EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS } = require('../execution/const
 // --- Constants -------------------------------------------------------------
 
 const PTY_RELAY = path.join(__dirname, 'ptyRelay.py');
-const DEFAULT_SHELL = process.env.SHELL || '/bin/zsh';
+// VS Code: ITerminalProfileResolverService.getDefaultShell per OS — not hard-coded '/bin/zsh'.
+// Mirrors `src/core/terminal/terminalProfiles.ts:getDefaultShell` for the backend (os-aware).
+function getDefaultShell() {
+  const env = process.env.SHELL || process.env.COMSPEC;
+  if (env) return env;
+  const plat = os.platform();
+  if (plat === 'win32') return 'powershell.exe';
+  if (plat === 'darwin') return '/bin/zsh';
+  return '/bin/bash';
+}
+const DEFAULT_SHELL = getDefaultShell();
+
+function getDefaultShellArgs(shellPath) {
+  if (/powershell/i.test(shellPath)) return [];
+  // login shell for POSIX (VS Code: '-l' for default profiles)
+  return ['-l'];
+}
 
 // --- Session state machine -------------------------------------------------
 // DISCONNECTED -> CONNECTING -> CONNECTED -> STARTING -> RUNNING/WAITING_FOR_INPUT
@@ -53,7 +69,7 @@ class TerminalManager {
 
     static MAX_SESSIONS = 50;
 
-    createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 120, rows = 30, stdinInput: _stdinInput = '', preStdin: _preStdin = null }) {
+    createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 80, rows = 30, stdinInput: _stdinInput = '', preStdin: _preStdin = null }) {
         if (this.sessions.size >= TerminalManager.MAX_SESSIONS) {
             throw new Error(`Session limit reached (${TerminalManager.MAX_SESSIONS}). Close a terminal first.`);
         }
@@ -618,4 +634,4 @@ function idFor(session) {
     return session.id;
 }
 
-module.exports = { TerminalManager, STATES };
+module.exports = { TerminalManager, STATES, getDefaultShell, getDefaultShellArgs, DEFAULT_SHELL };

@@ -258,6 +258,10 @@ function splitArgs(input: string): string[] {
   return args;
 }
 
+export function getAvailableCommands(): string[] {
+  return Object.keys(COMMANDS);
+}
+
 export function createShellExecutor(deps: ShellDeps) {
   return async (cmd: string): Promise<void> => {
     const trimmed = cmd.trim();

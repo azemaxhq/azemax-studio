@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
 import { getSettings } from '../settings/settingsStore';
 import { dialogConfirm } from '../components/UI/dialogService';
+import { normalizeTerminalLanguage } from '../core/terminal/terminalProfiles';
 
 export interface ExecutionData {
     executionTime: number;
@@ -311,17 +312,8 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
         // Per-terminal running state (vs global) — mirrors vscode ProcessState.Running
         setTerminalRunning(termId as string, true);
 
-        const safeLang = language || 'plaintext';
-        let runLang = safeLang.toLowerCase();
-
-        if (runLang === 'js' || runLang === 'node') runLang = 'javascript';
-        if (runLang === 'ts' || runLang === 'tsx') runLang = 'typescript';
-        if (runLang === 'py') runLang = 'python';
-        if (runLang === 'c++') runLang = 'cpp';
-        if (runLang === 'sh') runLang = 'bash';
-        if (runLang === 'rs') runLang = 'rust';
-        if (runLang === 'cs' || runLang === 'c#') runLang = 'csharp';
-        if (runLang === 'rb') runLang = 'ruby';
+        // VS Code: ITerminalProfileService normalizes language via shared registry (not duplicated hard-coded if-chain)
+        const runLang = normalizeTerminalLanguage(language);
 
         const payload = { id: termId as string, code, language: runLang, filename, stdinInput, cwd };
         pendingRunsRef.current.set(termId as string, payload);
