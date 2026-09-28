@@ -15,19 +15,19 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
 
       {/* Subtle Localized Planetary Blue Horizon Glow (Echoing Hero) — compositor-only */}
       <div
-        className="az-atmosphere absolute bottom-[-160px] left-1/2 -translate-x-1/2 w-[100vw] max-w-[1100px] h-[340px] rounded-t-[50%] bg-[radial-gradient(ellipse_at_top,rgba(79,140,255,0.16)_0%,rgba(14,30,58,0.08)_50%,transparent_80%)] pointer-events-none blur-3xl border-t border-[rgba(79,140,255,0.35)]"
+        className="az-atmosphere absolute bottom-[-160px] left-1/2 -translate-x-1/2 w-full max-w-[1100px] h-[340px] rounded-t-[50%] bg-[radial-gradient(ellipse_at_top,rgba(79,140,255,0.16)_0%,rgba(14,30,58,0.08)_50%,transparent_80%)] pointer-events-none blur-3xl border-t border-[rgba(79,140,255,0.35)]"
         aria-hidden="true"
       />
 
       {/* Thin horizon curved line — transform-only, no shadow repaint on scroll */}
       <div
-        className="az-horizon-line absolute bottom-0 left-1/2 -translate-x-1/2 w-[100vw] max-w-[1200px] h-1 bg-gradient-to-r from-transparent via-[#4F8CFF]/50 to-transparent pointer-events-none"
+        className="az-horizon-line absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[1200px] h-1 bg-gradient-to-r from-transparent via-[#4F8CFF]/50 to-transparent pointer-events-none"
         aria-hidden="true"
       />
 
       {/* Additional atmospheric radial glow from center — compositor-only */}
       <div
-        className="az-atmosphere absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vw] max-w-[600px] h-[300px] bg-[radial-gradient(circle,rgba(79,140,255,0.05)_0%,transparent_60%)] pointer-events-none"
+        className="az-atmosphere absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[600px] h-[300px] bg-[radial-gradient(circle,rgba(79,140,255,0.05)_0%,transparent_60%)] pointer-events-none"
         aria-hidden="true"
       />
 
@@ -77,6 +77,11 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
 
           <a
             href="/app"
+            onClick={(e) => {
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              onEnterWorkspace();
+            }}
             className="az-btn-secondary flex items-center justify-center gap-2 group min-h-[44px] w-full sm:w-auto"
           >
             <Terminal size={14} className="text-[#8FB4FF]" />

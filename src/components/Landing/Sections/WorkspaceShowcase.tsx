@@ -493,7 +493,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
 
       {/* Atmosphere wash — compositor-only */}
       <div
-        className="az-atmosphere absolute top-0 right-1/4 w-[600px] max-w-[100vw] h-[300px] bg-[radial-gradient(circle,rgba(79,140,255,0.07)_0%,transparent_70%)] pointer-events-none blur-3xl"
+        className="az-atmosphere absolute top-0 right-1/4 w-[600px] max-w-full h-[300px] bg-[radial-gradient(circle,rgba(79,140,255,0.07)_0%,transparent_70%)] pointer-events-none blur-3xl"
         aria-hidden="true"
       />
 

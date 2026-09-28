@@ -67,11 +67,11 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
     // Check prefers-reduced-motion
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Coarse pointers (phones/tablets): mobile GPU fill-rate is the bottleneck.
-    // Halve backing-store DPR, cut star count, and skip mouse parallax entirely.
+    // Cap at 1 for low-power, and crisp native pixel ratio (up to 2) for desktop / Retina / 4K.
     const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
     const isSmallViewport = Math.min(window.innerWidth, window.innerHeight) < 640;
     const isLowPower = isCoarsePointer || isSmallViewport;
-    const maxDpr = isLowPower ? 1 : 1.5;
+    const maxDpr = isLowPower ? 1 : Math.min(window.devicePixelRatio || 1, 2);
 
     // Mouse parallax tracking with spring physics.
     let mouseX = 0;
@@ -373,13 +373,19 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
       ctx.globalAlpha = 1;
     };
 
+    let lastFrameTime = -1;
+
     const handleResize = () => {
-      width = starCanvas.clientWidth || window.innerWidth;
-      height = starCanvas.clientHeight || window.innerHeight;
+      width = containerRef.current?.clientWidth || starCanvas.clientWidth || window.innerWidth;
+      height = containerRef.current?.clientHeight || starCanvas.clientHeight || window.innerHeight;
       if (width <= 0 || height <= 0) return;
 
-      // Reset spring so parallax doesn't snap from a stale position
-      mouseX = 0; mouseY = 0; targetMouseX = 0; targetMouseY = 0;
+      // Reset spring & frame delta so parallax doesn't snap from a stale position or jump
+      mouseX = 0;
+      mouseY = 0;
+      targetMouseX = 0;
+      targetMouseY = 0;
+      lastFrameTime = -1;
 
       const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
 
@@ -391,15 +397,15 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
       planetCanvas.height = Math.floor((height + PLANET_PAD * 2) * dpr);
 
       initStars(width, height);
-      // Memory optimization: cap texture size at 1280px max (cuts GPU allocation from ~38MB to ~4MB)
-      const textureSize = Math.min(1280, Math.max(800, Math.floor(width)));
+      // High-resolution texture optimization: up to 2048px on 4K/Retina displays
+      const textureSize = Math.min(2048, Math.max(800, Math.floor(width)));
       generateSurfaceTexture(textureSize);
       paintPlanet();
     };
 
     handleResize();
 
-    // Throttled window resize via rAF
+    // Throttled resize via rAF
     let resizeRafId: number | null = null;
     const onResizeThrottled = () => {
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
@@ -409,6 +415,25 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
       });
     };
     window.addEventListener('resize', onResizeThrottled, { passive: true });
+
+    // Container ResizeObserver for dynamic layout / font-load / orientation changes
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      resizeObserver = new ResizeObserver(onResizeThrottled);
+      resizeObserver.observe(containerRef.current);
+    }
+
+    // DPR change detection when dragging window across displays with different resolutions
+    let dprMediaQuery: MediaQueryList | null = null;
+    const handleDprChange = () => {
+      onResizeThrottled();
+    };
+    try {
+      dprMediaQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprMediaQuery.addEventListener?.('change', handleDprChange);
+    } catch {
+      // Legacy browser fallback
+    }
 
     let running = false;
     const canRun = () => isVisible && isTabVisible && !prefersReducedMotion;
@@ -446,7 +471,6 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    let lastFrameTime = -1;
     const render = (time: number) => {
       const dt = lastFrameTime < 0 ? 0.016 : Math.min(0.05, Math.max(0, (time - lastFrameTime) / 1000));
       lastFrameTime = time;
@@ -481,6 +505,12 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
       if (!isCoarsePointer) window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('resize', onResizeThrottled);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      resizeObserver?.disconnect();
+      try {
+        dprMediaQuery?.removeEventListener?.('change', handleDprChange);
+      } catch {
+        // Safe fallback
+      }
       observer.disconnect();
     };
   }, []);

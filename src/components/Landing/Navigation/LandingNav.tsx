@@ -202,7 +202,7 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
     };
   }, []);
 
-  // ── Mobile menu — Esc, desktop resize, body scroll lock ──────────────────
+  // ── Mobile menu — Esc, desktop resize, outside click, body scroll lock ───
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -211,8 +211,14 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
     const onResize = () => {
       if (window.innerWidth >= 768) setMobileMenuOpen(false);
     };
+    const onPointerDown = (e: PointerEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setMobileMenuOpen(false);
+      }
+    };
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', onResize);
+    window.addEventListener('pointerdown', onPointerDown);
 
     const prevOverflow = document.body.style.overflow;
     const prevPaddingRight = document.body.style.paddingRight;
@@ -223,6 +229,7 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
     return () => {
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('pointerdown', onPointerDown);
       document.body.style.overflow = prevOverflow;
       document.body.style.paddingRight = prevPaddingRight;
     };
@@ -386,13 +393,13 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
           aria-label={mobileMenuOpen ? 'Close Menu' : 'Open Menu'}
           aria-expanded={mobileMenuOpen}
           aria-controls="landing-mobile-menu"
-          className={`grid h-9 w-9 place-items-center rounded-lg border transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70 md:hidden ${
+          className={`grid h-10 w-10 place-items-center rounded-lg border transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70 md:hidden ${
             mobileMenuOpen
               ? 'border-[#4F8CFF]/40 bg-[#4F8CFF]/10 text-white'
               : 'border-white/10 bg-white/[0.04] text-white/80 hover:text-white'
           }`}
         >
-          {mobileMenuOpen ? <X size={17} /> : <Menu size={17} />}
+          {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
         </button>
       </div>
 
@@ -400,7 +407,7 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
       <div
         id="landing-mobile-menu"
         aria-hidden={!mobileMenuOpen}
-        className={`absolute inset-x-0 top-full max-h-[calc(100dvh-3.5rem)] overflow-y-auto px-4 pb-4 motion-reduce:transition-none md:hidden ${
+        className={`absolute inset-x-0 top-full max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain px-4 pb-4 motion-reduce:transition-none md:hidden ${
           mobileMenuOpen
             ? 'pointer-events-auto translate-y-0 opacity-100'
             : 'pointer-events-none -translate-y-2 opacity-0'

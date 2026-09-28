@@ -279,7 +279,7 @@ export const ProductSystem: React.FC = memo(() => {
 
       {/* Background Soft Blue Lighting Beam — compositor-only */}
       <div
-        className="az-atmosphere absolute top-1/3 left-1/2 -translate-x-1/2 w-[100vw] max-w-[1000px] h-[450px] bg-[radial-gradient(ellipse_at_center,rgba(79,140,255,0.08)_0%,rgba(14,30,58,0.02)_60%,transparent_75%)] pointer-events-none blur-3xl"
+        className="az-atmosphere absolute top-1/3 left-1/2 -translate-x-1/2 w-full max-w-[1000px] h-[450px] bg-[radial-gradient(ellipse_at_center,rgba(79,140,255,0.08)_0%,rgba(14,30,58,0.02)_60%,transparent_75%)] pointer-events-none blur-3xl"
         aria-hidden="true"
       />
 

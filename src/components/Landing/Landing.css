@@ -618,7 +618,7 @@ html.az-landing-active #root {
    React sets --az-progress (0→1) inline; no layout invalidation. */
 .az-progress-track {
   transform-origin: left center;
-  transform: scaleX(var(--az-progress, 0));
+  transform: scaleX(var(--az-progress, 0.25));
   transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
 }
@@ -627,9 +627,8 @@ html.az-landing-active #root {
 }
 
 /* ============================================================
-   TAB PANEL VISIBILITY SYSTEM
-   All panels pre-mounted; CSS controls show/hide.
-   No DOM removal on tab switch → no repaint of the container.
+   TAB PANEL VISIBILITY & TRANSITION SYSTEM
+   Smooth fade and glide when switching workspace modes.
    ============================================================ */
 .az-tab-panel-inactive {
   display: none;
@@ -638,14 +637,46 @@ html.az-landing-active #root {
   display: block;
   animation: az-panel-fadein 200ms ease both;
 }
+.az-tab-panel-enter {
+  animation: az-panel-fadein 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 @keyframes az-panel-fadein {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .az-tab-panel-active {
-    animation: none;
+  .az-tab-panel-active,
+  .az-tab-panel-enter {
+    animation: none !important;
   }
+}
+
+/* ============================================================
+   CONTENT VISIBILITY & PERFORMANCE OPTIMIZATION
+   Skips rendering calculations for below-fold sections until near viewport.
+   contain-intrinsic-size prevents scroll layout shift.
+   ============================================================ */
+#philosophy {
+  content-visibility: auto;
+  contain-intrinsic-size: 700px;
+}
+#modes {
+  content-visibility: auto;
+  contain-intrinsic-size: 800px;
+}
+#system {
+  content-visibility: auto;
+  contain-intrinsic-size: 800px;
+}
+#initiation {
+  content-visibility: auto;
+  contain-intrinsic-size: 600px;
 }
 
 /* ============================================================

@@ -58,7 +58,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
         </div>
 
         {/* Main Campaign Headline */}
-        <h1 className="az-hero-headline text-[2.75rem] leading-[1.02] sm:text-7xl md:text-8xl lg:text-[96px] tracking-[-0.03em] sm:leading-[0.98] text-white font-normal mb-5 sm:mb-6 text-balance select-none">
+        <h1 className="az-hero-headline text-[2.25rem] min-[380px]:text-[2.75rem] leading-[1.02] sm:text-7xl md:text-8xl lg:text-[96px] tracking-[-0.03em] sm:leading-[0.98] text-white font-normal mb-5 sm:mb-6 text-balance select-none">
           <span className="az-display-serif block">Build</span>
           <span className="az-display-serif-italic az-text-blue block mt-1">
             beyond limits.
@@ -102,7 +102,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
         {/* 3. Discovery control — the core loop as navigation into the live demos */}
         <nav
           aria-label="Explore the Azemax loop"
-          className="az-hero-metadata relative top-6 sm:top-9 grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-center gap-1 sm:gap-x-3 sm:gap-y-2 pt-5 sm:pt-6 border-t border-[rgba(255,255,255,0.06)] w-full max-w-md sm:max-w-none"
+          className="az-hero-metadata mt-6 sm:mt-9 grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-center gap-1 sm:gap-x-3 sm:gap-y-2 pt-5 sm:pt-6 border-t border-[rgba(255,255,255,0.06)] w-full max-w-md sm:max-w-none"
         >
           {DISCOVERY.map((item) => (
             <a

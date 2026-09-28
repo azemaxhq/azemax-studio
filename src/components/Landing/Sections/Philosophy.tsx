@@ -132,7 +132,7 @@ export const Philosophy: React.FC = memo(() => {
 
       {/* Background Subtle Atmosphere — compositor-only layer */}
       <div
-        className="az-atmosphere absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vw] max-w-[800px] h-[350px] bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.06)_0%,transparent_70%)] pointer-events-none blur-3xl"
+        className="az-atmosphere absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[800px] h-[350px] bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.06)_0%,transparent_70%)] pointer-events-none blur-3xl"
         aria-hidden="true"
       />
 
@@ -167,7 +167,7 @@ export const Philosophy: React.FC = memo(() => {
           <div className="hidden lg:block absolute top-[52px] left-8 right-8 h-[1px] bg-[rgba(79,140,255,0.15)] z-0">
             {/* Dynamic illuminated track according to active step — scaleX via CSS var */}
             <div
-              className={`h-full bg-gradient-to-r from-[#3B82F6] to-[#4F8CFF] shadow-[0_0_12px_#4F8CFF] az-progress-track ${isVisible ? 'az-visible' : ''}`}
+              className={`h-full w-full bg-gradient-to-r from-[#3B82F6] to-[#4F8CFF] shadow-[0_0_12px_#4F8CFF] az-progress-track ${isVisible ? 'az-visible' : ''}`}
               style={{ '--az-progress': `${(activeStage + 1) / STAGES.length}` } as React.CSSProperties}
             />
           </div>
