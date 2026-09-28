@@ -30,7 +30,7 @@ const ActionTooltip = ({ text, shortcut, show, anchorRect }: { text: string; sho
             className="fixed z-[9999] pointer-events-none whitespace-nowrap"
             style={{ top, left, transform: 'translateX(-50%)' }}
         >
-            <div className="px-2.5 py-1.5 rounded-lg bg-[#1a1f28]/95 backdrop-blur-xl border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.5)] text-[11px] font-medium text-white/80 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-2.5 py-1.5 rounded-[7px] bg-[var(--az-overlay)] border border-[var(--az-border)] shadow-[0_8px_24px_rgba(0,0,0,0.5)] text-[11px] font-medium text-[var(--az-text-secondary)] flex items-center gap-2 animate-in fade-in zoom-in-95 duration-150">
                 <span>{text}</span>
                 {shortcut && (
                     <kbd className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.08] text-white/40 font-mono border border-white/[0.06]">{shortcut}</kbd>
@@ -45,7 +45,7 @@ const ActionTooltip = ({ text, shortcut, show, anchorRect }: { text: string; sho
 const HeaderActionBtn = ({
     onClick,
     icon: Icon,
-    iconSize = 14,
+    iconSize = 16,
     tooltip,
     shortcut,
     isActive = false,
@@ -101,12 +101,12 @@ const HeaderActionBtn = ({
                 }}
                 onBlur={() => { setShowTooltip(false); setAnchorRect(null); }}
                 className={`
-                    relative w-7 h-7 flex items-center justify-center rounded-[5px] transition-colors duration-100 ease-out group/abtn shrink-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] focus-visible:ring-offset-0 border active:bg-[var(--az-surface-active)]
+                    relative w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors duration-150 ease-out group/abtn shrink-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] focus-visible:ring-offset-0 border active:bg-[var(--az-surface-active)]
                     ${isActive
                         ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border-[var(--az-border)]'
                         : danger
-                            ? 'text-[var(--az-text-muted)] hover:text-[var(--az-error)] hover:bg-[var(--az-error-soft)] border-transparent hover:border-[var(--az-error-border)]'
-                            : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-white/[0.06] border-transparent'
+                            ? 'text-[var(--az-icon)] hover:text-[var(--az-error)] hover:bg-[var(--az-error-soft)] border-transparent hover:border-[var(--az-error-border)]'
+                            : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-white/[0.06] border-transparent'
                     }
                 `}
             >
@@ -230,17 +230,17 @@ export const Sidebar: React.FC = () => {
             <div className="shrink-0 relative z-10">
                 <div className="flex items-center justify-between pl-3 pr-1.5 gap-2 relative shrink-0" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', borderBottom: '1px solid var(--az-border)', background: 'var(--az-surface)' }}>
                     <div className="flex items-center min-w-0 flex-1">
-                        <span className="text-[11px] font-[600] tracking-[0.08em] uppercase truncate select-none leading-none antialiased" style={{ color: 'var(--az-text-muted)', letterSpacing: '0.08em' }}>
+                        <span className="text-[11px] font-[600] tracking-[0.08em] uppercase truncate select-none leading-none antialiased" style={{ color: 'var(--az-text)', letterSpacing: '0.08em' }}>
                             Explorer
                         </span>
                     </div>
 
                     {/* Header actions — compact IDE toolbar: Search / New File / New Folder / Sort / Refresh / More */}
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                         <HeaderActionBtn
                             onClick={toggleSearch}
                             icon={Search}
-                            iconSize={14}
+                            iconSize={16}
                             tooltip="Search Explorer"
                             shortcut="⌘F"
                             isActive={isSearchOpen}
@@ -250,7 +250,7 @@ export const Sidebar: React.FC = () => {
                         <HeaderActionBtn
                             onClick={handleCreateFile}
                             icon={FilePlus}
-                            iconSize={14}
+                            iconSize={16}
                             tooltip="New File"
                             shortcut="⌘N"
                             aria-label="New File"
@@ -258,7 +258,7 @@ export const Sidebar: React.FC = () => {
                         <HeaderActionBtn
                             onClick={handleCreateFolder}
                             icon={FolderPlus}
-                            iconSize={14}
+                            iconSize={16}
                             tooltip="New Folder"
                             shortcut="⌘⇧N"
                             aria-label="New Folder"
@@ -271,9 +271,9 @@ export const Sidebar: React.FC = () => {
                                 aria-label="Sort Explorer"
                                 aria-expanded={showSortMenu}
                                 title="Sort Explorer"
-                                className={`w-7 h-7 flex items-center justify-center rounded-[5px] border transition-colors duration-100 shrink-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] active:bg-[var(--az-surface-active)] ${showSortMenu ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-white/[0.06] border-transparent'}`}
+                                className={`w-7 h-7 flex items-center justify-center rounded-[6px] border transition-colors duration-150 shrink-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] active:bg-[var(--az-surface-active)] ${showSortMenu ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)]' : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-white/[0.06] border-transparent'}`}
                             >
-                                <ArrowUpDown size={14} strokeWidth={1.75} className="shrink-0" />
+                                <ArrowUpDown size={16} strokeWidth={1.75} className="shrink-0" />
                             </button>
                             {showSortMenu && (
                                 <div className="absolute right-0 top-[36px] min-w-[214px] py-1.5 rounded-xl border shadow-xl z-50 overflow-hidden" style={{ background: 'var(--az-overlay)', borderColor: 'var(--az-border)', boxShadow: '0 16px 40px rgba(0,0,0,0.55)' }}>
@@ -314,7 +314,7 @@ export const Sidebar: React.FC = () => {
                         <HeaderActionBtn
                             onClick={handleRefresh}
                             icon={RefreshCw}
-                            iconSize={14}
+                            iconSize={16}
                             tooltip="Refresh Explorer"
                             aria-label="Refresh Explorer"
                             isBusy={isRefreshing}
@@ -324,9 +324,9 @@ export const Sidebar: React.FC = () => {
                                 onClick={() => setShowOverflow(v => !v)}
                                 aria-label="More actions"
                                 aria-expanded={showOverflow}
-                                className={`w-7 h-7 flex items-center justify-center rounded-[5px] border transition-colors duration-100 shrink-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] active:bg-[var(--az-surface-active)] ${showOverflow ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-white/[0.06] border-transparent'}`}
+                                className={`w-7 h-7 flex items-center justify-center rounded-[6px] border transition-colors duration-150 shrink-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] active:bg-[var(--az-surface-active)] ${showOverflow ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)]' : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-white/[0.06] border-transparent'}`}
                             >
-                                <MoreHorizontal size={14} strokeWidth={1.75} className="shrink-0" />
+                                <MoreHorizontal size={16} strokeWidth={1.75} className="shrink-0" />
                             </button>
                             {showOverflow && (
                                 <div className="absolute right-0 top-[36px] min-w-[200px] py-1.5 rounded-xl border shadow-xl z-50 overflow-hidden" style={{ background: 'var(--az-overlay)', borderColor: 'var(--az-border)', boxShadow: '0 16px 40px rgba(0,0,0,0.55)' }}>

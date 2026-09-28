@@ -34,6 +34,9 @@ export interface TripleSlashResult {
     success: boolean;
     message?: string;
     appliedCount?: number;
+    /** Monaco model version immediately after our own apply — lets the caller
+     *  distinguish "user typed after we applied" from "stale result". */
+    appliedVersion?: number;
 }
 
 const TRIPLE_SLASH_RE = /^(.*?)\/\/\/\s*(.+);$/;
@@ -43,8 +46,19 @@ const TRIPLE_SLASH_RE = /^(.*?)\/\/\/\s*(.+);$/;
  * the code transformed (AI path). Anything else on an inline `code ///text;`
  * line is literal comment text ("pass different inputs") — handled
  * deterministically without any AI round trip.
+ *
+ * Covers imperatives users actually type (print/make/use/show/explain/…):
+ * without these, instructions like "print only the number" were echoed back
+ * as `// print only the number` instead of reaching the model.
  */
-const EDIT_VERB_RE = /\b(fix|fixes|fixing|refactor|refactors|rename|renames|remove|removes|removing|delete|deletes|deleting|insert|inserts|replace|replaces|replacing|change|changes|changing|update|updates|updating|convert|converts|generate|generates|create|creates|creating|optimiz|optimis|simplify|simplifies|implement|implements|extract|extracts|move|moves|moving|wrap|wraps|sort|sorts|reverse|reverses)\b/i;
+const EDIT_VERB_RE = /\b(fix|fixes|fixing|refactor|refactors|rename|renames|remove|removes|removing|delete|deletes|deleting|insert|inserts|replace|replaces|replacing|change|changes|changing|update|updates|updating|convert|converts|generate|generates|create|creates|creating|optimiz|optimis|simplify|simplifies|implement|implements|extract|extracts|move|moves|moving|wrap|wraps|sort|sorts|reverse|reverses|print|prints|printing|display|displays|show|shows|log|logs|logging|make|makes|making|use|uses|using|set|sets|return|returns|returning|call|calls|calling|compute|computes|calculate|calculates|validate|validates|parse|parses|handle|handles|check|checks|checking|explain|explains|describe|describes)\b/i;
+
+/**
+ * Questions must always reach the model — echoing "what does this do" back
+ * as `// what does this do` looks broken. Matches a trailing `?` or a
+ * leading interrogative/explainer word.
+ */
+const QUESTION_LIKE_RE = /^\s*(what|why|how|which|who|when|where|explain|describe|tell\s+me)\b|\?\s*$/i;
 
 /**
  * Deterministic literal-comment builder for inline `code ///text;`.
@@ -55,7 +69,10 @@ const EDIT_VERB_RE = /\b(fix|fixes|fixing|refactor|refactors|rename|renames|remo
  *   - standalone `///cmd;` (no code prefix — nothing to attach to),
  *   - commenting/documenting intents ("add comments") — the model must
  *     *generate* the comment content,
- *   * - edit-verb instructions ("fix the loop") — the code must be transformed,
+ *   - questions ("what does this do?", "explain this") — echoing the question
+ *     back as a comment looks broken; the model must answer,
+ *   - edit-verb instructions ("fix the loop", "print only the number") — the
+ *     code must be transformed,
  *   - multi-line / overlong text, or languages without line-comment syntax.
  */
 export function buildLiteralInlineComment(prefix: string, commandText: string, language: string): string | null {
@@ -66,6 +83,7 @@ export function buildLiteralInlineComment(prefix: string, commandText: string, l
     // The trailing `;` belongs to the /// trigger syntax, never to the comment.
     const text = (commandText ?? '').trim().replace(/;+\s*$/, '').trim();
     if (!text || text.includes('\n') || text.length > 140) return null;
+    if (QUESTION_LIKE_RE.test(text)) return null;
     if (EDIT_VERB_RE.test(text)) return null;
     if (isCommentingIntent(text) || isDocumentingIntent(text)) return null;
     const comment = applyCommentSyntax(text, language);
@@ -366,6 +384,7 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
         // forceMoveMarkers keeps cursor/selection stable; edit is atomic and undoable
         editor.executeEdits('triple-slash-premium', [{ range, text: finalCode, forceMoveMarkers: true }]);
         editor.pushUndoStop();
+        const appliedVersion = model.getVersionId();
 
         // Persist to file tree without triggering a second setValue() (editor already has correct content)
         if (fileId) {
@@ -386,7 +405,7 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
             }
             return result2;
         }
-        return { success: true, message: 'Applied via direct edit (high-quality, glitch-free)', appliedCount: 1 };
+        return { success: true, message: 'Applied via direct edit (high-quality, glitch-free)', appliedCount: 1, appliedVersion };
     } catch (_e) {
         // Fallback to atomic file-tree plan if direct edit threw (model disposed, etc.)
         const deps2 = createExecutorDeps(workspace, fileName, fileId);

@@ -108,9 +108,9 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 const node = findNodeById(getFileTree(), selectedFolder);
                 const promptName = selectedFolder === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
                 const dir = pathOf(getFileTree(), selectedFolder);
-                xtermRef.current.write(`\r\n\x1b[3;33m[Directory changed to /${dir}]\x1b[0m`);
+                xtermRef.current.write(`\r\n\x1b[2;37m[Directory changed to /${dir}]\x1b[0m`);
                 const host2 = (() => { try { return getShellLabel(getDefaultShell()); } catch { return 'azemax'; } })();
-                xtermRef.current.write(`\r\n\x1b[1;32mguest@${host2}\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
+                xtermRef.current.write(`\r\n\x1b[1;38;2;91;140;255mguest@${host2}\x1b[0m:\x1b[1;38;2;170;180;194m${promptName}\x1b[0m$ `);
             }
         }
     }, [selectedFolder, visible, getFileTree]);
@@ -299,7 +299,7 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
             const promptName = currentCwd === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
             // VS Code: prompt from shell (PS1), not hard-coded "guest@editor" — derive host from profile
             const host = (() => { try { return getShellLabel(getDefaultShell()); } catch { return 'azemax'; } })();
-            term.write(`\r\n\x1b[1;32mguest@${host}\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
+            term.write(`\r\n\x1b[1;38;2;91;140;255mguest@${host}\x1b[0m:\x1b[1;38;2;170;180;194m${promptName}\x1b[0m$ `);
         };
 
         const shellDeps = {
@@ -324,9 +324,9 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         try {
             const sh = getDefaultShell();
             const label = getShellLabel(sh);
-            term.writeln(`\x1b[1;36mWelcome to ${label} — Azemax Terminal\x1b[0m`);
+            term.writeln(`\x1b[1;38;2;127;169;255mWelcome to ${label} — Azemax Terminal\x1b[0m`);
         } catch {
-            term.writeln('\x1b[1;36mWelcome to Azemax Terminal\x1b[0m');
+            term.writeln('\x1b[1;38;2;127;169;255mWelcome to Azemax Terminal\x1b[0m');
         }
         term.writeln('Type \x1b[1;32mhelp\x1b[0m to see available commands.');
         writePrompt();
@@ -669,7 +669,7 @@ const handleRunData = (e: Event) => {
                     const node = findNodeById(getFileTree(), currentCwd);
                     const promptName = currentCwd === ROOT_NODE_ID ? '~' : (node?.name ?? '~');
                     const host3 = (() => { try { return getShellLabel(getDefaultShell()); } catch { return 'azemax'; } })();
-                    t.write(`\r\n\x1b[1;32mguest@${host3}\x1b[0m:\x1b[1;34m${promptName}\x1b[0m$ `);
+                    t.write(`\r\n\x1b[1;38;2;91;140;255mguest@${host3}\x1b[0m:\x1b[1;38;2;170;180;194m${promptName}\x1b[0m$ `);
                 },
                 onStdinRequired: (interactive: boolean) => {
                     const t = xtermRef.current;

@@ -70,9 +70,9 @@ export const ExplanationSidebar: React.FC = () => {
                 <div className="flex items-center justify-between px-2.5 shrink-0" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', borderBottom: '1px solid var(--az-border)', background: 'var(--az-surface)' }}>
                     <div className="flex items-center gap-2 min-w-0">
                         <div className="w-7 h-7 rounded-md bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center shrink-0">
-                            <BookOpen size={14} className="text-[#a371f7] shrink-0" />
+                            <BookOpen size={14} className="text-[var(--az-icon)] shrink-0" />
                         </div>
-                        <span className="text-[11px] font-medium tracking-[0.08em] text-white/70 uppercase truncate leading-none antialiased">
+                        <span className="text-[11px] font-medium tracking-[0.08em] text-[var(--az-text)] uppercase truncate leading-none antialiased">
                             Explanation
                         </span>
                     </div>
@@ -80,12 +80,12 @@ export const ExplanationSidebar: React.FC = () => {
             </div>
 
             {/* Toolbar — stable height */}
-            <div className="shrink-0 p-2.5 flex flex-wrap items-center gap-2 border-b border-white/[0.04] bg-[var(--az-surface-2)]">
+            <div className="shrink-0 p-2.5 flex flex-wrap items-center gap-2 border-b border-[var(--az-divider)] bg-[var(--az-surface-2)]">
                 <button
                     onClick={handleExplain}
                     disabled={isExplaining}
                     title="Explain the entire active file"
-                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#a371f7]/25 bg-[#a371f7]/10 text-[#c9a8ff] hover:bg-[#a371f7]/20 hover:border-[#a371f7]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
+                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#5B8CFF]/25 bg-[#5B8CFF]/10 text-[#c9a8ff] hover:bg-[#5B8CFF]/20 hover:border-[#5B8CFF]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
                 >
                     <FileText size={14} className="shrink-0" />
                     Explain File
@@ -94,7 +94,7 @@ export const ExplanationSidebar: React.FC = () => {
                     onClick={handleExplainSelection}
                     disabled={isExplaining}
                     title="Select code in the editor, then click"
-                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#58a6ff]/25 bg-[#58a6ff]/10 text-[#58a6ff] hover:bg-[#58a6ff]/20 hover:border-[#58a6ff]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
+                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#5B8CFF]/25 bg-[#5B8CFF]/10 text-[#5B8CFF] hover:bg-[#5B8CFF]/20 hover:border-[#5B8CFF]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
                 >
                     <MousePointer size={14} className="shrink-0" />
                     Explain Selection

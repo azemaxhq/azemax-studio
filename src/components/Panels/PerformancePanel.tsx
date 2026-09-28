@@ -37,20 +37,20 @@ import { getLanguageFromFilename } from '../../utils/language';
 
 // Grade colors
 const gradeColors: Record<string, { bg: string; border: string; text: string; glow: string }> = {
-  'A+': { bg: 'rgba(63, 185, 80, 0.15)', border: 'rgba(63, 185, 80, 0.4)', text: '#3fb950', glow: 'rgba(63, 185, 80, 0.3)' },
-  'A': { bg: 'rgba(63, 185, 80, 0.12)', border: 'rgba(63, 185, 80, 0.35)', text: '#3fb950', glow: 'rgba(63, 185, 80, 0.2)' },
-  'B': { bg: 'rgba(88, 166, 255, 0.12)', border: 'rgba(88, 166, 255, 0.35)', text: '#58a6ff', glow: 'rgba(88, 166, 255, 0.2)' },
-  'C': { bg: 'rgba(254, 188, 46, 0.12)', border: 'rgba(254, 188, 46, 0.35)', text: '#febc2e', glow: 'rgba(254, 188, 46, 0.2)' },
-  'D': { bg: 'rgba(248, 130, 73, 0.12)', border: 'rgba(248, 130, 73, 0.35)', text: '#f88249', glow: 'rgba(248, 130, 73, 0.2)' },
-  'F': { bg: 'rgba(248, 81, 73, 0.15)', border: 'rgba(248, 81, 73, 0.4)', text: '#f85149', glow: 'rgba(248, 81, 73, 0.3)' },
+  'A+': { bg: 'rgba(53, 211, 153, 0.12)', border: 'rgba(53, 211, 153, 0.28)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.10)' },
+  'A': { bg: 'rgba(53, 211, 153, 0.10)', border: 'rgba(53, 211, 153, 0.24)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.08)' },
+  'B': { bg: 'rgba(91, 140, 255, 0.10)', border: 'rgba(91, 140, 255, 0.24)', text: '#78A7FF', glow: 'rgba(91, 140, 255, 0.08)' },
+  'C': { bg: 'rgba(245, 185, 76, 0.10)', border: 'rgba(245, 185, 76, 0.24)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.08)' },
+  'D': { bg: 'rgba(245, 185, 76, 0.12)', border: 'rgba(245, 185, 76, 0.28)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.10)' },
+  'F': { bg: 'rgba(255, 100, 124, 0.10)', border: 'rgba(255, 100, 124, 0.28)', text: '#FF647C', glow: 'rgba(255, 100, 124, 0.10)' },
 };
 
 // Severity colors
 const severityColors: Record<string, string> = {
-  critical: '#f85149',
-  high: '#f88249',
-  medium: '#febc2e',
-  low: '#3fb950',
+  critical: '#FF647C',
+  high: '#E4B86A',
+  medium: '#F5B94C',
+  low: '#35D399',
 };
 
 const calculateImprovement = (previous: PerformanceMetrics, current: PerformanceMetrics): number => {
@@ -168,10 +168,10 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
     return (
       <div className="p-4 glass-empty-state h-full">
         <div className="glass-empty-state-icon">
-          <Activity size={32} className="text-[#8b949e]" />
+          <Activity size={32} className="text-[#7F8A9A]" />
         </div>
         <h3 className="text-white/80 font-medium mb-2">Performance Metrics</h3>
-        <p className="text-[#8b949e] text-sm">Run your code to see performance metrics</p>
+        <p className="text-[#7F8A9A] text-sm">Run your code to see performance metrics</p>
       </div>
     );
   }
@@ -225,7 +225,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
             style={{
               background: gradeColors[currentReport.grade].bg,
               borderColor: gradeColors[currentReport.grade].border,
-              boxShadow: `0 0 30px ${gradeColors[currentReport.grade].glow}`
+              boxShadow: '0 1px 2px rgba(0,0,0,.25)'
             }}
           >
             <div className="flex items-center justify-between">
@@ -325,11 +325,11 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
             {/* Overall Improvement Indicator */}
             <div className="mt-4 p-3 rounded-lg border" style={{
               background: currentReport.comparison.improvement > 0 
-                ? 'rgba(63, 185, 80, 0.1)' 
-                : 'rgba(248, 81, 73, 0.1)',
+                ? 'rgba(53, 211, 153, 0.10)' 
+                : 'rgba(255, 100, 124, 0.10)',
               borderColor: currentReport.comparison.improvement > 0 
-                ? 'rgba(63, 185, 80, 0.3)' 
-                : 'rgba(248, 81, 73, 0.3)'
+                ? 'rgba(53, 211, 153, 0.24)' 
+                : 'rgba(255, 100, 124, 0.24)'
             }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -533,7 +533,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${currentReport.metrics.quality.codeQuality}%`,
-                          background: `linear-gradient(90deg, #3fb95080, #3fb950)`
+                          background: `#35D399`
                         }}
                       />
                     </div>
@@ -548,7 +548,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${currentReport.metrics.quality.maintainability}%`,
-                          background: `linear-gradient(90deg, #58a6ff80, #58a6ff)`
+                          background: `#5B8CFF`
                         }}
                       />
                     </div>
@@ -577,19 +577,19 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                     label="Peak Memory"
                     value={currentReport.metrics.memoryUsage.peak}
                     max={200}
-                    color="#f85149"
+                    color="#FF647C"
                   />
                   <MemoryBar
                     label="Average Memory"
                     value={currentReport.metrics.memoryUsage.average}
                     max={200}
-                    color="#f88249"
+                    color="#E4B86A"
                   />
                   <MemoryBar
                     label="Final Memory"
                     value={currentReport.metrics.memoryUsage.final}
                     max={200}
-                    color="#febc2e"
+                    color="#F5B94C"
                   />
                 </div>
               </div>
@@ -605,13 +605,13 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                     label="Peak CPU"
                     value={currentReport.metrics.cpuUsage.peak}
                     max={100}
-                    color="#f85149"
+                    color="#FF647C"
                   />
                   <CpuBar
                     label="Average CPU"
                     value={currentReport.metrics.cpuUsage.average}
                     max={100}
-                    color="#58a6ff"
+                    color="#5B8CFF"
                   />
                 </div>
               </div>
@@ -752,8 +752,7 @@ const MemoryBar: React.FC<{ label: string; value: number; max: number; color: st
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${percentage}%`,
-            background: `linear-gradient(90deg, ${color}80, ${color})`,
-            boxShadow: `0 0 8px ${color}40`
+            background: color,
           }}
         />
       </div>
@@ -777,8 +776,7 @@ const CpuBar: React.FC<{ label: string; value: number; max: number; color: strin
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${percentage}%`,
-            background: `linear-gradient(90deg, ${color}80, ${color})`,
-            boxShadow: `0 0 8px ${color}40`
+            background: color,
           }}
         />
       </div>

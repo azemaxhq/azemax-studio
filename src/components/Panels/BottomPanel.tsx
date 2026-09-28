@@ -40,12 +40,12 @@ const getLanguage = (fileName: string): string => {
 // Ageing Grade Badge Component
 // ────────────────────────────────────────────
 const gradeColors: Record<string, { bg: string; border: string; text: string; glow: string }> = {
-    'A+': { bg: 'rgba(63, 185, 80, 0.15)', border: 'rgba(63, 185, 80, 0.4)', text: '#3fb950', glow: 'rgba(63, 185, 80, 0.3)' },
-    'A': { bg: 'rgba(63, 185, 80, 0.12)', border: 'rgba(63, 185, 80, 0.35)', text: '#3fb950', glow: 'rgba(63, 185, 80, 0.2)' },
-    'B': { bg: 'rgba(88, 166, 255, 0.12)', border: 'rgba(88, 166, 255, 0.35)', text: '#58a6ff', glow: 'rgba(88, 166, 255, 0.2)' },
-    'C': { bg: 'rgba(254, 188, 46, 0.12)', border: 'rgba(254, 188, 46, 0.35)', text: '#febc2e', glow: 'rgba(254, 188, 46, 0.2)' },
-    'D': { bg: 'rgba(248, 130, 73, 0.12)', border: 'rgba(248, 130, 73, 0.35)', text: '#f88249', glow: 'rgba(248, 130, 73, 0.2)' },
-    'F': { bg: 'rgba(248, 81, 73, 0.15)', border: 'rgba(248, 81, 73, 0.4)', text: '#f85149', glow: 'rgba(248, 81, 73, 0.3)' },
+    'A+': { bg: 'rgba(53, 211, 153, 0.12)', border: 'rgba(53, 211, 153, 0.28)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.12)' },
+    'A': { bg: 'rgba(53, 211, 153, 0.10)', border: 'rgba(53, 211, 153, 0.24)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.08)' },
+    'B': { bg: 'rgba(91, 140, 255, 0.10)', border: 'rgba(91, 140, 255, 0.24)', text: '#78A7FF', glow: 'rgba(91, 140, 255, 0.08)' },
+    'C': { bg: 'rgba(245, 185, 76, 0.10)', border: 'rgba(245, 185, 76, 0.24)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.08)' },
+    'D': { bg: 'rgba(245, 185, 76, 0.12)', border: 'rgba(245, 185, 76, 0.28)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.10)' },
+    'F': { bg: 'rgba(255, 100, 124, 0.10)', border: 'rgba(255, 100, 124, 0.28)', text: '#FF647C', glow: 'rgba(255, 100, 124, 0.10)' },
 };
 
 const GradeBadge: React.FC<{ grade: string; label: string }> = ({ grade, label }) => {
@@ -56,17 +56,17 @@ const GradeBadge: React.FC<{ grade: string; label: string }> = ({ grade, label }
             style={{
                 background: colors.bg,
                 border: `1px solid ${colors.border}`,
-                boxShadow: `0 0 20px ${colors.glow}`
+                boxShadow: '0 1px 2px rgba(0,0,0,.25)'
             }}
         >
             <div
                 className="text-4xl font-black tracking-tight leading-none"
-                style={{ color: colors.text, textShadow: `0 0 15px ${colors.glow}` }}
+                style={{ color: colors.text }}
             >
                 {grade}
             </div>
             <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-wider text-[#8b949e] font-semibold">Code Age Grade</span>
+                <span className="text-[10px] uppercase tracking-wider text-[#7F8A9A] font-semibold">Code Age Grade</span>
                 <span className="text-xs mt-0.5" style={{ color: colors.text }}>{label}</span>
             </div>
         </div>
@@ -77,22 +77,22 @@ const GradeBadge: React.FC<{ grade: string; label: string }> = ({ grade, label }
 // Signal Bar Component
 // ────────────────────────────────────────────
 const severityColors: Record<string, string> = {
-    critical: '#f85149',
-    high: '#f88249',
-    medium: '#febc2e',
-    low: '#3fb950',
+    critical: '#FF647C',
+    high: '#F5B94C',
+    medium: '#F5B94C',
+    low: '#35D399',
 };
 
 const SignalBar: React.FC<{ signal: AgeingSignal; maxScore: number }> = ({ signal, maxScore }) => {
     const barWidth = maxScore > 0 ? Math.max(4, (signal.score * signal.weight / maxScore) * 100) : 0;
-    const color = severityColors[signal.severity] || '#8b949e';
+    const color = severityColors[signal.severity] || '#7F8A9A';
 
     return (
-        <div className="group p-3 rounded-lg bg-black/20 border border-white/5 hover:border-white/10 transition-all duration-200 hover:bg-black/30">
+        <div className="group p-3 rounded-[6px] bg-[var(--az-surface-3)] border border-[var(--az-border)] hover:border-[var(--az-border-strong)] transition-colors duration-150">
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                     <span className="text-base">{signal.icon}</span>
-                    <span className="text-xs font-semibold text-[#e6edf3]">{signal.name}</span>
+                    <span className="text-xs font-semibold text-[var(--az-text)]">{signal.name}</span>
                     <span
                         className="text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider"
                         style={{
@@ -105,23 +105,22 @@ const SignalBar: React.FC<{ signal: AgeingSignal; maxScore: number }> = ({ signa
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#8b949e] font-mono">{signal.count} found</span>
+                    <span className="text-[10px] text-[#7F8A9A] font-mono">{signal.count} found</span>
                     <span className="text-xs font-bold font-mono" style={{ color }}>
                         {Math.round(signal.score * signal.weight)}
                     </span>
                 </div>
             </div>
-            <div className="h-1.5 bg-[#0d1117] rounded-full overflow-hidden">
+            <div className="h-1.5 bg-[var(--az-bg)] rounded-full overflow-hidden border border-[var(--az-border)]">
                 <div
                     className="h-full rounded-full transition-all duration-700 ease-out"
                     style={{
                         width: `${barWidth}%`,
-                        background: `linear-gradient(90deg, ${color}90, ${color})`,
-                        boxShadow: `0 0 8px ${color}40`
+                        background: color,
                     }}
                 />
             </div>
-            <p className="text-[10px] text-[#8b949e] mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <p className="text-[10px] text-[#7F8A9A] mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                 {signal.description}
             </p>
         </div>
@@ -153,25 +152,25 @@ const CategoryBreakdown: React.FC<{ scores: Record<string, number> }> = ({ score
             {Object.entries(scores).map(([cat, score]) => (
                 <div key={cat} className="flex items-center gap-2.5">
                     <div className="flex items-center gap-1.5 w-20 shrink-0">
-                        <span className="text-[#8b949e]">{categoryIcons[cat]}</span>
-                        <span className="text-[10px] text-[#8b949e] font-medium">{categoryLabels[cat]}</span>
+                        <span className="text-[#7F8A9A]">{categoryIcons[cat]}</span>
+                        <span className="text-[10px] text-[#7F8A9A] font-medium">{categoryLabels[cat]}</span>
                     </div>
-                    <div className="flex-1 h-2 bg-[#0d1117] rounded-full overflow-hidden">
+                    <div className="flex-1 h-2 bg-[var(--az-bg)] rounded-full overflow-hidden border border-[var(--az-border)]">
                         <div
                             className="h-full rounded-full transition-all duration-700 ease-out"
                             style={{
                                 width: `${Math.max(2, score)}%`,
                                 background: score > 60
-                                    ? 'linear-gradient(90deg, #f85149, #f88249)'
+                                    ? '#FF647C'
                                     : score > 30
-                                        ? 'linear-gradient(90deg, #febc2e, #f88249)'
+                                        ? '#F5B94C'
                                         : score > 0
-                                            ? 'linear-gradient(90deg, #58a6ff, #a371f7)'
-                                            : '#3fb950',
+                                            ? '#5B8CFF'
+                                            : '#35D399',
                             }}
                         />
                     </div>
-                    <span className="text-[10px] font-mono text-[#8b949e] w-7 text-right">{score}%</span>
+                    <span className="text-[10px] font-mono text-[#7F8A9A] w-7 text-right">{score}%</span>
                 </div>
             ))}
         </div>
@@ -182,7 +181,7 @@ const CategoryBreakdown: React.FC<{ scores: Record<string, number> }> = ({ score
 // Hotspot Item Component
 // ────────────────────────────────────────────
 const HotspotItem: React.FC<{ hotspot: AgeingHotspot; index: number }> = ({ hotspot, index }) => {
-    const color = severityColors[hotspot.severity] || '#8b949e';
+    const color = severityColors[hotspot.severity] || '#7F8A9A';
     return (
         <div
             className="flex gap-3 p-2.5 rounded-lg bg-black/20 border border-white/5 hover:border-white/10 transition-all duration-200 group"
@@ -205,12 +204,12 @@ const HotspotItem: React.FC<{ hotspot: AgeingHotspot; index: number }> = ({ hots
                     >
                         {hotspot.severity}
                     </span>
-                    <span className="text-[10px] text-[#8b949e]">Line {hotspot.line}</span>
+                    <span className="text-[10px] text-[#7F8A9A]">Line {hotspot.line}</span>
                 </div>
-                <code className="text-[11px] text-[#c9d1d9] font-mono block truncate opacity-80">
+                <code className="text-[11px] text-[#A7B0BF] font-mono block truncate opacity-80">
                     {hotspot.code}
                 </code>
-                <p className="text-[10px] text-[#8b949e] mt-1 flex items-center gap-1">
+                <p className="text-[10px] text-[#7F8A9A] mt-1 flex items-center gap-1">
                     <ChevronRight size={8} className="shrink-0" />
                     {hotspot.reason}
                 </p>
@@ -227,7 +226,7 @@ const CircularScore: React.FC<{ score: number; size?: number }> = ({ score, size
     const radius = (size - 8) / 2;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (freshness / 100) * circumference;
-    const color = score <= 15 ? '#3fb950' : score <= 30 ? '#58a6ff' : score <= 50 ? '#febc2e' : score <= 70 ? '#f88249' : '#f85149';
+    const color = score <= 15 ? '#35D399' : score <= 30 ? '#5B8CFF' : score <= 50 ? '#F5B94C' : score <= 70 ? '#F5B94C' : '#FF647C';
 
     return (
         <div className="relative" style={{ width: size, height: size }}>
@@ -241,12 +240,11 @@ const CircularScore: React.FC<{ score: number; size?: number }> = ({ score, size
                     strokeDashoffset={offset}
                     strokeLinecap="round"
                     className="transition-all duration-1000 ease-out"
-                    style={{ filter: `drop-shadow(0 0 6px ${color}60)` }}
                 />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-lg font-bold" style={{ color }}>{score}%</span>
-                <span className="text-[8px] text-[#8b949e] uppercase tracking-wider">Aged</span>
+                <span className="text-[8px] text-[#7F8A9A] uppercase tracking-wider">Aged</span>
             </div>
         </div>
     );
@@ -267,13 +265,13 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
     if (!trendData || trendData.snapshots.length < 2) {
         return (
             <div className="glass-analysis-card info">
-                <h4 className="font-semibold mb-3 text-[#58a6ff] flex items-center gap-2 text-sm">
+                <h4 className="font-semibold mb-3 text-[#5B8CFF] flex items-center gap-2 text-sm">
                     <BarChart3 size={14} /> Code Age Trend
                 </h4>
                 <div className="flex flex-col items-center justify-center py-6 gap-2">
-                    <Calendar size={24} className="text-[#8b949e]/50" />
-                    <span className="text-[#8b949e] text-sm">No trend data available</span>
-                    <span className="text-[10px] text-[#8b949e]">Analyze this file multiple times to see trends</span>
+                    <Calendar size={24} className="text-[#7F8A9A]/50" />
+                    <span className="text-[#7F8A9A] text-sm">No trend data available</span>
+                    <span className="text-[10px] text-[#7F8A9A]">Analyze this file multiple times to see trends</span>
                 </div>
             </div>
         );
@@ -286,21 +284,21 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
 
     return (
         <div className="glass-analysis-card info">
-            <h4 className="font-semibold mb-3 text-[#58a6ff] flex items-center gap-2 text-sm">
+            <h4 className="font-semibold mb-3 text-[#5B8CFF] flex items-center gap-2 text-sm">
                 <BarChart3 size={14} /> Code Age Trend
                 <div className="ml-auto flex items-center gap-2">
                     {trendData.trend.improving ? (
-                        <div className="flex items-center gap-1 text-[#3fb950]">
+                        <div className="flex items-center gap-1 text-[#35D399]">
                             <TrendingUp size={12} />
                             <span className="text-[10px]">Improving</span>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-1 text-[#f85149]">
+                        <div className="flex items-center gap-1 text-[#FF647C]">
                             <TrendingDown size={12} />
                             <span className="text-[10px]">Declining</span>
                         </div>
                     )}
-                    <span className="text-[10px] text-[#8b949e]">
+                    <span className="text-[10px] text-[#7F8A9A]">
                         {trendData.trend.changeRate > 0 ? '+' : ''}{trendData.trend.changeRate}%
                     </span>
                 </div>
@@ -312,15 +310,15 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                     {recentSnapshots.map((snapshot: any, index: number) => {
                         const score = snapshot.analysis.codeAgeing;
                         const height = ((score - minScore) / scoreRange) * 100;
-                        const color = score <= 30 ? '#3fb950' : score <= 50 ? '#febc2e' : score <= 70 ? '#f88249' : '#f85149';
+                        const color = score <= 30 ? '#35D399' : score <= 50 ? '#F5B94C' : score <= 70 ? '#E4B86A' : '#FF647C';
                         
                         return (
                             <div
                                 key={index}
-                                className="flex-1 bg-gradient-to-t from-black/50 to-transparent rounded-t transition-all duration-300 hover:opacity-80"
+                                className="flex-1 rounded-t transition-all duration-300 hover:opacity-80"
                                 style={{
                                     height: `${Math.max(4, height)}%`,
-                                    background: `linear-gradient(to top, ${color}90, ${color})`
+                                    background: color
                                 }}
                                 title={`${new Date(snapshot.timestamp).toLocaleDateString()}: ${score}%`}
                             />
@@ -328,31 +326,31 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                     })}
                 </div>
                 <div className="flex justify-between mt-1">
-                    <span className="text-[8px] text-[#8b949e]">{minScore}%</span>
-                    <span className="text-[8px] text-[#8b949e]">{maxScore}%</span>
+                    <span className="text-[8px] text-[#7F8A9A]">{minScore}%</span>
+                    <span className="text-[8px] text-[#7F8A9A]">{maxScore}%</span>
                 </div>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-3 gap-2 mb-3">
                 <div className="p-2 rounded bg-black/20 text-center">
-                    <div className="text-[8px] text-[#8b949e] uppercase">Stability</div>
-                    <div className="text-sm font-bold text-[#c9d1d9]">{trendData.trend.stability}%</div>
+                    <div className="text-[8px] text-[#7F8A9A] uppercase">Stability</div>
+                    <div className="text-sm font-bold text-[#A7B0BF]">{trendData.trend.stability}%</div>
                 </div>
                 <div className="p-2 rounded bg-black/20 text-center">
-                    <div className="text-[8px] text-[#8b949e] uppercase">Analyses</div>
-                    <div className="text-sm font-bold text-[#c9d1d9]">{trendData.snapshots.length}</div>
+                    <div className="text-[8px] text-[#7F8A9A] uppercase">Analyses</div>
+                    <div className="text-sm font-bold text-[#A7B0BF]">{trendData.snapshots.length}</div>
                 </div>
                 <div className="p-2 rounded bg-black/20 text-center">
-                    <div className="text-[8px] text-[#8b949e] uppercase">Latest</div>
-                    <div className="text-sm font-bold text-[#c9d1d9]">{recentSnapshots[recentSnapshots.length - 1]?.analysis.codeAgeing}%</div>
+                    <div className="text-[8px] text-[#7F8A9A] uppercase">Latest</div>
+                    <div className="text-sm font-bold text-[#A7B0BF]">{recentSnapshots[recentSnapshots.length - 1]?.analysis.codeAgeing}%</div>
                 </div>
             </div>
 
             {/* History toggle */}
             <button
                 onClick={() => setShowHistory(!showHistory)}
-                className="w-full text-center py-2 text-[11px] text-[#58a6ff] hover:text-white bg-[#58a6ff]/5 hover:bg-[#58a6ff]/10 rounded-lg border border-[#58a6ff]/10 transition-all duration-200"
+                className="w-full text-center py-2 text-[11px] text-[#5B8CFF] hover:text-white bg-[#5B8CFF]/5 hover:bg-[#5B8CFF]/10 rounded-lg border border-[#5B8CFF]/10 transition-all duration-200"
             >
                 {showHistory ? 'Hide' : 'Show'} Analysis History
             </button>
@@ -363,14 +361,14 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                     {recentSnapshots.reverse().map((snapshot: any, index: number) => (
                         <div key={index} className="flex items-center justify-between p-2 rounded bg-black/20">
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#8b949e]">
+                                <span className="text-[10px] text-[#7F8A9A]">
                                     {new Date(snapshot.timestamp).toLocaleDateString()}
                                 </span>
-                                <span className="text-[10px] font-mono text-[#c9d1d9]">
+                                <span className="text-[10px] font-mono text-[#A7B0BF]">
                                     {snapshot.analysis.codeAgeing}%
                                 </span>
                             </div>
-                            <span className="text-[10px] text-[#8b949e]">
+                            <span className="text-[10px] text-[#7F8A9A]">
                                 {snapshot.analysis.ageingDetails.grade}
                             </span>
                         </div>
@@ -753,7 +751,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                     <AlertTriangle size={14} />
                     <span className="hidden sm:inline">Problems</span>
                     {(problemCounts.errors > 0 || problemCounts.warnings > 0) && (
-                        <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#f85149] text-white' : 'bg-[#febc2e] text-black'}`}>
+                        <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#FF647C] text-white' : 'bg-[#F5B94C] text-black'}`}>
                             {problemCounts.errors + problemCounts.warnings}
                         </span>
                     )}
@@ -787,16 +785,16 @@ Apply the fix while preserving all other code exactly as-is.`;
                                         {/* ── Top Row: Grade + Score + Category ── */}
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-slide-in">
                                             {/* Grade Badge & Summary */}
-                                            <div className="glass-analysis-card col-span-1 hover-scale" style={{ '--card-accent': gradeColors[analysis.ageingDetails.grade]?.text || '#58a6ff' } as React.CSSProperties}>
+                                            <div className="glass-analysis-card col-span-1 hover-scale" style={{ '--card-accent': gradeColors[analysis.ageingDetails.grade]?.text || '#5B8CFF' } as React.CSSProperties}>
                                                 <div className="flex flex-col items-center text-center gap-3">
                                                     <GradeBadge grade={analysis.ageingDetails.grade} label={analysis.ageingDetails.gradeLabel} />
                                                     <CircularScore score={analysis.codeAgeing} size={90} />
-                                                    <p className="text-[11px] text-[#8b949e] leading-relaxed px-2">
+                                                    <p className="text-[11px] text-[#7F8A9A] leading-relaxed px-2">
                                                         {analysis.ageingDetails.summary}
                                                     </p>
                                                     <button
                                                         onClick={handleReanalyze}
-                                                        className="flex items-center gap-1.5 text-[10px] text-[#58a6ff] hover:text-white px-3 py-1.5 rounded-lg bg-[#58a6ff]/10 hover:bg-[#58a6ff]/20 border border-[#58a6ff]/20 transition-all duration-200 mt-1"
+                                                        className="flex items-center gap-1.5 text-[10px] text-[#5B8CFF] hover:text-white px-3 py-1.5 rounded-lg bg-[#5B8CFF]/10 hover:bg-[#5B8CFF]/20 border border-[#5B8CFF]/20 transition-all duration-200 mt-1"
                                                     >
                                                         <RefreshCw size={10} />
                                                         Re-analyze
@@ -806,9 +804,9 @@ Apply the fix while preserving all other code exactly as-is.`;
 
                                             {/* Ageing Signals Breakdown */}
                                             <div className="glass-analysis-card col-span-1 warning hover-scale">
-                                                <h4 className="font-semibold mb-3 text-[#febc2e] flex items-center gap-2 text-sm">
+                                                <h4 className="font-semibold mb-3 text-[#F5B94C] flex items-center gap-2 text-sm">
                                                     <Zap size={14} /> Ageing Signals
-                                                    <span className="text-[10px] text-[#8b949e] font-normal ml-auto">
+                                                    <span className="text-[10px] text-[#7F8A9A] font-normal ml-auto">
                                                         {analysis.ageingDetails.signals.length} detected
                                                     </span>
                                                 </h4>
@@ -824,16 +822,16 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-center justify-center py-8 gap-2">
-                                                        <Shield size={28} className="text-[#3fb950]/50" />
-                                                        <span className="text-[#3fb950] text-sm font-medium">No ageing signals</span>
-                                                        <span className="text-[10px] text-[#8b949e]">Code is modern & clean</span>
+                                                        <Shield size={28} className="text-[#35D399]/50" />
+                                                        <span className="text-[#35D399] text-sm font-medium">No ageing signals</span>
+                                                        <span className="text-[10px] text-[#7F8A9A]">Code is modern & clean</span>
                                                     </div>
                                                 )}
                                             </div>
 
                                             {/* Category Breakdown */}
                                             <div className="glass-analysis-card col-span-1 info hover-scale">
-                                                <h4 className="font-semibold mb-4 text-[#58a6ff] flex items-center gap-2 text-sm">
+                                                <h4 className="font-semibold mb-4 text-[#5B8CFF] flex items-center gap-2 text-sm">
                                                     <Shield size={14} /> Category Breakdown
                                                 </h4>
                                                 <CategoryBreakdown scores={analysis.ageingDetails.categoryScores} />
@@ -841,24 +839,24 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                 {/* Stats summary */}
                                                 <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#8b949e] uppercase tracking-wider">Health</div>
-                                                        <div className={`text-lg font-bold ${analysis.healthScore > 80 ? 'text-[#3fb950]' : analysis.healthScore > 50 ? 'text-[#febc2e]' : 'text-[#f85149]'}`}>
+                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Health</div>
+                                                        <div className={`text-lg font-bold ${analysis.healthScore > 80 ? 'text-[#35D399]' : analysis.healthScore > 50 ? 'text-[#F5B94C]' : 'text-[#FF647C]'}`}>
                                                             {analysis.healthScore}
                                                         </div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#8b949e] uppercase tracking-wider">Complexity</div>
-                                                        <div className={`text-lg font-bold ${analysis.complexity === 'Low' ? 'text-[#3fb950]' : analysis.complexity === 'Medium' ? 'text-[#febc2e]' : 'text-[#f85149]'}`}>
+                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Complexity</div>
+                                                        <div className={`text-lg font-bold ${analysis.complexity === 'Low' ? 'text-[#35D399]' : analysis.complexity === 'Medium' ? 'text-[#F5B94C]' : 'text-[#FF647C]'}`}>
                                                             {analysis.complexity}
                                                         </div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#8b949e] uppercase tracking-wider">Maintain.</div>
-                                                        <div className="text-lg font-bold text-[#58a6ff]">{analysis.maintainability}</div>
+                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Maintain.</div>
+                                                        <div className="text-lg font-bold text-[#5B8CFF]">{analysis.maintainability}</div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#8b949e] uppercase tracking-wider">Hotspots</div>
-                                                        <div className="text-lg font-bold text-[#febc2e]">{analysis.ageingDetails.hotspots.length}</div>
+                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Hotspots</div>
+                                                        <div className="text-lg font-bold text-[#F5B94C]">{analysis.ageingDetails.hotspots.length}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -873,9 +871,9 @@ Apply the fix while preserving all other code exactly as-is.`;
                                             
                                             {/* Hotspots */}
                                             <div className="glass-analysis-card error hover-scale">
-                                                <h4 className="font-semibold mb-3 text-[#f85149] flex items-center gap-2 text-sm">
+                                                <h4 className="font-semibold mb-3 text-[#FF647C] flex items-center gap-2 text-sm">
                                                     <AlertTriangle size={14} /> Hotspots
-                                                    <span className="text-[10px] text-[#8b949e] font-normal ml-auto">
+                                                    <span className="text-[10px] text-[#7F8A9A] font-normal ml-auto">
                                                         {analysis.ageingDetails.hotspots.length}
                                                     </span>
                                                 </h4>
@@ -887,7 +885,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                         {analysis.ageingDetails.hotspots.length > 4 && (
                                                             <button
                                                                 onClick={() => setShowAllHotspots(prev => !prev)}
-                                                                className="w-full text-center py-1 text-[10px] text-[#58a6ff] hover:text-white bg-[#58a6ff]/5 hover:bg-[#58a6ff]/10 rounded border border-[#58a6ff]/10 transition-all duration-200"
+                                                                className="w-full text-center py-1 text-[10px] text-[#5B8CFF] hover:text-white bg-[#5B8CFF]/5 hover:bg-[#5B8CFF]/10 rounded border border-[#5B8CFF]/10 transition-all duration-200"
                                                             >
                                                                 {showAllHotspots ? 'Less' : 'More'}
                                                             </button>
@@ -895,17 +893,17 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-center justify-center py-6 gap-2">
-                                                        <Shield size={24} className="text-[#3fb950]/50" />
-                                                        <span className="text-[#3fb950] text-xs font-medium">No hotspots</span>
+                                                        <Shield size={24} className="text-[#35D399]/50" />
+                                                        <span className="text-[#35D399] text-xs font-medium">No hotspots</span>
                                                     </div>
                                                 )}
                                             </div>
 
                                             {/* Recommendations */}
                                             <div className="glass-analysis-card success hover-scale">
-                                                <h4 className="font-semibold mb-3 text-[#3fb950] flex items-center gap-2 text-sm">
+                                                <h4 className="font-semibold mb-3 text-[#35D399] flex items-center gap-2 text-sm">
                                                     <Zap size={14} /> Recommendations
-                                                    <span className="text-[10px] text-[#8b949e] font-normal ml-auto">
+                                                    <span className="text-[10px] text-[#7F8A9A] font-normal ml-auto">
                                                         {analysis.ageingDetails.signals.filter(s => s.recommendation).length}
                                                     </span>
                                                 </h4>
@@ -915,17 +913,17 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                             <div
                                                                 key={i}
                                                                 className={`flex gap-2 p-2 rounded-lg border transition-all duration-200 ${appliedIndices.has(i)
-                                                                    ? 'bg-[#3fb950]/10 border-[#3fb950]/30'
-                                                                    : 'bg-[#3fb950]/5 border-[#3fb950]/10 hover:border-[#3fb950]/20'
+                                                                    ? 'bg-[#35D399]/10 border-[#35D399]/30'
+                                                                    : 'bg-[#35D399]/5 border-[#35D399]/10 hover:border-[#35D399]/20'
                                                                     }`}
                                                             >
-                                                                <div className="shrink-0 w-4 h-4 rounded-full bg-[#3fb950]/15 flex items-center justify-center">
+                                                                <div className="shrink-0 w-4 h-4 rounded-full bg-[#35D399]/15 flex items-center justify-center">
                                                                     {appliedIndices.has(i)
-                                                                        ? <CheckCircle size={8} className="text-[#3fb950]" />
-                                                                        : <span className="text-[9px] font-bold text-[#3fb950]">{i + 1}</span>
+                                                                        ? <CheckCircle size={8} className="text-[#35D399]" />
+                                                                        : <span className="text-[9px] font-bold text-[#35D399]">{i + 1}</span>
                                                                     }
                                                                 </div>
-                                                                <p className={`text-[10px] leading-relaxed flex-1 ${appliedIndices.has(i) ? 'text-[#3fb950]/70 line-through' : 'text-[#c9d1d9]'}`}>{signal.recommendation}</p>
+                                                                <p className={`text-[10px] leading-relaxed flex-1 ${appliedIndices.has(i) ? 'text-[#35D399]/70 line-through' : 'text-[#A7B0BF]'}`}>{signal.recommendation}</p>
                                                                 {!appliedIndices.has(i) && (
                                                                     <button
                                                                         onClick={() => handleApplyRecommendation(signal, i)}
@@ -946,8 +944,8 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-center justify-center py-6 gap-2">
-                                                        <Shield size={24} className="text-[#3fb950]/50" />
-                                                        <span className="text-[#3fb950] text-xs font-medium">All good!</span>
+                                                        <Shield size={24} className="text-[#35D399]/50" />
+                                                        <span className="text-[#35D399] text-xs font-medium">All good!</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -956,7 +954,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                         {/* Halstead Metrics compact */}
                                         {analysis.halstead && (
                                             <div className="glass-analysis-card info hover-scale animate-slide-in">
-                                                <h5 className="text-[10px] text-[#8b949e] uppercase tracking-wider font-semibold mb-3 flex items-center gap-1.5">
+                                                <h5 className="text-[10px] text-[#7F8A9A] uppercase tracking-wider font-semibold mb-3 flex items-center gap-1.5">
                                                     <Activity size={10} /> Halstead Metrics
                                                 </h5>
                                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -967,8 +965,8 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                         { label: 'Effort', value: analysis.halstead.effort },
                                                     ].map(m => (
                                                         <div key={m.label} className="p-2 rounded bg-black/20 text-center hover-scale">
-                                                            <div className="text-[8px] text-[#8b949e] uppercase">{m.label}</div>
-                                                            <div className="text-sm font-mono text-[#c9d1d9] font-semibold">{m.value}</div>
+                                                            <div className="text-[8px] text-[#7F8A9A] uppercase">{m.label}</div>
+                                                            <div className="text-sm font-mono text-[#A7B0BF] font-semibold">{m.value}</div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -978,18 +976,18 @@ Apply the fix while preserving all other code exactly as-is.`;
                                 ) : (
                                     <div className="flex h-full items-center justify-center animate-fade-in-up">
                                         <div className="text-center">
-                                            <div className="w-8 h-8 mx-auto rounded-full border-2 border-[#58a6ff]/30 border-t-[#58a6ff] animate-spin mb-3" />
-                                            <span className="text-[#8b949e]">Analyzing code ageing...</span>
+                                            <div className="w-8 h-8 mx-auto rounded-full border-2 border-[#5B8CFF]/30 border-t-[#5B8CFF] animate-spin mb-3" />
+                                            <span className="text-[#7F8A9A]">Analyzing code ageing...</span>
                                         </div>
                                     </div>
                                 )
                             ) : (
                                 <div className="glass-empty-state h-full animate-fade-in-up">
                                     <div className="glass-empty-state-icon">
-                                        <AlertTriangle size={32} className="text-[#8b949e]" />
+                                        <AlertTriangle size={32} className="text-[#7F8A9A]" />
                                     </div>
                                     <h3 className="text-white/80 font-medium mb-2">No File Open</h3>
-                                    <p className="text-[#8b949e] text-sm">Open a file to run code ageing analysis</p>
+                                    <p className="text-[#7F8A9A] text-sm">Open a file to run code ageing analysis</p>
                                 </div>
                             )}
                         </div>

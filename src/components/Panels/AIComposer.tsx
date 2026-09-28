@@ -541,7 +541,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                 }}
             >
                 {isDragOver && (
-                    <div className="absolute inset-0 z-10 rounded-[10px] flex items-center justify-center pointer-events-none" style={{ background: 'rgba(59,130,246,0.06)', border: '1px dashed rgba(59,130,246,0.35)'}}>
+                    <div className="absolute inset-0 z-10 rounded-[10px] flex items-center justify-center pointer-events-none" style={{ background: 'rgba(91,140,255,0.06)', border: '1px dashed rgba(91,140,255,0.35)'}}>
                         <span className="text-[12px] font-medium" style={{ color: 'var(--az-text)'}}>Drop file to attach</span>
                     </div>
                 )}
@@ -574,8 +574,8 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                     onKeyDown={handleKeyDown}
                     placeholder={currentModeCfg.placeholder}
                     rows={1}
-                    className="w-full bg-transparent text-[13.5px] leading-[1.5] px-3 pt-2.5 pb-1.5 min-h-[40px] max-h-[140px] resize-none focus:outline-none focus-visible:outline-none antialiased placeholder:text-[#6F7580]"
-                    style={{ color: "var(--az-text)", height: '40px', outline: 'none', boxShadow: 'none', border: 'none' } as React.CSSProperties}
+                    className="w-full bg-transparent text-[13.5px] leading-[1.5] px-3 pt-2.5 pb-1.5 min-h-[40px] max-h-[140px] resize-none focus:outline-none focus-visible:outline-none antialiased placeholder:text-[#677283]"
+                    style={{ color: "#DCE3EC", height: '40px', outline: 'none', boxShadow: 'none', border: 'none' } as React.CSSProperties}
                     spellCheck={false}
                     autoComplete="off"
                 />
@@ -616,9 +616,6 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                        <span className="hidden lg:block text-[10.5px] whitespace-nowrap tracking-tight font-[450]" style={{ color: "rgba(255,255,255,0.28)"}}>
-                            {isLoading ? 'Esc to stop' : '↵ send · ⇧↵ newline'}
-                        </span>
                         {isLoading ? (
                             <button
                                 onClick={onStop}
@@ -634,7 +631,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                 disabled={disabled || !input.trim()}
                                 className={`az-send-btn focus:outline-none ${input.trim() && !disabled ? '' : 'cursor-not-allowed'}`}
                                 style={input.trim() && !disabled
-                                    ? { background: '#F2F3F5', color: '#0B0D10', border: '1px solid #F2F3F5', boxShadow: '0 1px 4px rgba(0,0,0,0.12)'}
+                                    ? { background: 'var(--az-accent)', color: '#FFFFFF', border: '1px solid var(--az-accent)', boxShadow: '0 1px 4px rgba(0,0,0,0.12)'}
                                     : { background: 'rgba(255,255,255,0.06)', color: 'var(--az-text-disabled)', border: '1px solid rgba(255,255,255,0.05)'}}
                                 title="Send (Enter)"
                                 aria-label="Send message"

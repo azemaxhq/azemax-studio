@@ -20,24 +20,24 @@ import { subscribe } from '../../settings/settingsStore';
 
 type XtermTheme = Record<string, string | undefined>;
 
-// VS Code Dark+ ANSI fallback — identical to `ansiColorIdentifiers` defaults
+// Azemax terminal ANSI — restrained, native to the IDE (never neon)
 const FALLBACK_ANSI = {
-  black: '#000000',
-  red: '#cd3131',
-  green: '#0dbc79',
-  yellow: '#e5e510',
-  blue: '#2472c8',
-  magenta: '#bc3fbc',
-  cyan: '#11a8cd',
-  white: '#e5e5e5',
-  brightBlack: '#666666',
-  brightRed: '#f14c4c',
-  brightGreen: '#23d18b',
-  brightYellow: '#f5f543',
-  brightBlue: '#3b8eea',
-  brightMagenta: '#d670d6',
-  brightCyan: '#29b8db',
-  brightWhite: '#e5e5e5',
+  black: '#0C1118',
+  red: '#F27788',
+  green: '#62D6A7',
+  yellow: '#E4B86A',
+  blue: '#5B8CFF',
+  magenta: '#9D8BFF',
+  cyan: '#6FB9C9',
+  white: '#D8DEE7',
+  brightBlack: '#778291',
+  brightRed: '#F6919F',
+  brightGreen: '#7FDDB4',
+  brightYellow: '#EAC887',
+  brightBlue: '#7FA9FF',
+  brightMagenta: '#B3A4FF',
+  brightCyan: '#8AC4D2',
+  brightWhite: '#E7ECF3',
 } as const;
 
 function cssVar(name: string, fallback: string): string {
@@ -52,12 +52,12 @@ export function getXtermTheme(): XtermTheme {
   const settingsTheme = getSettings().general.theme;
   // Prefer CSS variables (live theme), fall back to settings-driven palette
   const isDark = settingsTheme === 'dark' || (settingsTheme === 'auto' && (typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)').matches : true));
-  // Derive from --az-* variables which already reflect the current theme
-  const background = cssVar('--az-surface', isDark ? '#0d1117' : '#ffffff');
-  const foreground = cssVar('--az-text', isDark ? '#d4d4d4' : '#24292e');
-  const selectionBackground = cssVar('--az-selection-bg', 'rgba(255,255,255,0.18)');
-  // Cursor: VS Code uses TERMINAL_CURSOR_FOREGROUND/BACKGROUND — fall back to foreground/background
-  const cursor = cssVar('--az-terminal-cursor', foreground);
+  // Terminal lives on its own layer: #0C1118, never pure black
+  const background = cssVar('--az-terminal-bg', isDark ? '#0C1118' : '#ffffff');
+  const foreground = isDark ? '#D8DEE7' : '#24292e';
+  const selectionBackground = cssVar('--az-selection-bg', 'rgba(91,140,255,0.28)');
+  // Cursor: Azemax bright accent for visibility
+  const cursor = cssVar('--az-terminal-cursor', '#78A7FF');
   const cursorAccent = cssVar('--az-terminal-cursor-accent', background);
 
   return {

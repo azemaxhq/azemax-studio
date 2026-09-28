@@ -24,62 +24,87 @@
   /* Prevent font-size inflation on mobile rotation */
   -webkit-font-feature-settings: 'cv01','cv02','cv03','ss01';
 
-  /* ---- Surfaces (graphite progression) ---- */
-  --az-bg: #0B0D10;
-  --az-bg-subtle: #0F1115;
-  --az-surface: #101318;
-  --az-surface-2: #14171C;
-  --az-surface-3: #181B21;
-  --az-surface-hover: #1C2026;
-  --az-surface-active: #20242C;
-  --az-overlay: #1A1E26;
+  /* ---- Surfaces — layered dark-neutral system (3–7% luminance steps) ---- */
+  --az-bg: #0B0E13;
+  --az-bg-subtle: #0C1118;
+  --az-surface: #10141B;
+  --az-surface-2: #141923;
+  --az-surface-3: #181E29;
+  --az-surface-hover: #1D2430;
+  --az-surface-active: #222B38;
+  --az-overlay: #181E29;
+  --az-terminal-bg: #0C1118;
+  --az-editor-bg: #10141B;
+  --az-composer-bg: #151A22;
+  --az-composer-bg-hover: #161C26;
+  --az-composer-bg-focus: #181E29;
 
-  /* ---- Borders ---- */
-  --az-border: #242830;
-  --az-border-strong: #303640;
-  --az-border-subtle: #1E2228;
-  --az-divider: rgba(255,255,255,0.06);
+  /* ---- Borders — SUBTLE .055 / NORMAL .08 / STRONG .12 / ACCENT blue ---- */
+  --az-border: rgba(255,255,255,0.08);
+  --az-border-strong: rgba(255,255,255,0.12);
+  --az-border-subtle: rgba(255,255,255,0.055);
+  --az-border-solid: #232A36;
+  --az-border-solid-strong: #2E3746;
+  --az-divider: rgba(255,255,255,0.055);
+  --az-divider-strong: rgba(255,255,255,0.08);
 
   /* ---- Text ---- */
-  --az-text: #F2F3F5;
-  --az-text-secondary: #A7ACB5;
-  --az-text-muted: #707680;
-  --az-text-faint: #5A5F6A;
-  --az-text-disabled: #4E535B;
+  --az-text: #F1F5F9;
+  --az-text-secondary: #A7B0BF;
+  --az-text-muted: #727D8E;
+  --az-text-faint: #5B6474;
+  --az-text-disabled: #4D5665;
 
-  /* ---- Accent (Azemax Blue) — use sparingly ---- */
-  --az-accent: #3B82F6;
-  --az-accent-hover: #2563EB;
-  --az-accent-soft: rgba(59,130,246,0.10);
-  --az-accent-ring: rgba(59,130,246,0.35);
-  --az-accent-border: rgba(59,130,246,0.30);
-  --az-focus-ring: 0 0 0 1.5px rgba(255,255,255,0.11);
+  /* ---- Accent (Azemax blue) — primary actions, active nav, selection, focus, AI only ---- */
+  --az-accent: #5B8CFF;
+  --az-accent-hover: #6E9BFF;
+  --az-accent-bright: #78A7FF;
+  --az-accent-soft: rgba(91,140,255,0.10);
+  --az-accent-soft-subtle: rgba(91,140,255,0.09);
+  --az-accent-ring: rgba(91,140,255,0.18);
+  --az-accent-border: rgba(91,140,255,0.35);
+  --az-focus-ring: 0 0 0 2px rgba(91,140,255,.18);
   --az-focus-ring-subtle: 0 0 0 1px rgba(255,255,255,0.07);
-  --az-border-focus: rgba(255,255,255,0.14);
-  --az-composer-bg: #171A20;
-  --az-composer-bg-hover: #191D23;
-  --az-composer-bg-focus: #1D2129;
+  --az-border-focus: rgba(91,140,255,.50);
+  --az-composer-focus-ring: 0 0 0 3px rgba(91,140,255,.08);
 
-  /* ---- Semantic (muted, restrained) ---- */
-  --az-success: #2EA043;
-  --az-success-soft: rgba(46,160,67,0.10);
-  --az-success-border: rgba(46,160,67,0.22);
-  --az-warning: #D29922;
-  --az-warning-soft: rgba(210,153,34,0.10);
-  --az-warning-border: rgba(210,153,34,0.22);
-  --az-error: #DA3633;
-  --az-error-soft: rgba(218,54,51,0.10);
-  --az-error-border: rgba(218,54,51,0.22);
-  --az-info: #58A6FF;
-  --az-info-soft: rgba(88,166,255,0.08);
+  /* ---- Icon hierarchy — monochrome UI, blue reserved for active/AI ---- */
+  --az-icon: #7F8A9A;
+  --az-icon-hover: #AAB4C2;
+  --az-icon-active: #5B8CFF;
+  --az-icon-disabled: #4C5665;
+  --az-icon-primary: #F4F7FB;
+  --az-icon-activity: #727D8C;
+  --az-icon-activity-hover: #B8C1CE;
+  --az-icon-activity-active: #F2F6FC;
 
-  /* ---- Radius ---- */
+  /* ---- Semantic (restrained) ---- */
+  --az-success: #35D399;
+  --az-success-soft: rgba(53,211,153,0.10);
+  --az-success-border: rgba(53,211,153,0.24);
+  --az-warning: #F5B94C;
+  --az-warning-soft: rgba(245,185,76,0.10);
+  --az-warning-border: rgba(245,185,76,0.24);
+  --az-error: #FF647C;
+  --az-error-soft: rgba(255,100,124,0.10);
+  --az-error-border: rgba(255,100,124,0.24);
+  --az-info: #5B8CFF;
+  --az-info-soft: rgba(91,140,255,0.10);
+
+  /* ---- Radius — engineered, sharp (not playful) ---- */
+  --az-radius-sm: 6px;
+  --az-radius-md: 8px;
+  --az-radius-lg: 10px;
   --az-r-xs: 4px;
   --az-r-sm: 6px;
   --az-r-md: 8px;
   --az-r-lg: 10px;
   --az-r-xl: 12px;
   --az-r-full: 999px;
+
+  /* ---- Elevation — subtle, no heavy shadows ---- */
+  --az-shadow-sm: 0 1px 2px rgba(0,0,0,.25);
+  --az-shadow-md: 0 8px 30px rgba(0,0,0,.25);
 
   /* ---- Spacing scale (8pt) ---- */
   --az-s-1: 4px;
@@ -89,7 +114,7 @@
   --az-s-5: 20px;
   --az-s-6: 24px;
 
-  /* ---- Typography scale ---- */
+  /* ---- Typography scale — body 13-14, secondary 12-13, toolbar 12-13, code 14-15 ---- */
   --az-text-2xs: 10px;
   --az-text-xs: 11px;
   --az-text-sm: 12px;
@@ -98,12 +123,14 @@
   --az-lh-tight: 1.35;
   --az-lh-base: 1.5;
   --az-lh-relaxed: 1.65;
+  --az-font-ui: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --az-font-code: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* ---- Motion ---- */
+  /* ---- Motion — subtle 150-180ms ---- */
   --az-ease: cubic-bezier(0.2,0,0,1);
   --az-ease-out: cubic-bezier(0.16,1,0.3,1);
-  --az-dur-fast: 120ms;
-  --az-dur-base: 150ms;
+  --az-dur-fast: 150ms;
+  --az-dur-base: 170ms;
   --az-dur-slow: 220ms;
 
   /* ---- Layout ---- */
@@ -164,29 +191,31 @@ body {
 
 .app-viewport { height: 100vh; height: 100dvh; }
 
-/* Scrollbars — subtle neutral, stable gutter prevents 1px jumps */
+/* Scrollbars — thin, subtle, dark-neutral. No bright blue. */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #232831;
+  background: rgba(255,255,255,.16);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: #2E3440; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); background-clip: padding-box; }
 ::-webkit-scrollbar-corner { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #232831; border-radius: 999px; background-clip: padding-box; border: 1px solid transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 999px; background-clip: padding-box; border: 1px solid transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); background-clip: padding-box; }
 .custom-scrollbar { scrollbar-gutter: stable; }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.16) transparent; }
 
 /* Explorer — 4px extremely subtle scrollbar, visible only on hover/scroll */
 .explorer-scrollbar { scrollbar-width: thin; scrollbar-color: transparent transparent; scrollbar-gutter: stable; }
-.explorer-scrollbar:hover { scrollbar-color: #232831 transparent; }
+.explorer-scrollbar:hover { scrollbar-color: rgba(255,255,255,.16) transparent; }
 .explorer-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
 .explorer-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .explorer-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
-.explorer-scrollbar:hover::-webkit-scrollbar-thumb { background: #232831; background-clip: padding-box; border: 1px solid transparent; }
-.explorer-scrollbar::-webkit-scrollbar-thumb:hover { background: #2E3440; background-clip: padding-box; }
+.explorer-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); background-clip: padding-box; border: 1px solid transparent; }
+.explorer-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); background-clip: padding-box; }
 .explorer-scrollbar::-webkit-scrollbar-corner { background: transparent; }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -230,7 +259,7 @@ body {
 
 .az-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 7px 12px; border-radius: var(--az-r-md);
+  padding: 7px 12px; border-radius: 7px;
   font-size: 13px; font-weight: 500; line-height: 1; letter-spacing: -0.01em;
   border: 1px solid transparent;
   transition: background var(--az-dur-base) var(--az-ease), border-color var(--az-dur-base) var(--az-ease), color var(--az-dur-base) var(--az-ease), opacity var(--az-dur-base) var(--az-ease);
@@ -250,9 +279,10 @@ body {
 .az-btn-accent {
   background: var(--az-accent);
   color: white;
-  border-color: var(--az-accent);
+  border: none;
+  box-shadow: var(--az-shadow-sm);
 }
-.az-btn-accent:hover { background: var(--az-accent-hover); border-color: var(--az-accent-hover); }
+.az-btn-accent:hover { background: var(--az-accent-hover); border-color: transparent; filter: brightness(1.05); }
 
 .az-btn-secondary {
   background: var(--az-surface-3);
@@ -330,19 +360,19 @@ body {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   background: transparent; border: 1px solid transparent;
   padding: 5px 10px; min-height: 28px;
-  color: var(--az-text-muted);
-  font-size: 12.5px; font-weight: 500; line-height: 1; letter-spacing: -0.01em;
+  color: #717C8C;
+  font-size: 12px; font-weight: 500; line-height: 1; letter-spacing: -0.01em;
   cursor: pointer; position: relative;
-  transition: color var(--az-dur-fast) var(--az-ease), background var(--az-dur-fast) var(--az-ease);
-  border-radius: var(--az-r-sm);
+  transition: color 150ms var(--az-ease), background 150ms var(--az-ease);
+  border-radius: 6px;
   white-space: nowrap;
 }
-.glass-tab:hover { color: var(--az-text-secondary); background: var(--az-surface-hover); border-color: transparent; }
+.glass-tab:hover { color: #AAB4C2; background: rgba(255,255,255,0.035); border-color: transparent; }
 .glass-tab:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
-.glass-tab.active { color: var(--az-text); background: transparent; border-color: transparent; }
+.glass-tab.active { color: #E8EDF4; background: transparent; border-color: transparent; }
 .glass-tab.active::after {
-  content: ''; position: absolute; bottom: -1px; left: 8px; right: 8px; height: 2px;
-  background: var(--az-text); border-radius: 999px; opacity: 0.9;
+  content: ''; position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); width: 16px; height: 2px;
+  background: var(--az-accent); border-radius: 999px;
 }
 
 /* ============================================
@@ -387,8 +417,8 @@ body {
   display: flex; align-items: center; justify-content: space-between;
 }
 
-::selection { background: rgba(59,130,246,0.22); color: var(--az-text); }
-::-moz-selection { background: rgba(59,130,246,0.22); color: var(--az-text); }
+::selection { background: rgba(91,140,255,0.28); color: var(--az-text); }
+::-moz-selection { background: rgba(91,140,255,0.28); color: var(--az-text); }
 
 /* Monaco ghost & AI comment — restrained */
 .monaco-editor .ghost-text,
@@ -407,7 +437,7 @@ body {
 }
 /* Premium Azemax inline comment — subtle hierarchy, still code */
 .ai-comment-slash {
-  color: var(--az-accent, #3B82F6) !important;
+  color: var(--az-accent, #5B8CFF) !important;
   font-weight: 500;
   letter-spacing: 0.01em;
   font-style: normal !important;
@@ -456,9 +486,15 @@ body {
   border-left-color: rgba(122,142,185,0.45) !important;
   opacity: 1;
 }
-.ai-comment-line { background: rgba(59,130,246,0.04) !important; }
+.ai-comment-line { background: rgba(91,140,255,0.05) !important; }
+/* Transient /// failure marker — trigger line kept, reason in hover */
+.ai-comment-error {
+  background: rgba(255,100,124,0.07) !important;
+  border-bottom: 1px solid rgba(255,100,124,0.55);
+  border-radius: 2px;
+}
 .ai-comment-glyph { border-left: 2px solid var(--az-border-strong); }
-.glass-line-highlight { background: rgba(59,130,246,0.06) !important; }
+.glass-line-highlight { background: rgba(91,140,255,0.07) !important; }
 .glass-line-highlight::before { display: none; }
 /* Minimal inline AI indicator — Azemax spark, ultra small, editor-native */
 .ai-loading-spinner::after {
@@ -480,7 +516,7 @@ body {
   position: absolute;
   right: -1px; top: 1px; bottom: 1px;
   width: 1px;
-  background: var(--az-accent, #3B82F6);
+  background: var(--az-accent, #5B8CFF);
   opacity: 0.72;
   border-radius: 1px;
   animation: ai-caret-pulse 1100ms ease-in-out infinite;
@@ -496,10 +532,10 @@ body {
 }
 
 /* Diagnostics — muted */
-.premium-diag-error-line { background: rgba(218,54,51,0.08) !important; border-left: 2px solid rgba(218,54,51,0.45); }
-.premium-diag-warning-line { background: rgba(210,153,34,0.08) !important; border-left: 2px solid rgba(210,153,34,0.45); }
-.premium-diag-error-inline { background: rgba(218,54,51,0.08); border-bottom: 1px solid rgba(218,54,51,0.5); border-radius: 2px; }
-.premium-diag-warning-inline { background: rgba(210,153,34,0.08); border-bottom: 1px solid rgba(210,153,34,0.5); border-radius: 2px; }
+.premium-diag-error-line { background: rgba(255,100,124,0.08) !important; border-left: 2px solid rgba(255,100,124,0.45); }
+.premium-diag-warning-line { background: rgba(245,185,76,0.08) !important; border-left: 2px solid rgba(245,185,76,0.45); }
+.premium-diag-error-inline { background: rgba(255,100,124,0.08); border-bottom: 1px solid rgba(255,100,124,0.5); border-radius: 2px; }
+.premium-diag-warning-inline { background: rgba(245,185,76,0.08); border-bottom: 1px solid rgba(245,185,76,0.5); border-radius: 2px; }
 .premium-diag-glyph-error::after { content: '●'; color: var(--az-error); font-size: 9px; }
 .premium-diag-glyph-warning::after { content: '●'; color: var(--az-warning); font-size: 9px; }
 
@@ -533,10 +569,11 @@ body {
    ============================================ */
 
 .glass-terminal {
-  background: var(--az-surface);
+  background: var(--az-terminal-bg);
   border: 1px solid var(--az-border);
-  border-radius: var(--az-r-md);
+  border-radius: 6px;
   position: relative; overflow: hidden;
+  box-shadow: var(--az-shadow-sm);
 }
 .glass-terminal::before { display: none; }
 .glass-terminal-header {
@@ -575,19 +612,20 @@ body {
 .glass-explanation-icon { width: 28px; height: 28px; background: var(--az-surface-3); border: 1px solid var(--az-border); border-radius: var(--az-r-sm); display: flex; align-items: center; justify-content: center; color: var(--az-text-secondary); }
 
 .glass-run-button {
-  background: var(--az-surface-3);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-md);
+  background: var(--az-accent);
+  border: none;
+  border-radius: 7px;
   padding: 6px 12px;
-  color: var(--az-text);
-  font-weight: 500; font-size: 12px;
+  color: white;
+  font-weight: 550; font-size: 12px;
   display: flex; align-items: center; gap: 6px;
-  transition: background 140ms var(--az-ease), border-color 140ms var(--az-ease);
+  transition: background 170ms var(--az-ease), filter 170ms var(--az-ease);
   position: relative; overflow: hidden;
+  box-shadow: var(--az-shadow-sm);
 }
 .glass-run-button::before { display: none; }
-.glass-run-button:hover { background: var(--az-surface-hover); border-color: var(--az-border-strong); box-shadow: none; transform: none; }
-.glass-run-button:disabled { background: var(--az-surface); border-color: var(--az-border); color: var(--az-text-disabled); cursor: not-allowed; }
+.glass-run-button:hover { background: var(--az-accent-hover); filter: brightness(1.05); box-shadow: var(--az-shadow-sm); transform: none; }
+.glass-run-button:disabled { background: var(--az-surface-3); border: 1px solid var(--az-border); color: var(--az-text-disabled); cursor: not-allowed; box-shadow: none; }
 
 .glass-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; }
 .glass-empty-state-icon { width: 56px; height: 56px; background: var(--az-surface-2); border: 1px solid var(--az-border); border-radius: var(--az-r-xl); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; position: relative; }
@@ -624,27 +662,24 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
    ============================================ */
 
 .az-composer {
-  background: var(--az-composer-bg);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 2px 12px rgba(0,0,0,0.14);
+  background: #151A22;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  box-shadow: var(--az-shadow-sm);
   transition:
-    border-color 160ms var(--az-ease),
-    background-color 160ms var(--az-ease),
-    box-shadow 160ms var(--az-ease);
+    border-color 170ms var(--az-ease),
+    background-color 170ms var(--az-ease),
+    box-shadow 170ms var(--az-ease);
   outline: none;
 }
 .az-composer:hover {
-  border-color: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.12);
   background: var(--az-composer-bg-hover);
 }
 .az-composer:focus-within {
-  border-color: rgba(255,255,255,0.12);
+  border-color: rgba(91,140,255,.55);
   background: var(--az-composer-bg-focus);
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0.04),
-    0 1px 0 rgba(255,255,255,0.02) inset,
-    0 6px 20px rgba(0,0,0,0.18);
+  box-shadow: var(--az-composer-focus-ring);
   outline: none;
 }
 /* Ensure textarea itself never shows browser outline/ring */
@@ -682,11 +717,11 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
    ============================================ */
 
 :root {
-  --az-ai-accent-soft: rgba(59,130,246,0.09);
-  --az-ai-accent-soft-hover: rgba(59,130,246,0.13);
-  --az-ai-border-active: rgba(59,130,246,0.24);
-  --az-ai-glow: 0 0 14px rgba(59,130,246,0.08);
-  --az-ai-glow-active: 0 0 16px rgba(59,130,246,0.13);
+  --az-ai-accent-soft: rgba(91,140,255,0.10);
+  --az-ai-accent-soft-hover: rgba(91,140,255,0.14);
+  --az-ai-border-active: rgba(91,140,255,0.30);
+  --az-ai-glow: 0 0 14px rgba(91,140,255,0.08);
+  --az-ai-glow-active: 0 0 16px rgba(91,140,255,0.12);
 }
 
 /* ——— Signature AI control: matched to Run button — 28px / 8px / 1px ——— */
@@ -709,21 +744,21 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
   user-select: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* Exact match to .glass-run-button / toolbar buttons */
+  /* LEVEL 2 — dark surface, subtle blue border, Azemax mark */
   color: var(--az-text);
   background: var(--az-surface-3);
-  border: 1px solid var(--az-border);
+  border: 1px solid rgba(91,140,255,0.20);
   box-shadow: none;
   transition:
-    background 140ms var(--az-ease),
-    border-color 140ms var(--az-ease),
-    color 140ms var(--az-ease);
+    background 150ms var(--az-ease),
+    border-color 150ms var(--az-ease),
+    color 150ms var(--az-ease);
   will-change: background, border-color;
 }
 
 .az-ai-topbar-btn:hover {
   background: var(--az-surface-hover);
-  border-color: var(--az-border-strong);
+  border-color: rgba(91,140,255,0.35);
   color: var(--az-text);
   box-shadow: none;
   transform: none;
@@ -815,7 +850,7 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
 /* ——— Thinking: subtle breathing + premium square spinner (reuses inline language) ——— */
 .az-ai-topbar-btn[data-loading="true"] {
   background: var(--az-ai-accent-soft);
-  border-color: rgba(59,130,246,0.20);
+  border-color: rgba(91,140,255,0.22);
 }
 .az-ai-topbar-btn[data-loading="true"] .az-ai-topbar-mark {
   animation: az-ai-breathe 2.6s var(--az-ease) infinite;
@@ -1040,7 +1075,7 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 }
 .file-explorer-scroll::-webkit-scrollbar{width:5px}
 .file-explorer-scroll::-webkit-scrollbar-track{background:transparent}
-.file-explorer-scroll::-webkit-scrollbar-thumb{background:#232831;border-radius:999px}
+.file-explorer-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
 .sidebar-header-premium{ background: var(--az-surface); border-bottom:1px solid var(--az-border); position:relative}
 .sidebar-header-premium::after{ display:none}
 .sidebar-action-btn:hover{ background:var(--az-surface-hover); color:var(--az-text); box-shadow:none}
@@ -1071,7 +1106,7 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 .az-focus:focus-visible{ outline:none; box-shadow: var(--az-focus-ring); border-color: var(--az-border-focus)}
 
 /* Composer placeholder & textarea polish — premium command-field */
-.az-composer textarea::placeholder { color: #6F7580; opacity: 0.85; font-weight: 400; transition: opacity var(--az-dur-fast) ease; }
+.az-composer textarea::placeholder { color: #677283; opacity: 1; font-weight: 400; transition: opacity var(--az-dur-fast) ease; }
 .az-composer textarea:focus::placeholder { opacity: 0.48; }
 .az-composer textarea {
   font-family: 'Inter', system-ui, sans-serif;
@@ -1095,8 +1130,8 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
   scrollbar-gutter: stable;
 }
 .ai-chat-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-.ai-chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
-.ai-chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.13); background-clip: padding-box; }
+.ai-chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
+.ai-chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); background-clip: padding-box; }
 .ai-chat-scroll::-webkit-scrollbar-track { background: transparent; }
 
 /* Message editorial styles — tighter rhythm, refined hierarchy */
@@ -1136,6 +1171,7 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
   will-change: transform, background;
 }
 .az-send-btn:active:not(:disabled) { transform: scale(0.96); }
+.az-send-btn:not(:disabled):hover { filter: brightness(1.08); }
 .az-send-btn:disabled { cursor: not-allowed; opacity: 0.85; }
 .az-send-btn:focus-visible {
   outline: none;
@@ -1154,18 +1190,21 @@ img { display: block; max-width: 100%; }
 .overflow-hidden { scrollbar-gutter: auto; }
 /* Ensure activity bar icons optically centered */
 .lucide, [data-lucide] { display: block; flex-shrink: 0; }
-/* Consistent focus ring for any interactive — premium neutral (no blue glow) */
-*:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
+/* Consistent focus ring — Azemax blue, keyboard navigable */
+*:focus-visible { outline: none; box-shadow: var(--az-focus-ring); border-color: var(--az-border-focus); }
 *:focus:not(:focus-visible) { box-shadow: none; outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+}
 /* Remove browser default blue outline for all inputs/textareas — we provide our own subtle focus */
 input:focus, textarea:focus, select:focus { outline: none; }
-/* Ensure Tailwind ring-2 for accent doesn't leak bright blue inside chat — scoped neutral override */
+/* Consistent focus ring inside chat — Azemax blue, subtle */
 .ai-chat-root [class*="focus-visible:ring-[var(--az-accent-ring)]"]:focus-visible {
-  --tw-ring-color: rgba(255,255,255,0.12) !important;
+  --tw-ring-color: rgba(91,140,255,0.22) !important;
   --tw-ring-offset-color: transparent !important;
 }
 .ai-chat-root .focus-visible\:ring-2:focus-visible {
-  --tw-ring-color: rgba(255,255,255,0.12) !important;
+  --tw-ring-color: rgba(91,140,255,0.22) !important;
 }
 /* Stabilize Monaco container dimensions during async + correct guide placement */
 .monaco-editor .margin-view-overlays, .monaco-editor .margin-view-background { will-change: auto; }
@@ -1178,4 +1217,106 @@ input:focus, textarea:focus, select:focus { outline: none; }
 .ai-loading-spinner { min-height: 16px; contain: layout; }
 /* File explorer indent guide: ensure 1px crisp */
 .file-explorer-indent-guide { width: 1px !important; }
+
+/* ============================================
+   AZEMAX LAYERED WORKSTATION — remove "black wall"
+   App bg → sidebar → editor → panel → floating
+   Each layer differs ~3-7% luminance, 1px hairlines
+   ============================================ */
+.az-app-bg { background: var(--az-bg); }
+.az-layer-sidebar { background: var(--az-surface); }
+.az-layer-editor { background: var(--az-editor-bg); }
+.az-layer-panel { background: var(--az-surface-2); }
+.az-layer-floating { background: var(--az-overlay); box-shadow: var(--az-shadow-md); border: 1px solid var(--az-border); border-radius: 10px; }
+.az-elev-sm { box-shadow: var(--az-shadow-sm); }
+.az-elev-md { box-shadow: var(--az-shadow-md); }
+.az-divider { background: var(--az-divider); }
+.az-divider-strong { background: var(--az-divider-strong); }
+
+/* Explorer selected — subtle blue-tinted + thin accent indicator + bright name */
+.file-explorer-node[data-active="true"],
+.az-explorer-selected {
+  background: rgba(91,140,255,0.10) !important;
+  border-left: 2px solid var(--az-accent) !important;
+  color: var(--az-text) !important;
+}
+.az-explorer-hover:hover { background: rgba(255,255,255,0.045) !important; }
+
+/* Empty states — small icon + title + one-line explanation */
+.az-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 32px 24px; text-align: center; }
+.az-empty-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--az-surface-2); border: 1px solid var(--az-border); color: var(--az-text-muted); }
+.az-empty-title { font-size: 13px; font-weight: 600; color: var(--az-text); letter-spacing: -0.01em; }
+.az-empty-desc { font-size: 12px; color: var(--az-text-muted); line-height: 1.5; max-width: 260px; }
+
+/* Unified Azemax loading language — subtle pulse/shimmer/typing in brand blue */
+@keyframes az-pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes az-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+@keyframes az-typing { 0%,60%,100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-3px); opacity: 1; } }
+.az-loading-pulse { animation: az-pulse 1.6s ease-in-out infinite; color: var(--az-accent); }
+.az-loading-shimmer { position: relative; overflow: hidden; background: var(--az-surface-2); }
+.az-loading-shimmer::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(91,140,255,0.08), transparent); animation: az-shimmer 1.8s ease-in-out infinite; }
+.az-typing-dot { width: 5px; height: 5px; border-radius: 999px; background: var(--az-accent); animation: az-typing 1.2s ease-in-out infinite; }
+.az-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.az-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .az-loading-pulse, .az-loading-shimmer::after, .az-typing-dot { animation: none !important; }
+}
+
+/* Icon system — Lucide only, monochrome UI, blue reserved for active/AI */
+.az-icon { width: 16px; height: 16px; color: var(--az-icon); flex-shrink: 0; }
+.az-icon-active { color: var(--az-icon-active); }
+.az-icon-important { width: 18px; height: 18px; }
+button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
+
+/* Activity rail — professional IDE navigation */
+.az-activity-btn {
+  position: relative;
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: var(--az-icon-activity);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background 150ms var(--az-ease), color 150ms var(--az-ease), border-color 150ms var(--az-ease);
+}
+.az-activity-btn:hover { color: var(--az-icon-activity-hover); background: rgba(255,255,255,0.04); }
+.az-activity-btn[data-active="true"] { color: var(--az-icon-activity-active); background: rgba(255,255,255,0.06); border-color: var(--az-border-subtle); }
+.az-activity-btn:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
+.az-activity-indicator {
+  position: absolute; left: -9px; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 16px; border-radius: 999px;
+  background: var(--az-accent);
+}
+
+/* Bottom tabs — inactive #717C8C, hover #AAB4C2, active #E8EDF4 + compact 2px blue indicator */
+.az-tab-inactive { color: #717C8C; }
+.az-tab-inactive:hover { color: #AAB4C2; }
+.az-tab-active { color: #E8EDF4; }
+
+/* Micro-interactions — 150-180ms ease, no panel animation */
+.az-hoverable { transition: background 170ms var(--az-ease), border-color 170ms var(--az-ease), color 170ms var(--az-ease), filter 170ms var(--az-ease); }
+.az-hoverable:hover { filter: brightness(1.06); }
+
+/* AI quick actions — compact, monochrome, blue only on hover/focus */
+.az-quick-action {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 11.5px; font-weight: 500; letter-spacing: -0.01em; line-height: 1;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.07);
+  color: #B8C1CD;
+  cursor: pointer;
+  transition: background 150ms var(--az-ease), border-color 150ms var(--az-ease), color 150ms var(--az-ease);
+}
+.az-quick-action svg { color: #7D8897; flex-shrink: 0; transition: color 150ms var(--az-ease); }
+.az-quick-action:hover { background: rgba(91,140,255,0.08); border-color: rgba(91,140,255,0.20); color: #E7EDF6; }
+.az-quick-action:hover svg { color: #78A7FF; }
+.az-quick-action:focus-visible { outline: none; border-color: rgba(91,140,255,0.35); box-shadow: var(--az-focus-ring); }
+
+/* Responsive guard — no horizontal overflow at 1280/1440/1600/1920 */
+.az-no-overflow { max-width: 100%; overflow-x: clip; }
+@media (max-width: 1920px) {
+  .az-main-grid { max-width: 100vw; overflow-x: clip; }
+}
 

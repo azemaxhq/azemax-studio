@@ -105,7 +105,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             {/* Header */}
             <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-0">
               <div className="flex items-start gap-3 min-w-0 flex-1">
-                <div className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] border ${danger ? 'bg-[var(--az-error-soft)] border-[var(--az-error-border)] text-[#E85D5D]' : 'bg-[var(--az-surface-3)] border-[var(--az-border)] text-[var(--az-text-secondary)]'}`}>
+                <div className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] border ${danger ? 'bg-[var(--az-error-soft)] border-[var(--az-error-border)] text-[var(--az-error)]' : 'bg-[var(--az-surface-3)] border-[var(--az-border)] text-[var(--az-text-secondary)]'}`}>
                   <AlertTriangle size={15} strokeWidth={1.75} />
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
@@ -144,7 +144,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 onClick={onConfirm}
                 className={`min-w-[72px] px-3.5 py-2 text-[12.5px] font-[600] rounded-[8px] border focus:outline-none focus-visible:ring-1 transition-colors ${
                   danger
-                    ? 'bg-[#DA3633] border-[#DA3633] text-white hover:bg-[#C62F2B] focus-visible:ring-red-400/40 shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
+                    ? 'bg-[#FF647C] border-[#FF647C] text-white hover:brightness-105 focus-visible:ring-red-400/40 shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
                     : 'bg-[var(--az-accent)] border-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] focus-visible:ring-[var(--az-accent-ring)]'
                 }`}
               >

@@ -166,7 +166,7 @@ function lightweightParse(markdown: string, appendCaret = false): ReactNode {
 
     if (trimmed.startsWith('> ')) {
       result.push(
-        React.createElement('blockquote', { key: `quote-${result.length}`, className: 'border-l-3 border-[#58a6ff] bg-[#161b22] pl-4 py-2 my-3 text-[#8b949e]' },
+        React.createElement('blockquote', { key: `quote-${result.length}`, className: 'border-l-3 border-[#5B8CFF] bg-[#141923] pl-4 py-2 my-3 text-[#7F8A9A]' },
           parseInline(trimmed.slice(2))
         )
       );
@@ -314,13 +314,13 @@ export const CodeBlockRenderer: React.FC<{
   }, [code, onCopy]);
 
   return (
-    <div className="my-4 rounded-lg overflow-hidden border border-[#30363d] bg-[#161b22]">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#0d1117] border-b border-[#30363d]">
-        <span className="text-xs text-[#8b949e] font-mono">{language}</span>
+    <div className="my-4 rounded-lg overflow-hidden border border-[#2E3746] bg-[#141923]">
+      <div className="flex items-center justify-between px-4 py-2 bg-[#0B0E13] border-b border-[#2E3746]">
+        <span className="text-xs text-[#7F8A9A] font-mono">{language}</span>
         {onCopy && (
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 text-xs text-[#8b949e] hover:text-[#c9d1d9] transition-colors"
+            className="flex items-center gap-1.5 text-xs text-[#7F8A9A] hover:text-[#A7B0BF] transition-colors"
             title="Copy Code"
           >
             {isCopied || copiedId === id ? (
@@ -337,7 +337,7 @@ export const CodeBlockRenderer: React.FC<{
           </button>
         )}
       </div>
-      <pre className="p-4 text-sm font-mono overflow-x-auto text-[#e6edf3] leading-relaxed bg-[#0d1117]">
+      <pre className="p-4 text-sm font-mono overflow-x-auto text-[#e6edf3] leading-relaxed bg-[#0B0E13]">
         <code className={`language-${language}`}>{code}</code>
       </pre>
     </div>

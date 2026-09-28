@@ -35,7 +35,7 @@ const SelectControl: React.FC<{ value: string; choices: { value: string; label: 
         className="appearance-none pl-2.5 pr-7 py-1.5 text-[13px] bg-white/[0.08] border border-white/[0.15] rounded-md text-white/70 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-400/20"
       >
         {choices.map((choice) => (
-          <option key={choice.value} value={choice.value} className="bg-[#161b22] text-white/80">
+          <option key={choice.value} value={choice.value} className="bg-[#141923] text-white/80">
             {choice.label}
           </option>
         ))}

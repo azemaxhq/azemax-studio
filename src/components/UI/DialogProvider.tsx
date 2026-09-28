@@ -205,7 +205,7 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 >
                   <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-0">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
-                      <div className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] border ${confirmOpts.danger !== false ? 'bg-[var(--az-error-soft)] border-[var(--az-error-border)] text-[#E85D5D]' : 'bg-[var(--az-surface-3)] border-[var(--az-border)] text-[var(--az-text-secondary)]'}`}>
+                      <div className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-[8px] border ${confirmOpts.danger !== false ? 'bg-[var(--az-error-soft)] border-[var(--az-error-border)] text-[var(--az-error)]' : 'bg-[var(--az-surface-3)] border-[var(--az-border)] text-[var(--az-text-secondary)]'}`}>
                         <AlertTriangle size={15} strokeWidth={1.75} />
                       </div>
                       <div className="min-w-0 flex-1 pt-0.5">
@@ -221,7 +221,7 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     <button ref={cancelRef} type="button" onClick={() => { (dialog as Extract<DialogState, {type:'confirm'}>).resolve(false); setDialog(null); }} className="min-w-[72px] px-3.5 py-2 text-[12.5px] font-[500] rounded-[8px] border bg-[var(--az-surface-3)] text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] transition-colors" style={{ borderColor: 'var(--az-border)' }}>
                       {confirmOpts.cancelLabel ?? 'Cancel'}
                     </button>
-                    <button type="button" onClick={() => { (dialog as Extract<DialogState, {type:'confirm'}>).resolve(true); setDialog(null); }} className={`min-w-[72px] px-3.5 py-2 text-[12.5px] font-[600] rounded-[8px] border focus:outline-none focus-visible:ring-1 transition-colors ${confirmOpts.danger !== false ? 'bg-[#DA3633] border-[#DA3633] text-white hover:bg-[#C62F2B] focus-visible:ring-red-400/40 shadow-[0_1px_2px_rgba(0,0,0,0.2)]' : 'bg-[var(--az-accent)] border-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] focus-visible:ring-[var(--az-accent-ring)]'}`}>
+                    <button type="button" onClick={() => { (dialog as Extract<DialogState, {type:'confirm'}>).resolve(true); setDialog(null); }} className={`min-w-[72px] px-3.5 py-2 text-[12.5px] font-[600] rounded-[8px] border focus:outline-none focus-visible:ring-1 transition-colors ${confirmOpts.danger !== false ? 'bg-[#FF647C] border-[#FF647C] text-white hover:brightness-105 focus-visible:ring-red-400/40 shadow-[0_1px_2px_rgba(0,0,0,0.2)]' : 'bg-[var(--az-accent)] border-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] focus-visible:ring-[var(--az-accent-ring)]'}`}>
                       {confirmOpts.confirmLabel ?? 'Confirm'}
                     </button>
                   </div>
@@ -298,7 +298,7 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         className="w-full h-9 px-3 rounded-[8px] border bg-[var(--az-surface-2)] text-[13px] placeholder:text-white/30 focus:outline-none focus:border-[var(--az-accent-border)] focus:shadow-[var(--az-focus-ring)] transition-colors"
                         style={{ borderColor: promptValidationError ? 'var(--az-error-border)' : 'var(--az-border)', color: 'var(--az-text)' }}
                       />
-                      {promptValidationError && <p className="mt-1.5 text-[11px] leading-snug" style={{ color: '#E85D5D' }}>{promptValidationError}</p>}
+                      {promptValidationError && <p className="mt-1.5 text-[11px] leading-snug" style={{ color: 'var(--az-error)' }}>{promptValidationError}</p>}
                     </div>
                   </div>
                   <div className="mt-5 px-6 pb-5 flex items-center justify-end gap-2">

@@ -331,37 +331,27 @@ export const MainLayout: React.FC = () => {
                 <button
                     data-testid="activity-explorer"
                     onClick={openExplorer}
-                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center shrink-0 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]"
-                    style={{
-                        background: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-surface-3)' : 'transparent',
-                        color: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-text)' : 'var(--az-text-muted)',
-                        border: '1px solid transparent',
-                        borderColor: isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'var(--az-border)' : 'transparent'
-                    }}
+                    className="az-activity-btn"
+                    data-active={isLeftSidebarOpen && leftSidebarView === 'explorer' ? 'true' : 'false'}
                     title="Explorer (⌘B)"
                     aria-label="Explorer"
                     aria-pressed={isLeftSidebarOpen && leftSidebarView === 'explorer'}
                 >
                     {isLeftSidebarOpen && leftSidebarView === 'explorer' && (
-                        <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
+                        <span className="az-activity-indicator" />
                     )}
                     <Layers size={16} strokeWidth={1.75} className="shrink-0" />
                 </button>
                 <button
                     onClick={openExplanation}
-                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center shrink-0 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]"
-                    style={{
-                        background: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-surface-3)' : 'transparent',
-                        color: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-text)' : 'var(--az-text-muted)',
-                        border: '1px solid transparent',
-                        borderColor: isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'var(--az-border)' : 'transparent'
-                    }}
+                    className="az-activity-btn"
+                    data-active={isLeftSidebarOpen && leftSidebarView === 'explanation' ? 'true' : 'false'}
                     title="Code Explanation"
                     aria-label="Code Explanation"
                     aria-pressed={isLeftSidebarOpen && leftSidebarView === 'explanation'}
                 >
                     {isLeftSidebarOpen && leftSidebarView === 'explanation' && (
-                        <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
+                        <span className="az-activity-indicator" />
                     )}
                     <BookOpen size={16} strokeWidth={1.75} className="shrink-0" />
                 </button>
@@ -370,19 +360,14 @@ export const MainLayout: React.FC = () => {
 
                 <button
                     onClick={openSettings}
-                    className="relative w-[32px] h-[32px] rounded-[8px] flex items-center justify-center shrink-0 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent-ring)]"
-                    style={{
-                        background: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-surface-3)' : 'transparent',
-                        color: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-text)' : 'var(--az-text-muted)',
-                        border: '1px solid transparent',
-                        borderColor: isLeftSidebarOpen && leftSidebarView === 'settings' ? 'var(--az-border)' : 'transparent'
-                    }}
+                    className="az-activity-btn"
+                    data-active={isLeftSidebarOpen && leftSidebarView === 'settings' ? 'true' : 'false'}
                     title="Settings"
                     aria-label="Settings"
                     aria-pressed={isLeftSidebarOpen && leftSidebarView === 'settings'}
                 >
                     {isLeftSidebarOpen && leftSidebarView === 'settings' && (
-                        <span className="absolute left-[-9px] top-1/2 -translate-y-1/2 w-[2px] h-[16px] rounded-full" style={{ background: 'var(--az-text)' }} />
+                        <span className="az-activity-indicator" />
                     )}
                     <Settings size={16} strokeWidth={1.75} className="shrink-0" />
                 </button>
@@ -493,7 +478,7 @@ export const MainLayout: React.FC = () => {
                     {isDesktop && (
                         <div
                             ref={bottomPanelRef}
-                            style={{ height: bottomPanelHeight, background: 'var(--az-surface)', borderColor: 'var(--az-border)' }}
+                            style={{ height: bottomPanelHeight, background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}
                             className="shrink-0 border-t"
                         >
                             <BottomPanel />

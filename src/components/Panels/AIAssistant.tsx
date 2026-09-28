@@ -79,13 +79,13 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
     // Premium artifact / document card — Azemax workspace resource
     const preview = content.slice(0, 120).replace(/\s+/g, ' ').trim();
     return (
-        <div className="my-3 rounded-[10px] border border-white/[0.06] bg-[#151A24] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset] hover:border-white/[0.08] transition-colors">
+        <div className="my-3 rounded-[10px] border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset] hover:border-[var(--az-border-strong)] transition-colors">
             <div
                 className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.02] cursor-pointer transition-colors gap-3"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <span className="w-7 h-7 rounded-[7px] bg-[rgba(59,130,246,0.07)] border border-[rgba(59,130,246,0.12)] flex items-center justify-center shrink-0">
+                    <span className="w-7 h-7 rounded-[7px] bg-[rgba(91,140,255,0.10)] border border-[rgba(91,140,255,0.16)] flex items-center justify-center shrink-0">
                         {getIcon()}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -101,17 +101,17 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
                 <div className="flex items-center gap-1.5 shrink-0">
                     <button
                         onClick={(e) => { e.stopPropagation(); onCopy?.(content, id); }}
-                        className="px-2 py-1 rounded-[6px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] border border-transparent hover:border-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                        className="px-2 py-1 rounded-[6px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] border border-transparent hover:border-[var(--az-border)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                     >
                         {copiedId === id ? 'Copied' : 'Copy'}
                     </button>
-                    <span className={`w-6 h-6 rounded-[6px] bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-[var(--az-text-muted)] transition-colors ${isExpanded ? 'rotate-180' : ''}`}>
+                    <span className={`w-6 h-6 rounded-[6px] bg-white/[0.04] border border-[var(--az-border)] flex items-center justify-center text-[var(--az-text-muted)] transition-colors ${isExpanded ? 'rotate-180' : ''}`}>
                         <ChevronDown size={13} strokeWidth={1.75} />
                     </span>
                 </div>
             </div>
             {isExpanded && (
-                <div className="border-t border-white/[0.06] bg-[#0F1115]">
+                <div className="border-t border-[var(--az-border)] bg-[#0C1118]">
                     <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] max-h-[320px] overflow-y-auto">
                         {highlightedCode
                             ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
@@ -183,8 +183,8 @@ const MessageItem = React.memo(({
                 const displayCode = !expanded ? code.split('\n').slice(0, 20).join('\n') : code;
 
                 return (
-                    <div className="my-3 rounded-[10px] overflow-hidden border border-white/[0.06] bg-[var(--az-surface-2)]">
-                        <div className="flex items-center justify-between px-3 py-1.5 bg-[#15181E] border-b border-white/[0.06]">
+                    <div className="my-3 rounded-[10px] overflow-hidden border border-[var(--az-border)] bg-[var(--az-surface-2)]">
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--az-surface-3)] border-b border-[var(--az-border)]">
                             <span className="text-[11px] text-[var(--az-text-muted)] font-mono tracking-tight">{language}</span>
                             <div className="flex items-center gap-1.5">
                                 <button
@@ -223,17 +223,17 @@ const MessageItem = React.memo(({
                             </div>
                         </div>
                         <div className="relative">
-                            <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] bg-[#0F1115] max-h-[360px] overflow-y-auto">
+                            <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] bg-[#0C1118] max-h-[360px] overflow-y-auto">
                                 {highlightedCode && expanded
                                     ? <code dangerouslySetInnerHTML={{ __html: isLongBlock && !expanded ? tryHighlight(displayCode, language) || '' : highlightedCode }} />
                                     : <code>{displayCode}</code>}
                             </pre>
                             {isLongBlock && !expanded && (
-                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0F1115] to-transparent pointer-events-none" />
+                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0C1118] to-transparent pointer-events-none" />
                             )}
                         </div>
                         {isLongBlock && (
-                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] font-medium text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] hover:bg-white/[0.02] border-t border-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10">
+                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] font-medium text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] hover:bg-white/[0.02] border-t border-[var(--az-border)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10">
                                 {expanded ? 'Show less' : `Show ${code.split('\n').length - 20} more lines`}
                             </button>
                         )}
@@ -243,7 +243,7 @@ const MessageItem = React.memo(({
             // Inline code — neutral, editor-native
             return (
                 <code
-                    className="text-[13.5px] font-mono bg-[var(--az-surface-3)] text-[var(--az-text)] border border-white/[0.06] px-1 py-0.5 rounded-[5px]"
+                    className="text-[13.5px] font-mono bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border)] px-1 py-0.5 rounded-[5px]"
                     {...props}
                 >
                     {children}
@@ -344,7 +344,7 @@ const MessageItem = React.memo(({
                         />
                         <div className="flex gap-1.5 justify-end">
                             <button onClick={onCancelEdit} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ color: 'var(--az-text-muted)' }}>Cancel</button>
-                            <button onClick={() => onSaveEdit(msg.id)} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ background: 'var(--az-text)', color: '#0B0D10' }}>Save</button>
+                            <button onClick={() => onSaveEdit(msg.id)} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ background: 'var(--az-text)', color: '#0B0E13' }}>Save</button>
                         </div>
                     </div>
                 ) : (
@@ -352,7 +352,7 @@ const MessageItem = React.memo(({
                         <div className={`group relative break-words ${msg.role === 'ai'
                             ? 'w-full bg-transparent'
                             : 'px-[13px] py-[7px] rounded-[16px] rounded-br-[5px] border max-w-full transition-all duration-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_1px_2px_rgba(0,0,0,0.14),0_4px_12px_rgba(0,0,0,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_2px_6px_rgba(0,0,0,0.16),0_4px_16px_rgba(0,0,0,0.08)]'
-                            }`} style={msg.role !== 'ai' ? { background: 'linear-gradient(180deg, #1E2E4A 0%, #1A2233 100%)', borderColor: 'rgba(59,130,246,0.18)', color: 'var(--az-text)' } : undefined} onMouseEnter={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = 'linear-gradient(180deg, #22304D 0%, #1E2A3E 100%)'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(59,130,246,0.26)'; } : undefined} onMouseLeave={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = 'linear-gradient(180deg, #1E2E4A 0%, #1A2233 100%)'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(59,130,246,0.18)'; } : undefined}>
+                            }`} style={msg.role !== 'ai' ? { background: '#181E29', borderColor: 'rgba(91,140,255,0.18)', color: 'var(--az-text)' } : undefined} onMouseEnter={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = '#1D2430'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(91,140,255,0.26)'; } : undefined} onMouseLeave={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = '#181E29'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(91,140,255,0.18)'; } : undefined}>
 
                             {msg.role === 'ai' && (
                                 <div className="flex items-center gap-2 mb-1.5 select-none">
@@ -447,7 +447,7 @@ const MessageItem = React.memo(({
                             )}
 
                             {msg.role === 'user' && (
-                                <div className="absolute -bottom-5 left-0 opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center gap-0.5 p-0.5 rounded-full border shadow-sm translate-y-1 group-hover:translate-y-0" style={{ background: '#15181E', borderColor: 'rgba(255,255,255,0.07)' }}>
+                                <div className="absolute -bottom-5 left-0 opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center gap-0.5 p-0.5 rounded-full border shadow-sm translate-y-1 group-hover:translate-y-0" style={{ background: 'var(--az-surface-3)', borderColor: 'var(--az-border)' }}>
                                     <button
                                         onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
                                         className="p-1 rounded-full hover:bg-white/10 text-[var(--az-text-muted)] hover:text-white transition-all duration-200 group/btn"
@@ -1849,8 +1849,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full relative z-10">
-                {/* Header — premium hierarchy: history · AZEMAX · title · + */}
-                <div className="h-[44px] shrink-0 flex items-center gap-3 px-4 border-b z-20" style={{ background: '#0F1115', borderColor: 'rgba(255,255,255,0.05)' }}>
+                {/* Header — AZEMAX + status indicator + contextual controls */}
+                <div className="h-[44px] shrink-0 flex items-center gap-3 px-4 border-b z-20" style={{ background: 'var(--az-surface)', borderColor: 'var(--az-border)' }}>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
                             onClick={() => setShowSidebar(!showSidebar)}
@@ -1861,8 +1861,11 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         >
                             <History size={13} strokeWidth={1.75} />
                         </button>
-                        <div className="w-px h-[14px] mx-0.5 hidden sm:block" style={{ background: 'rgba(255,255,255,0.08)' }} />
-                        <span className="hidden sm:inline text-[11px] font-semibold tracking-[0.09em] uppercase select-none" style={{ color: 'var(--az-text-secondary)', letterSpacing: '0.09em' }}>AZEMAX</span>
+                        <div className="w-px h-[14px] mx-0.5 hidden sm:block" style={{ background: 'var(--az-divider-strong)' }} />
+                        <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.09em] uppercase select-none" style={{ color: '#AEB8C6', letterSpacing: '0.09em' }}>
+                          <span className={`w-[5px] h-[5px] rounded-full shrink-0 ${isLoading ? 'az-loading-pulse' : ''}`} style={{ background: isLoading ? 'var(--az-accent)' : '#62D6A7', opacity: isLoading ? 1 : 0.85 }} title={isLoading ? 'Working' : 'Ready'} />
+                          AZEMAX
+                        </span>
                     </div>
 
                     <button
@@ -1904,7 +1907,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
                 {/* Messages Container */}
                 {!settings.ai.enabled && (
-                    <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-[11px] text-yellow-200/80 z-10">
+                    <div className="mx-4 mt-3 px-3 py-2 rounded-[8px] text-[12px] z-10" style={{ background: 'var(--az-warning-soft)', border: '1px solid var(--az-warning-border)', color: 'var(--az-warning)' }}>
                         AI features are disabled. Enable them in Settings → AI.
                     </div>
                 )}
@@ -1916,11 +1919,11 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 >
                     <div className="mx-auto w-full max-w-[640px] px-4 pt-4 pb-8 space-y-3">
                     {messages.length === 0 && !streamingText && settings.general.showWelcomeScreen ? (
-                        <div className="flex flex-col items-center px-5 pt-8 pb-6 text-center w-full max-w-[340px] mx-auto" style={{ animation: 'fade-in-up 220ms var(--az-ease-out) both' }}>
+                        <div className="flex flex-col items-center px-5 pt-10 pb-6 text-center w-full max-w-[360px] mx-auto" style={{ animation: 'fade-in-up 220ms var(--az-ease-out) both' }}>
                             <div className="mb-3 opacity-[0.88]">
                                 <AzemaxLogo size={22} />
                             </div>
-                            <div className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: 'rgba(255,255,255,0.55)' }}>Azemax</div>
+                            <div className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: '#AEB8C6' }}>Azemax</div>
                             <h3 className="text-[14px] font-semibold tracking-tight leading-tight mt-1" style={{ color: 'var(--az-text)' }}>What are you building?</h3>
                             <p className="text-[12px] leading-[1.5] mt-1.5 max-w-[280px] tracking-tight" style={{ color: 'var(--az-text-secondary)' }}>
                                 Ask about your code, files, or let Azemax make changes directly.
@@ -1930,12 +1933,9 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     <button
                                         key={action.label}
                                         onClick={() => handleQuickAction(action.prompt)}
-                                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-[8px] text-[11.5px] font-medium tracking-tight leading-none transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
-                                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--az-text-secondary)' }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--az-text)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'; }}
-                                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'var(--az-text-secondary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
+                                        className="az-quick-action"
                                     >
-                                        <action.icon size={12} strokeWidth={1.75} style={{ opacity: 0.58 }} />
+                                        <action.icon size={12} strokeWidth={1.75} />
                                         {action.label}
                                     </button>
                                 ))}
@@ -2032,7 +2032,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     )}
                     {/* Premium change summary — Azemax workspace */}
                     {lastDiffs.length > 0 && (
-                        <div className="rounded-[10px] border border-white/[0.06] bg-[#151A24] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset,0_4px_12px_rgba(0,0,0,0.14)]">
+                        <div className="rounded-[10px] border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset,0_4px_12px_rgba(0,0,0,0.14)]">
                             {/* Summary header */}
                             <div className="flex items-center justify-between px-3 py-2.5 gap-3">
                                 <div className="flex items-center gap-2.5 min-w-0">
@@ -2084,7 +2084,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 {lastDiffs.map(d => (
                                     <div key={d.file} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                                         <div className="flex items-center gap-2 min-w-0">
-                                            <span className="w-5 h-5 rounded-[5px] bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
+                                            <span className="w-5 h-5 rounded-[5px] bg-white/[0.04] border border-[var(--az-border)] flex items-center justify-center shrink-0">
                                                 <FileCode size={11} strokeWidth={1.75} className="text-[var(--az-text-muted)]" />
                                             </span>
                                             <div className="min-w-0">
@@ -2114,7 +2114,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                         setActiveFile(fromTree as never);
                                                     }
                                                 }}
-                                                className="px-2 py-1 rounded-[5px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] border border-transparent hover:border-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                                                className="px-2 py-1 rounded-[5px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] border border-transparent hover:border-[var(--az-border)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                                             >
                                                 Open
                                             </button>
@@ -2141,7 +2141,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
                 {/* Composer — sticky, anchored, premium floating */}
                 {/* Composer — sticky premium command center, soft hairline separation */}
-                <div className="shrink-0 px-4 pb-3 pt-2.5 z-10" style={{ background: '#0F1115', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="shrink-0 px-4 pb-3 pt-2.5 z-10" style={{ background: 'var(--az-surface)', borderTop: '1px solid var(--az-border)' }}>
                     <div className="mx-auto w-full max-w-[640px]">
                         <AIComposer
                             input={input}

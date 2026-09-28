@@ -83,4 +83,36 @@ const TRIGGER = `${JAVA_PREFIX}///pass different inputs;`;
     check('repair: empty output rejected', repairTripleSlashOutput('  ', prefix, 'x', 'java', TRIGGER) === null);
 }
 
+{
+    // Routing: imperatives and questions must reach the model — echoing them
+    // back as `// ...` looks broken (screenshot: `///print only the number;`
+    // became a plain comment instead of transforming the code).
+    const notePrefix = '  System.out.println(factorial);';
+    check(
+        'routing: instruction verb falls through to AI',
+        buildLiteralInlineComment(notePrefix, 'print only the number', 'java') === null,
+    );
+    check(
+        'routing: explain intent falls through to AI',
+        buildLiteralInlineComment(notePrefix, 'explain this', 'java') === null,
+    );
+    check(
+        'routing: question falls through to AI',
+        buildLiteralInlineComment(notePrefix, 'what does this do', 'java') === null,
+    );
+    check(
+        'routing: question mark falls through to AI',
+        buildLiteralInlineComment(notePrefix, 'does this handle negatives?', 'java') === null,
+    );
+    check(
+        'routing: make/use instruction falls through to AI',
+        buildLiteralInlineComment('  let x = 1;', 'use const instead', 'javascript') === null,
+    );
+    // Genuine literal annotations still resolve instantly with no AI call.
+    check(
+        'routing: plain annotation stays literal',
+        buildLiteralInlineComment(notePrefix, 'factorial of n', 'java') === `${notePrefix} // factorial of n`,
+    );
+}
+
 finish('tripleSlashComment');

@@ -144,7 +144,7 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
       {
         id: 'editor.fontFamily',
         type: 'text',
-        default: 'JetBrains Mono, monospace',
+        default: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace",
         label: 'Font Family',
         description: 'Monospace font stack used in the editor.',
         keywords: ['font', 'family', 'monospace'],

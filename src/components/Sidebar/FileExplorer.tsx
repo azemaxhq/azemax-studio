@@ -205,7 +205,7 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, par
                 <div
                     id="explorer-input-error"
                     className="mt-1 px-2 py-1 rounded-[4px] border text-[11px] leading-snug"
-                    style={{ marginLeft: `${depth * indentStep + indentBase + 24}px`, marginRight: '8px', background: 'rgba(218,54,51,0.08)', borderColor: 'rgba(218,54,51,0.16)', color: '#E85D5D' } as React.CSSProperties}
+                    style={{ marginLeft: `${depth * indentStep + indentBase + 24}px`, marginRight: '8px', background: 'var(--az-error-soft)', borderColor: 'var(--az-error-border)', color: 'var(--az-error)' } as React.CSSProperties}
                     role="alert"
                 >
                     {error}
@@ -428,12 +428,12 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 className={cn(
                     "flex items-center gap-1.5 py-0 pr-2 cursor-pointer transition-colors duration-100 text-[13px] leading-none select-none group relative rounded-[6px] mx-1.5 border min-h-[28px] h-[28px] antialiased outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)]",
                     isActive
-                        ? "bg-[var(--az-surface-3)] text-[var(--az-text)] border-[var(--az-border)] font-[500] after:absolute after:left-0 after:top-[5px] after:bottom-[5px] after:w-[2px] after:rounded-full after:bg-[var(--az-accent)] after:opacity-[0.85]"
+                        ? "bg-[rgba(91,140,255,0.09)] text-[#E7ECF3] border-transparent font-[500] after:absolute after:left-0 after:top-[5px] after:bottom-[5px] after:w-[2px] after:rounded-full after:bg-[var(--az-accent)]"
                         : isFocused
                             ? "bg-[var(--az-surface-2)] text-[var(--az-text)] border-[var(--az-border)] font-[450]"
                             : isSelected
                                 ? "bg-[var(--az-surface-2)] text-[var(--az-text)] border-[var(--az-border)] font-[450]"
-                                : "text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-white/[0.04] border-transparent font-[400] hover:border-white/[0.03]",
+                                : "text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-[rgba(255,255,255,0.035)] border-transparent font-[400] hover:border-white/[0.03]",
                     isDragOver && "bg-[var(--az-accent-soft)] border-[var(--az-accent-border)] shadow-[0_0_0_1px_var(--az-accent-border)]",
                 )}
                 style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
@@ -474,11 +474,11 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 {/* Status — kept for errors only; yellow modification dots removed per design */}
                 {hasError && !isFolder && (
                     <span className="shrink-0 ml-2 w-2 h-2 flex items-center justify-center" aria-hidden>
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#DA3633]" title="Error" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#FF647C]" title="Error" />
                     </span>
                 )}
                 {gitStatus && !isFolder && (
-                    <span className="text-[9px] font-bold tracking-widest shrink-0 w-3 text-center leading-none ml-1" style={{ color: gitStatus === 'M' ? '#D29922' : gitStatus === 'A' ? '#2EA043' : '#707680' }} title={gitStatus === 'M' ? 'Modified' : gitStatus === 'A' ? 'Added' : 'Untracked'}>{gitStatus}</span>
+                    <span className="text-[9px] font-bold tracking-widest shrink-0 w-3 text-center leading-none ml-1" style={{ color: gitStatus === 'M' ? '#F5B94C' : gitStatus === 'A' ? '#35D399' : '#727D8E' }} title={gitStatus === 'M' ? 'Modified' : gitStatus === 'A' ? 'Added' : 'Untracked'}>{gitStatus}</span>
                 )}
 
                 {/* File Count Badge for Folders */}

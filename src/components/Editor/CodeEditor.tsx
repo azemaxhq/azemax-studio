@@ -385,7 +385,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                                     color: isError ? 'rgba(248,81,73,0.9)' : isWarning ? 'rgba(254,188,46,0.9)' : 'rgba(88,166,255,0.9)',
                                     position: 4,
                                 },
-                                minimap: { color: isError ? '#f85149' : isWarning ? '#febc2e' : '#58a6ff', position: 2 },
+                                minimap: { color: isError ? '#FF647C' : isWarning ? '#F5B94C' : '#5B8CFF', position: 2 },
                                 hoverMessage: { value: hover },
                                 stickiness: 1,
                             }
@@ -643,6 +643,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             commentDecorationsRef.current = null;
             loadingDecorationRef.current?.clear();
             loadingDecorationRef.current = null;
+            if (commentErrorTimerRef.current) {
+                clearTimeout(commentErrorTimerRef.current);
+                commentErrorTimerRef.current = null;
+            }
+            commentErrorDecorationRef.current?.clear();
+            commentErrorDecorationRef.current = null;
             diagnosticsDecorationsRef.current?.clear();
             diagnosticsDecorationsRef.current = null;
             if (completionProviderRef.current) {
@@ -785,7 +791,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                                 className: isError ? 'premium-diag-error-line' : isWarning ? 'premium-diag-warning-line' : 'premium-diag-info-line',
                                 glyphMarginClassName: isError ? 'premium-diag-glyph-error' : isWarning ? 'premium-diag-glyph-warning' : 'premium-diag-glyph-info',
                                 overviewRuler: { color: isError ? 'rgba(248,81,73,0.9)' : isWarning ? 'rgba(254,188,46,0.9)' : 'rgba(88,166,255,0.9)', position: 4 },
-                                minimap: { color: isError ? '#f85149' : isWarning ? '#febc2e' : '#58a6ff', position: 2 },
+                                minimap: { color: isError ? '#FF647C' : isWarning ? '#F5B94C' : '#5B8CFF', position: 2 },
                                 hoverMessage: { value: hover },
                                 stickiness: 1,
                             }
@@ -870,6 +876,39 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const isProcessingAiCommandRef = useRef(false);
     // Deduplicate identical /// triggers per-file (same file + line + content + version) — prevents double invocation and cross-file suppression
     const lastAiTriggerRef = useRef<{ fileId: string; line: number; content: string; versionId: number } | null>(null);
+    // Transient inline failure marker — makes a failed /// trigger diagnosable
+    // in the editor instead of failing silently (trigger line is always kept).
+    const commentErrorDecorationRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
+    const commentErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const clearTripleSlashError = useCallback(() => {
+        if (commentErrorTimerRef.current) {
+            clearTimeout(commentErrorTimerRef.current);
+            commentErrorTimerRef.current = null;
+        }
+        commentErrorDecorationRef.current?.clear();
+        commentErrorDecorationRef.current = null;
+    }, []);
+    const showTripleSlashError = useCallback((lineNumber: number, message: string) => {
+        const editor = editorRef.current;
+        const monaco = monacoRef.current;
+        if (!editor || !monaco) return;
+        const model = editor.getModel();
+        if (!model || model.isDisposed()) return;
+        clearTripleSlashError();
+        const lineLen = model.getLineContent(lineNumber)?.length ?? 0;
+        if (lineLen <= 0) return;
+        commentErrorDecorationRef.current = editor.createDecorationsCollection([{
+            range: new monaco.Range(lineNumber, 1, lineNumber, lineLen + 1),
+            options: {
+                isWholeLine: false,
+                inlineClassName: 'ai-comment-error',
+                hoverMessage: { value: `Azemax /// failed — ${message}` },
+                stickiness: 1,
+            },
+        }]);
+        // Transient: auto-dismiss so a stale marker never lingers
+        commentErrorTimerRef.current = setTimeout(clearTripleSlashError, 4500);
+    }, [clearTripleSlashError]);
 
     // Premium Triple-Slash — from-base rebuild, no hardcoded templates, pure DeepSeek Flash dynamic
     const handleAiCommentAutoReplace = useCallback(async (
@@ -890,6 +929,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
         lastAiTriggerRef.current = { fileId: fileIdForDedup, line: lineNumber, content: lineContent, versionId: versionForDedup };
         isProcessingAiCommandRef.current = true;
+        clearTripleSlashError();
 
         const model = editor.getModel();
         if (!model) {
@@ -907,7 +947,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         try { reqId = AIRequestStore.startRequest('comment', 'thinking'); } catch {}
         // Progressive phases: thinking -> generating
         if (reqId) { try { AIRequestStore.updateRequest(reqId, 'generating'); } catch {} }
-        let versionId = model.getVersionId();
         const processingTimeout = setTimeout(() => {
             if (isProcessingAiCommandRef.current) {
                 console.warn('[AI Auto-Replace] Timeout — clearing stuck processing state (65s)');
@@ -932,14 +971,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
             clearTimeout(processingTimeout);
 
-            if (model.isDisposed() || model.getVersionId() !== versionId || activeFileRef.current?.id !== fileIdAtStart) {
-                console.log('[AI Auto-Replace] Skipping stale post-check (file switch or version mismatch)');
+            // NOTE: the pipeline's own apply bumps the model version, so a
+            // version mismatch here is EXPECTED after success — it must not
+            // be treated as stale. Only file-switch/dispose discards the result.
+            if (model.isDisposed() || activeFileRef.current?.id !== fileIdAtStart) {
+                console.log('[AI Auto-Replace] Skipping stale post-check (file switch or disposed)');
                 return;
             }
 
             if (!result.success) {
                 console.warn('[AI Auto-Replace] Premium pipeline failed:', result.message);
                 if (reqId) { try { AIRequestStore.failRequest(reqId, result.message); } catch {} }
+                showTripleSlashError(lineNumber, result.message || 'AI request failed — trigger kept, retry or rephrase');
                 return;
             }
             if (reqId) { try { AIRequestStore.updateRequest(reqId, 'success'); } catch {} }
@@ -947,15 +990,26 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             setTimeout(() => { try { if (reqId) AIRequestStore.completeRequest(reqId); } catch {} }, 1200);
             console.log('[AI Auto-Replace] Premium edit applied:', result.message);
 
-            const newContent = getActiveEditorContext()?.code ?? model.getValue();
-            const newLines = newContent.split('\n');
-            const targetIdx = Math.min(lineNumber, newLines.length) - 1;
-            const col = (newLines[targetIdx]?.length || 0) + 1;
-            editor.setPosition({ lineNumber: Math.min(lineNumber, newLines.length), column: col });
-            editor.focus();
+            // Reposition only when nothing else landed after our own apply —
+            // otherwise we'd yank the cursor away from the user's newer edit.
+            const settled = result.appliedVersion === undefined || model.getVersionId() === result.appliedVersion;
+            if (settled) {
+                const newContent = getActiveEditorContext()?.code ?? model.getValue();
+                const newLines = newContent.split('\n');
+                const targetIdx = Math.min(lineNumber, newLines.length) - 1;
+                const col = (newLines[targetIdx]?.length || 0) + 1;
+                editor.setPosition({ lineNumber: Math.min(lineNumber, newLines.length), column: col });
+                editor.focus();
+            }
         } catch (error) {
             console.error('[AI Auto-Replace] Error, editor left untouched:', error);
             if (reqId) { try { AIRequestStore.failRequest(reqId, (error as Error).message); } catch {} }
+            // User-cancelled (ESC / superseded keystroke) stays silent — only
+            // surface real failures so "nothing happens" becomes diagnosable.
+            const cancelled = (error as Error)?.name === 'AbortError' || /abort|cancelled/i.test((error as Error)?.message ?? '');
+            if (!cancelled && !model.isDisposed() && activeFileRef.current?.id === fileIdAtStart) {
+                showTripleSlashError(lineNumber, (error as Error)?.message || 'AI request failed — trigger kept, retry or rephrase');
+            }
         } finally {
             clearTimeout(processingTimeout);
             setIsAiProcessing(false);
@@ -978,7 +1032,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 }
             }
         }
-    }, [getFileTree, createFile, deleteNode, renameNode, updateFileContent]);
+    }, [getFileTree, createFile, deleteNode, renameNode, updateFileContent, showTripleSlashError, clearTripleSlashError]);
 
     // Effect to listen for content changes and trigger AI auto-replace — zero delay
     useEffect(() => {
@@ -1464,58 +1518,72 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 base: 'vs-dark',
                 inherit: true,
                 rules: [
-                    { token: 'comment', foreground: '707680', fontStyle: 'italic' },
-                    { token: 'comment.doc', foreground: '8B949E', fontStyle: 'italic' },
-                    { token: 'keyword', foreground: '58A6FF' },
-                    { token: 'keyword.control', foreground: '58A6FF' },
-                    { token: 'type', foreground: '79C0FF' },
-                    { token: 'type.identifier', foreground: '79C0FF' },
-                    { token: 'class', foreground: '79C0FF', fontStyle: 'bold' },
-                    { token: 'interface', foreground: '79C0FF' },
-                    { token: 'string', foreground: 'A5D6FF' },
-                    { token: 'string.escape', foreground: 'FFAB70' },
-                    { token: 'number', foreground: '79C0FF' },
-                    { token: 'constant', foreground: '79C0FF' },
-                    { token: 'variable', foreground: 'F2F3F5' },
-                    { token: 'variable.parameter', foreground: 'FFA657' },
-                    { token: 'function', foreground: 'D2A8FF' },
-                    { token: 'method', foreground: 'D2A8FF' },
-                    { token: 'operator', foreground: 'F2F3F5' },
-                    { token: 'delimiter', foreground: 'A7ACB5' },
-                    { token: 'annotation', foreground: 'FFA657' },
-                    { token: 'tag', foreground: '7EE787' },
-                    { token: 'attribute.name', foreground: '79C0FF' },
-                    { token: 'attribute.value', foreground: 'A5D6FF' },
-                    { token: 'regexp', foreground: 'FFAB70' },
+                    { token: 'comment', foreground: '657180', fontStyle: 'italic' },
+                    { token: 'comment.doc', foreground: '6E7A89', fontStyle: 'italic' },
+                    { token: 'keyword', foreground: '5B8CFF' },
+                    { token: 'keyword.control', foreground: '5B8CFF' },
+                    { token: 'type', foreground: '69B7FF' },
+                    { token: 'type.identifier', foreground: '69B7FF' },
+                    { token: 'class', foreground: '69B7FF' },
+                    { token: 'interface', foreground: '69B7FF' },
+                    { token: 'string', foreground: '8FD19E' },
+                    { token: 'string.escape', foreground: 'DFA76A' },
+                    { token: 'number', foreground: 'DFA76A' },
+                    { token: 'constant', foreground: 'DFA76A' },
+                    { token: 'variable', foreground: 'DCE2EA' },
+                    { token: 'variable.parameter', foreground: 'DCE2EA' },
+                    { token: 'function', foreground: 'E6EDF5' },
+                    { token: 'method', foreground: 'E6EDF5' },
+                    { token: 'operator', foreground: 'AAB3C0' },
+                    { token: 'delimiter', foreground: '7F8A9A' },
+                    { token: 'annotation', foreground: 'DFA76A' },
+                    { token: 'tag', foreground: '69B7FF' },
+                    { token: 'attribute.name', foreground: '69B7FF' },
+                    { token: 'attribute.value', foreground: '8FD19E' },
+                    { token: 'regexp', foreground: 'DFA76A' },
                 ],
                 colors: {
-                    'editor.background': '#101318',
-                    'editor.foreground': '#F2F3F5',
-                    'editorLineNumber.foreground': '#5A5F6A',
-                    'editorLineNumber.activeForeground': '#A7ACB5',
-                    'editor.lineHighlightBackground': '#14171C',
-                    'editorCursor.foreground': '#F2F3F5',
-                    'editor.selectionBackground': '#2A3040',
-                    'editor.inactiveSelectionBackground': '#232830',
-                    'editorIndentGuide.background': '#1E222A',
-                    'editorIndentGuide.activeBackground': '#2A344A',
-                    'editorBracketPairGuide.background1': '#242830',
-                    'editorBracketPairGuide.background2': '#283142',
-                    'editorBracketPairGuide.background3': '#1E4D40',
-                    'editorBracketPairGuide.background4': '#4D2E1E',
-                    'editorBracketPairGuide.activeBackground1': '#303640',
-                    'editorBracketPairGuide.activeBackground2': '#3A4A6A',
-                    'editorGutter.background': '#101318',
-                    'scrollbarSlider.background': '#232830',
-                    'scrollbarSlider.hoverBackground': '#303640',
-                    'editorOverviewRuler.border': '#101318',
-                    'editorRuler.foreground': '#242830',
-                    'editor.foldBackground': '#14171C',
-                    'editorStickyScroll.background': '#101318',
-                    'editorStickyScroll.border': '#242830',
-                    'editor.findMatchBackground': '#3B82F633',
-                    'editor.findMatchHighlightBackground': '#3B82F61A',
+                    'editor.background': '#10141B',
+                    'editor.foreground': '#DCE2EA',
+                    'editorLineNumber.foreground': '#596474',
+                    'editorLineNumber.activeForeground': '#AAB5C4',
+                    'editor.lineHighlightBackground': '#FFFFFF06',
+                    'editorCursor.foreground': '#78A7FF',
+                    'editor.selectionBackground': '#5B8CFF3D',
+                    'editor.inactiveSelectionBackground': '#5B8CFF24',
+                    'editorIndentGuide.background1': '#1E2632',
+                    'editorIndentGuide.background': '#1E2632',
+                    'editorIndentGuide.activeBackground1': '#2C3A4F',
+                    'editorIndentGuide.activeBackground': '#2C3A4F',
+                    'editorBracketPairGuide.background1': '#232A36',
+                    'editorBracketPairGuide.background2': '#28324A',
+                    'editorBracketPairGuide.background3': '#1E3A32',
+                    'editorBracketPairGuide.background4': '#3D2C1E',
+                    'editorBracketPairGuide.activeBackground1': '#2E3746',
+                    'editorBracketPairGuide.activeBackground2': '#3A4C6E',
+                    'editorGutter.background': '#10141B',
+                    'editorGutter.modifiedBackground': '#5B8CFF',
+                    'scrollbarSlider.background': '#2A3342AA',
+                    'scrollbarSlider.hoverBackground': '#3A4557CC',
+                    'scrollbarSlider.activeBackground': '#3A4557',
+                    'editorOverviewRuler.border': '#10141B',
+                    'editorRuler.foreground': '#232A36',
+                    'editor.foldBackground': '#141923',
+                    'editorStickyScroll.background': '#10141B',
+                    'editorStickyScroll.border': '#232A36',
+                    'editor.findMatchBackground': '#5B8CFF55',
+                    'editor.findMatchHighlightBackground': '#5B8CFF2A',
                     'editor.lineHighlightBorder': '#00000000',
+                    'editorBracketMatch.background': '#5B8CFF24',
+                    'editorBracketMatch.border': '#5B8CFF4D',
+                    'editorWidget.background': '#181E29',
+                    'editorWidget.border': '#2E3746',
+                    'editorHoverWidget.background': '#181E29',
+                    'editorHoverWidget.border': '#2E3746',
+                    'editorSuggestWidget.background': '#141923',
+                    'editorSuggestWidget.border': '#2E3746',
+                    'editorSuggestWidget.selectedBackground': '#1D2430',
+                    'minimap.background': '#10141B',
                 }
             });
         }
@@ -1822,7 +1890,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         onClick={isDisabled ? undefined : runDiagnostics}
                         disabled={isDisabled || isFormatting}
                         aria-disabled={isDisabled}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90 overflow-hidden relative
+                        className={`shrink-0 flex items-center rounded-[7px] text-xs font-medium transition-all active:opacity-90 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-3 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isDisabled
                                 ? 'text-[var(--az-text-muted)] bg-[var(--az-surface-2)] border border-[var(--az-border)] opacity-60 cursor-not-allowed'
@@ -1831,12 +1899,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                                 : hasErrors
                                     ? 'bg-[var(--az-error-soft)] text-[var(--az-error)] border border-[var(--az-error-border)]'
                                     : hasWarnings
-                                        ? 'bg-[rgba(254,188,46,0.12)] text-[#febc2e] border border-[rgba(254,188,46,0.3)]'
+                                        ? 'bg-[var(--az-warning-soft)] text-[#F5B94C] border border-[var(--az-warning-border)]'
                                         : isCheckSuccess
                                             ? 'bg-[var(--az-success-soft)] text-[var(--az-success)] border border-[var(--az-success-border)]'
                                             : diagnosticStale
                                                 ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-2)] border border-[var(--az-border)] opacity-80'
-                                                : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
+                                                : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
                         `}
                         title={stateTitle}
                     >
@@ -1852,7 +1920,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         ) : hasErrors ? (
                             <AlertCircle size={12} />
                         ) : hasWarnings ? (
-                            <AlertCircle size={12} className="text-[#febc2e]" />
+                            <AlertCircle size={12} className="text-[#F5B94C]" />
                         ) : isCheckSuccess ? (
                             <CheckCircle size={12} className="text-green-300" />
                         ) : (
@@ -1872,15 +1940,15 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {/* Code Suggestions Toggle */}
                     <button
                         onClick={() => updateSettings('ai', { inlineSuggestions: !settings.ai.inlineSuggestions })}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all
+                        className={`shrink-0 flex items-center rounded-[7px] text-xs font-medium transition-all
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${settings.ai.inlineSuggestions
-                                ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]'
-                                : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
+                                ? 'text-[var(--az-accent-bright)] bg-[var(--az-accent-soft)] border border-[var(--az-accent-border)]'
+                                : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
                         `}
                         title={settings.ai.inlineSuggestions ? "Disable AI Suggestions" : "Enable AI Suggestions"}
                     >
-                        <Zap size={12} className={settings.ai.inlineSuggestions ? "fill-yellow-400" : ""} />
+                        <Zap size={12} className="shrink-0" />
                         {toolbarSize === 'full' && <span>AI</span>}
                     </button>
 
@@ -1891,7 +1959,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         <button
                             data-testid="save-button"
                             onClick={handleSave}
-                            className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90
+                            className={`shrink-0 flex items-center rounded-[7px] text-xs font-medium transition-all active:opacity-90
                                 ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                                 text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border)] hover:bg-[var(--az-surface-hover)]`}
                             title="Save File (Ctrl+S)"
@@ -1905,11 +1973,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     <button
                         onClick={handleFormat}
                         disabled={isFormatting}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90 overflow-hidden relative
+                        className={`shrink-0 flex items-center rounded-[7px] text-xs font-medium transition-all active:opacity-90 overflow-hidden relative
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
                             ${isFormatting
                                 ? 'text-[var(--az-text-secondary)] bg-[var(--az-surface-3)] border border-[var(--az-border)]'
-                                : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
+                                : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[var(--az-surface-hover)] border border-transparent'}
                         `}
                         title="Format Document (Shift+Alt+F) — Premium DeepSeek"
                     >
@@ -1936,9 +2004,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {/* Word Wrap */}
                     <button
                         onClick={() => updateSettings('editor', { wordWrap: !settings.editor.wordWrap })}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90
+                        className={`shrink-0 flex items-center rounded-[7px] text-xs font-medium transition-all active:opacity-90
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${settings.editor.wordWrap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
+                            ${settings.editor.wordWrap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
                         title="Toggle Word Wrap"
                     >
                         <WrapText size={12} />
@@ -1948,9 +2016,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     {/* Minimap */}
                     <button
                         onClick={() => updateSettings('editor', { showMinimap: !settings.editor.showMinimap })}
-                        className={`shrink-0 flex items-center rounded-lg text-xs font-medium transition-all active:opacity-90
+                        className={`shrink-0 flex items-center rounded-[7px] text-xs font-medium transition-all active:opacity-90
                             ${toolbarSize === 'full' ? 'gap-1.5 px-2.5 py-1.5' : 'gap-1 px-1.5 py-1'}
-                            ${settings.editor.showMinimap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
+                            ${settings.editor.showMinimap ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border border-[var(--az-border-strong)]' : 'text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[var(--az-surface-hover)] border border-transparent'}`}
                         title="Toggle Minimap"
                     >
                         <MapIcon size={12} />
@@ -1961,19 +2029,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                         <>
                             <div className={`shrink-0 w-px bg-[var(--az-border)] ${toolbarSize === 'compact' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
-                            {/* Font Size */}
-                            <div className="shrink-0 flex items-center gap-0.5 bg-[var(--az-surface-2)] rounded-md border border-[var(--az-border)] px-1 h-7">
+                            {/* Font Size — compact segmented control */}
+                            <div className="shrink-0 flex items-center gap-0.5 rounded-[7px] border px-0.5 h-7" style={{ background: '#151A22', borderColor: 'rgba(255,255,255,.08)' }}>
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.max(10, settings.editor.fontSize - 1) })}
-                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-colors shrink-0"
+                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[rgba(255,255,255,0.06)] rounded-[5px] transition-colors duration-150 shrink-0"
                                     aria-label="Decrease font size"
                                 >
                                     <Minus size={12} className="shrink-0" />
                                 </button>
-                                <span className="text-[11px] text-[var(--az-text-secondary)] w-5 text-center font-mono leading-none tabular-nums">{settings.editor.fontSize}</span>
+                                <span className="text-[11px] text-[var(--az-text-secondary)] w-5 text-center font-mono leading-none tabular-nums select-none">{settings.editor.fontSize}</span>
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.min(24, settings.editor.fontSize + 1) })}
-                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] rounded transition-colors shrink-0"
+                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[rgba(255,255,255,0.06)] rounded-[5px] transition-colors duration-150 shrink-0"
                                     aria-label="Increase font size"
                                 >
                                     <Plus size={12} className="shrink-0" />
@@ -2013,12 +2081,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                             <span>main</span>
                         </div>
                         <div className="flex items-center gap-1 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none" title={diagnosticSummary || (diagCounts.total === 0 ? 'No diagnostics' : `${diagCounts.errors} errors · ${diagCounts.warnings} warnings`)}>
-                            <CheckCircle size={11} className={`shrink-0 ${diagCounts.errors > 0 ? 'text-[#f85149]' : 'text-[var(--az-text-muted)]'}`} />
-                            <span className={diagCounts.errors > 0 ? 'text-[#f85149] font-semibold' : ''}>{diagCounts.errors}</span>
-                            <AlertCircle size={11} className={`ml-1 shrink-0 ${diagCounts.warnings > 0 ? 'text-[#febc2e]' : 'text-[var(--az-text-muted)]'}`} />
-                            <span className={diagCounts.warnings > 0 ? 'text-[#febc2e] font-semibold' : ''}>{diagCounts.warnings}</span>
+                            <CheckCircle size={11} className={`shrink-0 ${diagCounts.errors > 0 ? 'text-[#FF647C]' : 'text-[var(--az-text-muted)]'}`} />
+                            <span className={diagCounts.errors > 0 ? 'text-[#FF647C] font-semibold' : ''}>{diagCounts.errors}</span>
+                            <AlertCircle size={11} className={`ml-1 shrink-0 ${diagCounts.warnings > 0 ? 'text-[#F5B94C]' : 'text-[var(--az-text-muted)]'}`} />
+                            <span className={diagCounts.warnings > 0 ? 'text-[#F5B94C] font-semibold' : ''}>{diagCounts.warnings}</span>
                             {diagnosticStale && diagCounts.total > 0 && <span className="ml-1 text-[9px] px-1 py-0 rounded bg-[var(--az-surface-3)] border border-[var(--az-border)]">stale</span>}
-                            {diagCounts.infos > 0 && <span className="ml-1 text-[9px] text-[#58a6ff]">{diagCounts.infos}i</span>}
+                            {diagCounts.infos > 0 && <span className="ml-1 text-[9px] text-[#5B8CFF]">{diagCounts.infos}i</span>}
                         </div>
                     </div>
 
