@@ -207,14 +207,15 @@ export const MAX_FILE_CONTENT_CHARS = 16000;
  */
 export const CONTEXT_BUDGETS: Record<AiTaskKey, { maxMessages: number; maxChars: number; maxFileChars: number }> = {
     autocomplete: { maxMessages: 2, maxChars: 1600, maxFileChars: 800 },
-    comment: { maxMessages: 4, maxChars: 4000, maxFileChars: 4000 },
-    simple_edit: { maxMessages: 6, maxChars: 6000, maxFileChars: 6000 },
+    comment: { maxMessages: 4, maxChars: 6000, maxFileChars: 6000 },
+    simple_edit: { maxMessages: 6, maxChars: 10000, maxFileChars: 10000 },
     chat: { maxMessages: MAX_HISTORY_MESSAGES, maxChars: MAX_HISTORY_CHARS, maxFileChars: MAX_FILE_CONTENT_CHARS },
-    explanation: { maxMessages: 6, maxChars: 8000, maxFileChars: MAX_FILE_CONTENT_CHARS },
-    complex_code: { maxMessages: 10, maxChars: 14000, maxFileChars: MAX_FILE_CONTENT_CHARS },
+    explanation: { maxMessages: 6, maxChars: 10000, maxFileChars: MAX_FILE_CONTENT_CHARS },
+    complex_code: { maxMessages: 10, maxChars: 18000, maxFileChars: MAX_FILE_CONTENT_CHARS },
     fast_chat: { maxMessages: 2, maxChars: 1000, maxFileChars: 0 },
     deep_reasoning: { maxMessages: 10, maxChars: 20000, maxFileChars: MAX_FILE_CONTENT_CHARS },
 };
+
 
 export const taskContextBudget = (task: TaskType | AiTaskKey): { maxMessages: number; maxChars: number; maxFileChars: number } => {
     const key = (TASK_KEY_BY_TYPE[task as TaskType] || task) as AiTaskKey;

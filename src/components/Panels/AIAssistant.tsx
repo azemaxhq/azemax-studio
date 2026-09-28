@@ -263,26 +263,26 @@ const MessageItem = React.memo(({
             if (msg.role === 'user') {
                 return <p className="leading-[1.5] text-[13px] tracking-tight text-[var(--az-text)] last:mb-0" {...props}>{children}</p>;
             }
-            return <p className="leading-[1.70] mb-3.5 text-[14.5px] text-[var(--az-text-secondary)] tracking-[-0.01em] last:mb-0 max-w-[640px]" {...props}>{children}</p>;
+            return <p className="leading-[1.70] mb-3.5 text-[14.5px] text-[var(--az-text)] tracking-[-0.01em] last:mb-0 max-w-[640px]" {...props}>{children}</p>;
         },
         ul({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) {
             if (msg.role === 'user') {
                 return <ul className="list-disc list-outside ml-4 space-y-1 text-[13px] text-[var(--az-text)] leading-[1.5]" {...props}>{children}</ul>;
             }
-            return <ul className="list-disc list-outside ml-5 mb-3.5 space-y-1.5 text-[14.5px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ul>;
+            return <ul className="list-disc list-outside ml-5 mb-3.5 space-y-1.5 text-[14.5px] text-[var(--az-text)] leading-[1.65]" {...props}>{children}</ul>;
         },
         ol({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) {
             if (msg.role === 'user') {
                 return <ol className="list-decimal list-outside ml-4 space-y-1 text-[13px] text-[var(--az-text)] leading-[1.5]" {...props}>{children}</ol>;
             }
-            return <ol className="list-decimal list-outside ml-5 mb-3.5 space-y-1.5 text-[14.5px] text-[var(--az-text-secondary)] leading-[1.65]" {...props}>{children}</ol>;
+            return <ol className="list-decimal list-outside ml-5 mb-3.5 space-y-1.5 text-[14.5px] text-[var(--az-text)] leading-[1.65]" {...props}>{children}</ol>;
         },
         li({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) {
             return <li className={`pl-1 ${msg.role === 'user' ? 'leading-[1.5] marker:text-white/15' : 'leading-[1.65] marker:text-white/20'}`} {...props}>{children}</li>;
         },
         blockquote({ children, ...props }: React.QuoteHTMLAttributes<HTMLQuoteElement>) {
             return (
-                <blockquote className="border-l-2 border-white/[0.07] pl-4 py-1 my-4 text-[13.5px] text-[var(--az-text-muted)] leading-relaxed max-w-[640px]" {...props}>
+                <blockquote className="border-l-2 border-white/[0.07] pl-4 py-1 my-4 text-[13.5px] text-[var(--az-text-secondary)] leading-relaxed max-w-[640px]" {...props}>
                     {children}
                 </blockquote>
             );
@@ -356,10 +356,10 @@ const MessageItem = React.memo(({
 
                             {msg.role === 'ai' && (
                                 <div className="flex items-center gap-2 mb-1.5 select-none">
-                                    <span className="text-[12.5px] font-medium tracking-tight" style={{ color: 'var(--az-text-faint)', letterSpacing: '0.02em' }}>Azemax</span>
+                                    <span className="text-[12.5px] font-semibold tracking-tight" style={{ color: 'var(--az-text-secondary)', letterSpacing: '0.02em' }}>Azemax</span>
                                 </div>
                             )}
-                            <div className={`markdown-content relative z-10 max-w-[640px] ${msg.role === 'ai' ? 'text-[14px] leading-[1.68] text-[var(--az-text-secondary)] tracking-[-0.01em]' : 'text-[13px] leading-[1.5] font-[450] tracking-tight'}`}>
+                            <div className={`markdown-content relative z-10 max-w-[640px] ${msg.role === 'ai' ? 'text-[14px] leading-[1.68] text-[var(--az-text)] tracking-[-0.01em]' : 'text-[13px] leading-[1.5] font-[450] tracking-tight'}`}>
                                 {msg.role === 'ai' ? (
                                     <>
                                         {parseArtifacts(displayText).segments.map((segment, segIdx) =>
@@ -385,7 +385,7 @@ const MessageItem = React.memo(({
                                             )
                                         )}
                                         {isLong && (
-                                            <button onClick={() => setShowFull(!showFull)} className="mt-2 text-[11px] text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] transition-colors">
+                                            <button onClick={() => setShowFull(!showFull)} className="mt-2 text-[11px] text-[var(--az-text-secondary)] hover:text-[var(--az-text)] transition-colors">
                                                 {showFull ? 'Show less' : `Show ${msg.text.length - 1100} more characters`}
                                             </button>
                                         )}
@@ -398,11 +398,11 @@ const MessageItem = React.memo(({
                             </div>
 
                             {msg.role === 'ai' && (
-                                <div className="flex items-center gap-0.5 mt-3 opacity-60 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+                                <div className="flex items-center gap-0.5 mt-3 opacity-90 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
                                     <button
                                         onClick={() => onCopy(msg.text, `msg-${msg.id}`)}
                                         className="w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
-                                        style={{ color: 'var(--az-text-muted)' }}
+                                        style={{ color: 'var(--az-text-secondary)' }}
                                         title={copiedId === `msg-${msg.id}` ? 'Copied' : 'Copy'}
                                         aria-label="Copy response"
                                     >
@@ -412,7 +412,7 @@ const MessageItem = React.memo(({
                                         <button
                                             onClick={() => typeof index === 'number' && onRegenerate(index)}
                                             className="w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
-                                            style={{ color: 'var(--az-text-muted)' }}
+                                            style={{ color: 'var(--az-text-secondary)' }}
                                             title="Retry"
                                             aria-label="Retry"
                                         >
@@ -425,7 +425,7 @@ const MessageItem = React.memo(({
                                             <button
                                                 onClick={() => onReaction(msg.id, 'up')}
                                                 className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'up' ? 'text-emerald-400 bg-white/[0.06]' : ''}`}
-                                                style={{ color: reaction === 'up' ? undefined : 'var(--az-text-muted)' }}
+                                                style={{ color: reaction === 'up' ? undefined : 'var(--az-text-secondary)' }}
                                                 title="Like"
                                                 aria-label="Like"
                                             >
@@ -434,7 +434,7 @@ const MessageItem = React.memo(({
                                             <button
                                                 onClick={() => onReaction(msg.id, 'down')}
                                                 className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'down' ? 'text-red-400 bg-white/[0.06]' : ''}`}
-                                                style={{ color: reaction === 'down' ? undefined : 'var(--az-text-muted)' }}
+                                                style={{ color: reaction === 'down' ? undefined : 'var(--az-text-secondary)' }}
                                                 title="Dislike"
                                                 aria-label="Dislike"
                                             >
@@ -442,7 +442,7 @@ const MessageItem = React.memo(({
                                             </button>
                                         </>
                                     )}
-                                    {copiedId === `msg-${msg.id}` && <span className="text-[11px] ml-1.5 font-medium tracking-tight" style={{ color: 'var(--az-text-muted)' }}>Copied</span>}
+                                    {copiedId === `msg-${msg.id}` && <span className="text-[11px] ml-1.5 font-medium tracking-tight" style={{ color: 'var(--az-text-secondary)' }}>Copied</span>}
                                 </div>
                             )}
 
@@ -471,7 +471,7 @@ const MessageItem = React.memo(({
                             )}
                         </div>
                         {msg.timestamp && (
-                            <span className={`text-[10.5px] font-[450] mt-1 px-1 transition-opacity duration-200 ${msg.role === 'ai' ? 'opacity-60 group-hover:opacity-80' : 'opacity-50 group-hover:opacity-70 text-right self-end'}`} style={{ color: 'var(--az-text-muted)', letterSpacing: '0.01em' }}>
+                            <span className={`text-[10.5px] font-[450] mt-1 px-1 transition-opacity duration-200 ${msg.role === 'ai' ? 'opacity-90 group-hover:opacity-100' : 'opacity-80 group-hover:opacity-100 text-right self-end'}`} style={{ color: 'var(--az-text-secondary)', letterSpacing: '0.01em' }}>
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase()}
                             </span>
                         )}
@@ -1920,9 +1920,9 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             <div className="mb-3 opacity-[0.88]">
                                 <AzemaxLogo size={22} />
                             </div>
-                            <div className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: 'rgba(255,255,255,0.32)' }}>Azemax</div>
+                            <div className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: 'rgba(255,255,255,0.55)' }}>Azemax</div>
                             <h3 className="text-[14px] font-semibold tracking-tight leading-tight mt-1" style={{ color: 'var(--az-text)' }}>What are you building?</h3>
-                            <p className="text-[12px] leading-[1.5] mt-1.5 max-w-[280px] tracking-tight" style={{ color: 'var(--az-text-muted)' }}>
+                            <p className="text-[12px] leading-[1.5] mt-1.5 max-w-[280px] tracking-tight" style={{ color: 'var(--az-text-secondary)' }}>
                                 Ask about your code, files, or let Azemax make changes directly.
                             </p>
                             <div className="grid grid-cols-2 gap-1.5 mt-5 w-full">

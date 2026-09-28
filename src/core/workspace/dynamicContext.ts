@@ -27,6 +27,40 @@ function langFromPath(path: string): string {
     return map[ext] ?? ext;
 }
 
+/**
+ * Extract basenames of files imported/required by the given source.
+ * Supports TS/JS/Python/Java import patterns — static only, no dynamic requires.
+ * Returns a Set of lowercase basenames (e.g. "useAuth.ts" → "useauth").
+ */
+function extractImportedBasenames(code: string, lang: string): Set<string> {
+    const out = new Set<string>();
+    try {
+        if (lang === 'typescript' || lang === 'javascript') {
+            // import ... from './foo' | require('./foo') | import('./foo')
+            const re = /(?:import|require|from)\s+['"]([.]{1,2}\/[^'"]+)['"]/g;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(code)) !== null) {
+                const raw = m[1].split('/').pop() ?? '';
+                if (raw) out.add(raw.replace(/\.[^.]+$/, '').toLowerCase());
+            }
+        } else if (lang === 'python') {
+            const re = /^\s*(?:from|import)\s+([\w.]+)/gm;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(code)) !== null) {
+                const raw = m[1].split('.').pop() ?? '';
+                if (raw) out.add(raw.toLowerCase());
+            }
+        } else if (lang === 'java') {
+            const re = /^\s*import\s+[\w.]+\.([\w]+);/gm;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(code)) !== null) {
+                out.add(m[1].toLowerCase());
+            }
+        }
+    } catch { /* ignore */ }
+    return out;
+}
+
 export interface DynamicContextResult {
     fragments: string;
     included: Array<{ path: string; content: string; score: number; reason: string }>;
@@ -51,6 +85,11 @@ export function buildDynamicWorkspaceContext(
 
     const candidates: Array<{ path: string; content: string; score: number; reason: string }> = [];
 
+    // Pre-compute import references from the active file for cross-file scoring
+    const activeContent = snapshot.code ?? '';
+    const activeLang = snapshot.language ?? '';
+    const activeImports = activeContent ? extractImportedBasenames(activeContent, activeLang) : new Set<string>();
+
     // Score using full paths list to avoid duplicate bare names
     for (const fullPath of snapshot.allFilePaths) {
         const content = snapshot.fileMap.get(fullPath) ?? '';
@@ -74,6 +113,12 @@ export function buildDynamicWorkspaceContext(
         if (recent.includes(fullPath) || recent.some(r => r.toLowerCase() === lowerPath || r.split('/').pop()!.toLowerCase() === basename)) {
             score += 30;
             reasons.push('recent');
+        }
+        // Import-reference: active file imports this file → boost it so dependencies are in context
+        const basenameNoExt = basename.replace(/\.[^.]+$/, '');
+        if (activeImports.size > 0 && activeImports.has(basenameNoExt)) {
+            score += 20;
+            reasons.push('imported');
         }
         // keyword hits in filename
         for (const kw of keywords) {

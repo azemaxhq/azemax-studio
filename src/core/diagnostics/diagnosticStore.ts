@@ -98,4 +98,25 @@ export function getCounts(fileId?: string | null): { errors: number; warnings: n
     };
 }
 
+/** Returns all fileIds that have any diagnostic results registered. */
+export function getAllFilesWithDiagnostics(): string[] {
+    return Array.from(state.results.keys());
+}
 
+/** Returns all fileIds that have at least one error-severity diagnostic. */
+export function getFilesWithErrors(): string[] {
+    return Array.from(state.results.entries())
+        .filter(([, r]) => r.errorCount > 0)
+        .map(([id]) => id);
+}
+
+/** Returns the total error/warning count across ALL tracked files. */
+export function getGlobalCounts(): { errors: number; warnings: number; total: number } {
+    let errors = 0, warnings = 0, total = 0;
+    for (const r of state.results.values()) {
+        errors += r.errorCount;
+        warnings += r.warningCount;
+        total += r.diagnostics.length;
+    }
+    return { errors, warnings, total };
+}

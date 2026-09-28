@@ -26,12 +26,18 @@ export interface WorkspaceSnapshot {
     allFilePaths: string[];
 }
 
-function flattenFileTree(nodes: FileNode[], depth = 0, maxDepth = 3): string {
+function flattenFileTree(nodes: FileNode[], depth = 0, maxDepth = 4): string {
     if (depth > maxDepth) return '';
     let result = '';
     const indent = '  '.repeat(depth);
     for (const node of nodes) {
-        result += `${indent}- ${node.name} (${node.type})\n`;
+        if (node.type === 'folder' && depth === maxDepth) {
+            // At max depth, show the dir with a count hint instead of recursing
+            const childCount = node.children?.length ?? 0;
+            result += `${indent}- ${node.name}/ (${childCount} items)\n`;
+            continue;
+        }
+        result += `${indent}- ${node.name}${node.type === 'folder' ? '/' : ''}\n`;
         if (node.children) result += flattenFileTree(node.children, depth + 1, maxDepth);
     }
     return result;
@@ -64,7 +70,7 @@ export function buildWorkspaceSnapshot(
     editorContext: ActiveEditorContext | null,
     fileTree: FileNode[]
 ): WorkspaceSnapshot {
-    const fileTreeString = flattenFileTree(fileTree, 0, 3);
+    const fileTreeString = flattenFileTree(fileTree, 0, 4);
     const fileMap = new Map<string, string>();
     const allFilePaths: string[] = [];
     collectFileMap(fileTree, fileMap, allFilePaths);

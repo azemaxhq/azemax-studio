@@ -199,7 +199,7 @@ export const cleanResponse = (content: string): string => {
 export const stripReasoningFromResponse = (content: string): string => {
     // The reasoning_content should already be stripped at the provider level,
     // but this is a safety net in case it leaks through
-    return content;
+    return stripAllReasoning(content);
 };
 
 /**

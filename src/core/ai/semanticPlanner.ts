@@ -114,7 +114,7 @@ export interface SemanticPlan {
     responseMessage?: string;
 }
 
-function buildLineNumberedCode(code: string, maxLines = 200): string {
+function buildLineNumberedCode(code: string, maxLines = 400): string {
     const lines = code.split('\n').slice(0, maxLines);
     const pad = String(lines.length).length;
     return lines.map((l, i) => `${String(i + 1).padStart(pad, ' ')} | ${l}`).join('\n');
@@ -351,7 +351,7 @@ export async function generateSemanticPlan(
             model: 'qwen/qwen3.8-27b',
             task: 'chat',
             temperature: 0.1,
-            maxTokens: 800,
+            maxTokens: 1200,
         });
         const plan = parseSemanticPlan(raw);
         if (import.meta.env.DEV) console.log('[SemanticPlanner] raw:', raw.slice(0, 800), 'parsed:', plan);

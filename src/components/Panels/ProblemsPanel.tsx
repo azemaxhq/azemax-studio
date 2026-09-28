@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, AlertTriangle, Info, Lightbulb } from 'lucide-react';
-import { subscribeDiagnostics, getDiagnosticResult, getCurrentDiagnostics } from '../../core/diagnostics/diagnosticStore';
+import { subscribeDiagnostics, getDiagnosticResult, getCurrentDiagnostics, getGlobalCounts, getAllFilesWithDiagnostics } from '../../core/diagnostics/diagnosticStore';
 import type { DiagnosticResultEx, CanonicalDiagnostic } from '../../utils/diagnosticsTypes';
 import { useProjectFile } from '../../context/ProjectContext';
 
@@ -16,11 +16,15 @@ const severityIcon = (s: CanonicalDiagnostic['severity']) => {
 export const ProblemsPanel: React.FC = () => {
     const { activeFile } = useProjectFile();
     const [result, setResult] = useState<DiagnosticResultEx | null>(() => getCurrentDiagnostics());
+    const [global, setGlobal] = useState(() => getGlobalCounts());
+    const [trackedFiles, setTrackedFiles] = useState<string[]>(() => getAllFilesWithDiagnostics());
 
     useEffect(() => {
         const update = () => {
             const r = activeFile?.id ? getDiagnosticResult(activeFile.id) : getCurrentDiagnostics();
             setResult(r);
+            setGlobal(getGlobalCounts());
+            setTrackedFiles(getAllFilesWithDiagnostics());
         };
         update();
         const unsub = subscribeDiagnostics(update);
@@ -45,6 +49,23 @@ export const ProblemsPanel: React.FC = () => {
     }, []);
 
     if (!result || result.diagnostics.length === 0) {
+        // Cross-file awareness: active file clean but other files have problems
+        if (global.total > 0) {
+            return (
+                <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
+                    <div className="w-8 h-8 rounded-full bg-[var(--az-surface-3)] flex items-center justify-center">
+                        <Info size={16} className="text-[var(--az-text-muted)]" />
+                    </div>
+                    <span className="text-xs text-[var(--az-text-muted)]">No problems in current file</span>
+                    <span className="text-[10px] text-[var(--az-text-muted)] opacity-70">
+                        {global.errors > 0 && `${global.errors} error${global.errors === 1 ? '' : 's'}`}
+                        {global.errors > 0 && global.warnings > 0 && ' · '}
+                        {global.warnings > 0 && `${global.warnings} warning${global.warnings === 1 ? '' : 's'}`}
+                        {' '}across {trackedFiles.length} file{trackedFiles.length === 1 ? '' : 's'}
+                    </span>
+                </div>
+            );
+        }
         return (
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-center">
                 <div className="w-8 h-8 rounded-full bg-[var(--az-surface-3)] flex items-center justify-center">
@@ -69,6 +90,11 @@ export const ProblemsPanel: React.FC = () => {
                     <span className="font-semibold">{result.warningCount}</span> warnings
                 </span>
                 {result.infoCount > 0 && <span className="flex items-center gap-1.5"><Info size={12} className="text-[#58a6ff]" />{result.infoCount} infos</span>}
+                {global.total > result.diagnostics.length && (
+                    <span className="ml-auto text-[10px] text-[var(--az-text-muted)]" title={`${global.errors} errors, ${global.warnings} warnings across ${trackedFiles.length} files`}>
+                        +{global.total - result.diagnostics.length} elsewhere
+                    </span>
+                )}
                 {result.isPartial && <span className="ml-auto text-[10px] text-[#febc2e]">partial</span>}
                 {result.isStale && <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-[var(--az-surface-3)] border border-[var(--az-border)]">stale</span>}
             </div>

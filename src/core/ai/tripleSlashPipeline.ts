@@ -243,8 +243,8 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
     ];
     for (const { model: tryModel, task, maxTokens } of tryModels) {
         const controller = new AbortController();
-        const timeoutMs = tryModel!.includes('deepseek') ? 15000 : 8000;
-        const timeoutId = setTimeout(() => controller.abort(new DOMException(`Inline ${tryModel} timeout after ${timeoutMs}ms`, 'TimeoutError')), timeoutMs);
+        const timeoutMs = tryModel.includes('deepseek') ? 20000 : tryModel.includes('qwen') ? 10000 : 8000;
+        const timeoutId = setTimeout(() => controller.abort(new DOMException(`Inline model ${tryModel.split('/').pop()} timed out after ${timeoutMs / 1000}s`, 'TimeoutError')), timeoutMs);
         try {
             generated = await sendChat(
                 [
@@ -268,10 +268,6 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
             }
             if (generated.trim().startsWith('<think>')) {
                 lastError = new Error('Thinking-only response from ' + tryModel);
-                continue;
-            }
-            if (generated.trim().startsWith('<think>')) {
-                lastError = new Error('Thinking-only from ' + tryModel);
                 continue;
             }
         } catch (e: any) {
