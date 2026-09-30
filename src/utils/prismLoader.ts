@@ -70,6 +70,9 @@ export const tryHighlight = (code: string, language: string): string | null => {
         HIGHLIGHT_CACHE.set(key, result);
         return result;
     } catch {
-        return code;
+        // Security: NEVER return raw input here — callers inject the result
+        // via dangerouslySetInnerHTML. Null degrades to the escaped plain-text
+        // branch at every call site.
+        return null;
     }
 };

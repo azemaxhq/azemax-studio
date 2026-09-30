@@ -70,8 +70,7 @@ export type ExecutionResult = {
     rolledBack?: boolean;
 };
 
-export interface EditSnapshot extends FileSnapshot {
-}
+export type EditSnapshot = FileSnapshot;
 
 /**
  * Normalize any AI JSON (tolerant) into a single internal Action[].

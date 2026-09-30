@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import { BookOpen, Lightbulb, Code2, Copy, Trash2, RefreshCw, AlertCircle, Download, Share2, Star, Zap, Target, Layers, MessageSquare } from 'lucide-react';
 import { ModernAILogo } from '../Icons/ModernAILogo';
 import { AILoadingIndicator } from '../AI/AILoadingIndicator';
@@ -228,7 +227,9 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                             <div className="explanation-markdown text-[#A7B0BF] text-sm leading-relaxed overflow-x-auto">
                                 <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
-                                    rehypePlugins={[rehypeRaw]}
+                                    // Security: no rehype-raw. Raw HTML in AI output is
+                                    // skipped, never parsed into live DOM (stored-XSS fix).
+                                    skipHtml
                                     components={{
                                         h1: ({ children }) => <h1 className="text-lg font-semibold text-white mt-4 mb-2 first:mt-0 flex items-center gap-2 flex-wrap"><Zap size={16} className="text-yellow-400 shrink-0" />{children}</h1>,
                                         h2: ({ children }) => <h2 className="text-base font-semibold text-white mt-4 mb-2 flex items-center gap-2 flex-wrap"><Layers size={14} className="text-blue-400 shrink-0" />{children}</h2>,

@@ -20,18 +20,7 @@ import {
     MAX_TREE_DEPTH,
 } from '../src/utils/safeTree';
 import type { FileNode } from '../src/utils/mockFileSystem';
-
-let failed = 0;
-let total = 0;
-const check = (name: string, cond: boolean) => {
-    total++;
-    if (cond) {
-        console.log(`ok: ${name}`);
-    } else {
-        failed++;
-        console.error(`FAIL: ${name}`);
-    }
-};
+import { check, finish } from './_harness';
 
 // Helper: build a normal tree
 const normalTree = (): FileNode[] => [
@@ -330,5 +319,4 @@ const normalTree = (): FileNode[] => [
     check('walkTree: cycle-safe', files === 1);
 }
 
-console.log(failed === 0 ? `\nALL PASS (${total})` : `\n${failed}/${total} FAILURES`);
-if (!process.env.VITEST) process.exit(failed === 0 ? 0 : 1);
+finish('safeTree');

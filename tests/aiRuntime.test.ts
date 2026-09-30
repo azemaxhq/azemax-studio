@@ -588,12 +588,15 @@ async function sseResponse(chunks: string[]): Promise<Response> {
 
     // Chat profile has reasoning OFF (task-aware reasoning policy: chat answers
     // arrive fast with no trace to leak; code tasks keep their trace).
-    check('chat: reasoning disabled (fast TTFB, no leak surface)', getTaskConfig('chat').chatTemplateKwargs?.enable_thinking === false);
-    
+    // Knob name is model-family aware (enable_thinking vs thinking).
+    const chatKwargs = getTaskConfig('chat').chatTemplateKwargs as { enable_thinking?: boolean; thinking?: boolean } | undefined;
+    check('chat: reasoning disabled (fast TTFB, no leak surface)', chatKwargs?.enable_thinking === false || chatKwargs?.thinking === false);
+
     // complex_code: server taskConfig has reasoningMode 'low'; router builds low-effort payload
     const complexResolved = resolveModel('complex_code', undefined);
     check('complex_code: server taskConfig reasoningMode low', getTaskConfig('complex_code').reasoningMode === 'low');
-    check('complex_code: router builds low-effort payload', complexResolved.chatTemplateKwargs?.enable_thinking === true && complexResolved.chatTemplateKwargs?.reasoning_effort === 'low');
+    const complexKwargs = complexResolved.chatTemplateKwargs as { enable_thinking?: boolean; thinking?: boolean } | undefined;
+    check('complex_code: router builds low-effort payload', (complexKwargs?.enable_thinking === true || complexKwargs?.thinking === true) && complexResolved.chatTemplateKwargs?.reasoning_effort === 'low');
     
     // deep_reasoning: server taskConfig has reasoningMode 'high'; router builds high-effort payload
     const deepResolved = resolveModel('deep_reasoning', undefined);

@@ -113,7 +113,7 @@ export function extractJavaTopLevelType(code: string): string | null {
 
 function extractModuleName(code: string, language: string): string | null {
     if (language === 'python') {
-        const m = code.match(/^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[\(:]/m);
+        const m = code.match(/^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[(:]/m);
         if (m) return m[1];
     }
     if (language === 'csharp') {

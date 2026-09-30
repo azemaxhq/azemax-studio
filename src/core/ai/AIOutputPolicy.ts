@@ -33,7 +33,8 @@ export type OutputMode =
     | 'fix'
     | 'explain'
     | 'comment'
-    | 'document';
+    | 'document'
+    | 'format';
 
 export interface AIOutputPolicyInput {
     task?: string;

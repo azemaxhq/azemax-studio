@@ -8,18 +8,7 @@
  */
 import { updateNodeById, deleteNodeById, insertNodeIntoFolder, mapTree } from '../src/utils/safeTree';
 import type { FileNode } from '../src/utils/mockFileSystem';
-
-let failed = 0;
-let total = 0;
-const check = (name: string, cond: boolean) => {
-    total++;
-    if (cond) {
-        console.log(`ok: ${name}`);
-    } else {
-        failed++;
-        console.error(`FAIL: ${name}`);
-    }
-};
+import { check, finish } from './_harness';
 
 // Normal acyclic tree with stable reference handles.
 const stableTree = (): { tree: FileNode[]; leaf: FileNode; readme: FileNode; src: FileNode } => {
@@ -227,5 +216,4 @@ function find(nodes: FileNode[], id: string): FileNode | null {
     return null;
 }
 
-console.log(failed === 0 ? `\nupdateTree: ALL PASS (${total})` : `\nupdateTree: ${failed}/${total} FAILURES`);
-if (!process.env.VITEST) process.exit(failed === 0 ? 0 : 1);
+finish('updateTree');

@@ -1,21 +1,38 @@
 const express = require('express');
 const cors = require('cors');
-const { CORS_ORIGIN } = require('./config/index.cjs');
+const { CORS_ORIGIN, LIMITS, isProd } = require('./config/index.cjs');
 const { registerRoutes } = require('./routes/index.cjs');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler.cjs');
+const { requestIdMiddleware } = require('./middleware/requestId.cjs');
+const { authenticateRequest } = require('./middleware/auth.cjs');
+const logger = require('./lib/logger.cjs');
 
-/** Lightweight in-memory rate limiter (no external dep). */
-function createRateLimiter({ windowMs, max, message }) {
-    const hits = new Map(); // ip -> { count, resetAt }
+/**
+ * In-memory sliding-window rate limiter (no external dep).
+ *
+ * Keyed by authenticated user id when available, otherwise IP — so one bad
+ * actor cannot burn the shared IP budget of users behind NAT, and one user
+ * cannot evade limits by rotating IPs.
+ *
+ * NOTE: single-instance memory. Behind multiple replicas this must move to
+ * Redis (documented in the production report). Daily quotas in SQLite
+ * (usage_daily) are the cross-instance backstop.
+ */
+function createPolicyLimiter({ windowMs, max, keyOf, message, scope }) {
+    const hits = new Map(); // key -> { count, resetAt }
     const interval = setInterval(() => {
         const now = Date.now();
         for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
-    }, windowMs);
+    }, Math.min(windowMs, 60000));
     if (interval.unref) interval.unref();
     return (req, res, next) => {
-        // Only throttle AI/execute endpoints
-        if (!req.path.startsWith('/api/ai') && !req.path.startsWith('/api/execute')) return next();
-        const key = req.ip || req.socket.remoteAddress || 'unknown';
+        if (scope && !scope(req)) return next();
+        let key;
+        try {
+            key = keyOf(req);
+        } catch {
+            return next();
+        }
         const now = Date.now();
         let entry = hits.get(key);
         if (!entry || entry.resetAt <= now) {
@@ -31,18 +48,27 @@ function createRateLimiter({ windowMs, max, message }) {
     };
 }
 
+function identityKey(prefix) {
+    return (req) => {
+        if (req.user) return `${prefix}:u:${req.user.id}`;
+        const ip = req.ip || req.socket.remoteAddress || 'unknown';
+        return `${prefix}:ip:${ip}`;
+    };
+}
+
 function createApp() {
     const app = express();
 
-    // Security headers (helmet-lite without extra dep)
+    // Security headers (helmet-lite without extra dep). CSP is set for API
+    // responses too (defense in depth; the frontend sets its own stricter CSP).
     app.use((_, res, next) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('X-XSS-Protection', '0');
         res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-        // HSTS only in production (HTTPS)
-        if (process.env.NODE_ENV === 'production') {
+        res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+        if (isProd) {
             res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
         }
         res.removeHeader('X-Powered-By');
@@ -51,8 +77,7 @@ function createApp() {
 
     app.disable('x-powered-by');
 
-    // Trust Render/Vercel proxies so req.ip / secure cookies work correctly
-    if (process.env.NODE_ENV === 'production') {
+    if (isProd) {
         app.set('trust proxy', 1);
     }
 
@@ -60,7 +85,12 @@ function createApp() {
         origin: CORS_ORIGIN,
         credentials: true,
     }));
-    // Reduced from 10mb — prevents large-payload DoS while still allowing chat/file ops
+
+    // Request IDs + access logging come first so every log line correlates.
+    app.use(requestIdMiddleware);
+    // Attach identity (non-rejecting); individual routes enforce requireAuth.
+    app.use(authenticateRequest);
+
     app.use(express.json({ limit: '1mb' }));
     // HPP-lite: collapse duplicate query keys to last value
     app.use((req, _, next) => {
@@ -69,12 +99,50 @@ function createApp() {
         }
         next();
     });
-    app.use(createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200, message: 'Rate limit exceeded. Try again later.' }));
+
+    // Per-endpoint policies. Auth endpoints: strict per-IP (unauthenticated).
+    app.use(createPolicyLimiter({
+        windowMs: 60 * 1000,
+        max: LIMITS.AUTH_RATE_PER_MINUTE,
+        keyOf: (req) => `auth:ip:${req.ip || req.socket.remoteAddress || 'unknown'}`,
+        message: 'Too many authentication attempts. Try again later.',
+        scope: (req) => req.path.startsWith('/api/auth/login') || req.path.startsWith('/api/auth/signup'),
+    }));
+    // AI: per-user (or per-IP for unauthenticated, though routes require auth).
+    app.use(createPolicyLimiter({
+        windowMs: 60 * 1000,
+        max: LIMITS.AI_REQUESTS_PER_MINUTE,
+        keyOf: identityKey('ai'),
+        message: 'AI rate limit exceeded. Try again shortly.',
+        scope: (req) => req.path.startsWith('/api/ai/'),
+    }));
+    // Execution: per-user.
+    app.use(createPolicyLimiter({
+        windowMs: 60 * 1000,
+        max: LIMITS.EXEC_REQUESTS_PER_MINUTE,
+        keyOf: identityKey('exec'),
+        message: 'Execution rate limit exceeded. Try again shortly.',
+        scope: (req) => req.path.startsWith('/api/execute'),
+    }));
+    // Projects (writes hit disk/DB): per-user, generous but bounded.
+    app.use(createPolicyLimiter({
+        windowMs: 60 * 1000,
+        max: 120,
+        keyOf: identityKey('proj'),
+        message: 'Too many project requests. Try again shortly.',
+        scope: (req) => req.path.startsWith('/api/projects'),
+    }));
 
     registerRoutes(app);
 
     app.use(notFoundHandler);
     app.use(errorHandler);
+
+    // Log the effective (non-secret) configuration once per boot.
+    try {
+        const { publicSummary } = require('./config/index.cjs');
+        logger.info('app configured', publicSummary());
+    } catch { /* ignore */ }
 
     return app;
 }

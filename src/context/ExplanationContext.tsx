@@ -6,6 +6,7 @@ import { explainFileOrSnippet } from '../utils/groqService';
 import { aiRequestManager, type AIAbortController } from '../core/ai';
 import { AIRequestStore } from '../core/ai/aiRequestStore';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { nsGetItem, namespacedKey } from '../utils/userStorage';
 import { getActiveEditorContext } from '../core/editor/activeEditorStore';
 
 const STORAGE_KEY = 'explanation-panel-persisted';
@@ -23,7 +24,7 @@ const getLanguage = (fileName: string): string => {
 
 function loadPersisted(): { explanation: string | null; explanationError: string | null; explainedFor: string | null } {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = nsGetItem(STORAGE_KEY);
         if (!raw) return { explanation: null, explanationError: null, explainedFor: null };
         const d = JSON.parse(raw);
         return {
@@ -136,7 +137,7 @@ export const ExplanationProvider: React.FC<{ children: React.ReactNode }> = memo
         setState((prev) => {
             const s = { ...prev, ...next };
             try {
-                debouncedLocalStorageSet(STORAGE_KEY, JSON.stringify({
+                debouncedLocalStorageSet(namespacedKey(STORAGE_KEY), JSON.stringify({
                     explanation: s.explanation,
                     explanationError: s.explanationError,
                     explainedFor: s.explainedFor,

@@ -372,6 +372,15 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                     commandBuffer.current = '';
                     cursorPos.current = 0;
                     writePrompt();
+                }).catch((err) => {
+                    // H2 fix: a throwing command (e.g. huge cat output into
+                    // xterm) must never wedge the shell — reset and reprompt.
+                    try {
+                        term.writeln(`\r\n\x1b[1;31mcommand failed: ${err instanceof Error ? err.message : 'error'}\x1b[0m`);
+                    } catch { /* terminal gone */ }
+                    commandBuffer.current = '';
+                    cursorPos.current = 0;
+                    writePrompt();
                 });
             } else if (code === 3) { // Ctrl+C
                 term.write('^C\r\n');
@@ -557,6 +566,10 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
                 const session = sessionRef.current;
                 if (session && session.isActive) {
                     session.stop(); // session.kill -> backend process termination -> exit frame -> isRunning cleared
+                } else {
+                    // No live session (run never started / already gone): clear
+                    // the latch directly so Stop always recovers a stuck state.
+                    setTerminalRunning(terminalId, false);
                 }
             }
         };
@@ -596,19 +609,55 @@ const handleRunData = (e: Event) => {
                 // burst can't block the main thread; oversized buffers are sliced
                 // and the remainder is scheduled for the next tick.
                 const MAX_WRITE_CHUNK = 32768;
+                // Absolute ceiling for the pre-parse batch buffer. xterm THROWS
+                // past ~50MB of queued-but-unparsed data — without a guard one
+                // flooding program would wedge the terminal in an infinite
+                // throw loop (C2). Past the ceiling we drop with a notice.
+                const MAX_PENDING = MAX_WRITE_CHUNK * 8;
+                let droppedNoticeShown = false;
                 // Batching can be disabled for lowest-latency writes.
                 const batched = getSettings().performance.terminalOutputBatching;
+                /** xterm.write that can never throw out of a timer callback. */
+                const safeWrite = (text: string) => {
+                    const t = xtermRef.current;
+                    if (!t || !text) return;
+                    try {
+                        t.write(text);
+                    } catch {
+                        // xterm backpressure throw (>50MB queued): drop the chunk
+                        // and keep the terminal alive. The truncation notice
+                        // below tells the user output was lost.
+                        if (!droppedNoticeShown) {
+                            droppedNoticeShown = true;
+                            try {
+                                t.writeln('\r\n\x1b[1;33m[output truncated — producer outran the terminal]\x1b[0m');
+                            } catch { /* terminal gone — nothing to do */ }
+                        }
+                    }
+                };
                 const flush = (drain = false) => {
                     flushTimer = null;
                     const t = xtermRef.current;
                     if (!t || !pending) return;
-                    if (drain || pending.length <= MAX_WRITE_CHUNK) {
-                        t.write(pending);
-                        pending = '';
-                    } else {
-                        t.write(pending.slice(0, MAX_WRITE_CHUNK));
-                        pending = pending.slice(MAX_WRITE_CHUNK);
-                        flushTimer = setTimeout(flush, 0);
+                    try {
+                        if (drain || pending.length <= MAX_WRITE_CHUNK) {
+                            safeWrite(pending);
+                            pending = '';
+                        } else {
+                            safeWrite(pending.slice(0, MAX_WRITE_CHUNK));
+                            pending = pending.slice(MAX_WRITE_CHUNK);
+                            flushTimer = setTimeout(flush, 0);
+                        }
+                    } finally {
+                        // A throw must never leave the poisoned buffer in place
+                        // to re-throw on the next tick (infinite exception loop).
+                        if (pending.length > MAX_PENDING) {
+                            pending = '';
+                            if (!droppedNoticeShown) {
+                                droppedNoticeShown = true;
+                                safeWrite('\r\n\x1b[1;33m[output truncated — producer outran the terminal]\x1b[0m');
+                            }
+                        }
                     }
                 };
                 const scheduleFlush = () => {
@@ -623,14 +672,21 @@ const handleRunData = (e: Event) => {
                         clearTimeout(flushTimer);
                         flushTimer = null;
                     }
-                    const t = xtermRef.current;
-                    if (t && pending) {
-                        t.write(pending);
+                    if (pending) {
+                        safeWrite(pending);
                     }
                     pending = '';
                 };
                 return {
                     onOutput: (data: string) => {
+                        // Clamp at append time: a single oversized frame is cut
+                        // before it can poison the buffer (C2/M8).
+                        if (pending.length + data.length > MAX_PENDING) {
+                            const room = Math.max(0, MAX_PENDING - pending.length);
+                            pending += data.slice(0, room);
+                            flush(true);
+                            return;
+                        }
                         pending += data;
                         // Never let the batch buffer grow without bound — an
                         // oversize burst is force-flushed (chunked) immediately.

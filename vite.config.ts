@@ -7,7 +7,7 @@ import path from 'node:path'
 function productionSecretGuard() {
   return {
     name: 'azemax-prod-secret-guard',
-    config(_config: any, { command }: any) {
+    config(_config: unknown, { command }: { command: string }) {
       if (command !== 'build') return;
       const rawBackend = process.env.VITE_USE_BACKEND_AI;
       const backendAI = rawBackend === undefined ? 'true' : rawBackend;

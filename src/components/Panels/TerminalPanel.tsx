@@ -6,8 +6,11 @@ import { ShellTerminal } from './ShellTerminal';
 import { motion } from 'framer-motion';
 import { ContextMenu } from '../UI/ContextMenu';
 import { languageFromExtension } from '../../core/terminal/terminalProfiles';
+import { isInside } from '../../utils/keyboardGuards';
 
 export const TerminalPanel: React.FC = () => {
+    // Root ref for focus-gated global shortcuts (H8).
+    const panelRef = React.useRef<HTMLDivElement | null>(null);
     const { selectedFolder, activeFileMeta } = useProjectUI();
     const { getActiveFile } = useProjectActions();
     const {
@@ -80,6 +83,10 @@ export const TerminalPanel: React.FC = () => {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (!activeTerminalIdRef.current) return;
+            // H8: only hijack Cmd+K / Cmd+Shift+C when focus is actually
+            // inside this terminal panel — otherwise we'd steal Monaco's
+            // delete-to-end-of-line and the editor's own AI-comment shortcut.
+            if (!panelRef.current || !isInside(panelRef, e.target)) return;
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
                 handleContextAction('clean');
@@ -94,7 +101,7 @@ export const TerminalPanel: React.FC = () => {
     }, [handleContextAction]);
 
     return (
-        <div className="h-full flex flex-col relative overflow-hidden group" style={{ background: "var(--az-surface-2)"}}>
+        <div ref={panelRef} className="h-full flex flex-col relative overflow-hidden group" style={{ background: "var(--az-surface-2)"}}>
 
 
             {/* Header Bar — 36px stable */}

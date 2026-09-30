@@ -27,6 +27,7 @@ import { getSettings } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { loadSortState, sortTreeWithState, type ExplorerSortState } from '../../utils/explorerSort';
 import { fuzzyMatch, fuzzyHighlight } from '../../utils/fuzzySearch';
+import { nsGetItem, nsSetItem } from '../../utils/userStorage';
 
 import { ExplorerFileIcon, ExplorerFolderIcon } from './ExplorerIcons';
 
@@ -78,7 +79,8 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, par
         if (!trimmed) return null; // empty handled as cancel, not error
         if (trimmed.length > 255) return 'Name too long';
         if (trimmed === '.' || trimmed === '..') return 'Invalid name';
-        if (/[\/\\]/.test(trimmed)) return 'Name cannot contain / or \\';
+        if (/[/\\]/.test(trimmed)) return 'Name cannot contain / or \\';
+        // eslint-disable-next-line no-control-regex
         if (/[*?"<>|:;\x00-\x1F]/.test(trimmed)) return 'Invalid character';
         if (trimmed.endsWith('.') || trimmed.endsWith(' ')) return 'Name cannot end with space or dot';
         // Duplicate check — scoped to parent folder when known
@@ -891,7 +893,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     // File bookmarks/favorites state
     const [bookmarkedFiles, setBookmarkedFiles] = useState<Set<string>>(() => {
         try {
-            const saved = localStorage.getItem('azemax-bookmarked-files') || localStorage.getItem('deepcontext-bookmarked-files');
+            const saved = nsGetItem('azemax-bookmarked-files', ['deepcontext-bookmarked-files']);
             return saved ? new Set(JSON.parse(saved)) : new Set();
         } catch {
             return new Set();
@@ -901,7 +903,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     // Save bookmarks to localStorage
     useEffect(() => {
         try {
-            localStorage.setItem('azemax-bookmarked-files', JSON.stringify(Array.from(bookmarkedFiles)));
+            nsSetItem('azemax-bookmarked-files', JSON.stringify(Array.from(bookmarkedFiles)));
         } catch (e) {
             console.warn('Failed to save bookmarks:', e);
         }
@@ -1158,7 +1160,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         if (!renamingNodeId) return;
         const trimmed = newName.trim();
         // Premium validation — prevent path separators, empty, or duplicate sibling names
-        if (!trimmed || trimmed === '.' || trimmed === '..' || /[\/\\]/.test(trimmed) || /[*?"<>|:]/.test(trimmed)) {
+        if (!trimmed || trimmed === '.' || trimmed === '..' || /[/\\]/.test(trimmed) || /[*?"<>|:]/.test(trimmed)) {
             // Keep rename open so user can correct — briefly flash feedback
             return;
         }

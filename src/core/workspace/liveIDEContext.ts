@@ -48,7 +48,6 @@ function getVisibleCodeSnippet(ctx: ActiveEditorContext | null, radius = 30): { 
     return { code: snippet, range: { startLine: start, endLine: end } };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function deriveOpenTabs(activeFile: string | null, allPaths: string[], _fileTree: FileNode[]): string[] {
     const tabs: string[] = [];
     if (activeFile) tabs.push(activeFile);

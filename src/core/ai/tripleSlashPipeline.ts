@@ -315,7 +315,7 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
         preserve: cleanCode,
     });
 
-    let candidate = sanitized && sanitized.trim() ? sanitized.trim() : generated.trim();
+    const candidate = sanitized && sanitized.trim() ? sanitized.trim() : generated.trim();
     if (!candidate) return { success: false, message: 'Sanitized output empty' };
     // Deterministic repair: never write an echoed /// trigger, a no-op echo,
     // or a code-deleting comment-only line into the file.

@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { initialFileTree, type FileNode } from '../utils/mockFileSystem';
 import { ROOT_NODE_ID } from '../utils/mockFileSystem';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { nsGetItem, nsSetItem, nsRemoveItem, namespacedKey } from '../utils/userStorage';
 import { getSettings } from '../settings/settingsStore';
 import {
     createFile as opCreateFile,
@@ -60,7 +61,7 @@ function sanitizeCorruptTree(tree: FileNode[]): { tree: FileNode[]; hadCorruptio
 // tree is immediately persisted so the bad copy never re-enters the runtime.
 const loadFileTree = (): RepairResult => {
     try {
-        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+        const saved = nsGetItem(STORAGE_KEY, [LEGACY_STORAGE_KEY]);
         if (saved) {
             const repaired = repairFileTree(JSON.parse(saved));
             const sanitized = sanitizeCorruptTree(repaired.tree);
@@ -85,9 +86,9 @@ const saveFileTree = (tree: FileNode[], immediate = false) => {
     try {
         const serialized = JSON.stringify(tree);
         if (immediate) {
-            localStorage.setItem(STORAGE_KEY, serialized);
+            nsSetItem(STORAGE_KEY, serialized);
         } else {
-            debouncedLocalStorageSet(STORAGE_KEY, serialized, 0);
+            debouncedLocalStorageSet(namespacedKey(STORAGE_KEY), serialized, 0);
         }
     } catch (e) {
         console.warn('Failed to save file tree to localStorage:', e);
@@ -307,7 +308,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     const [fileTree, setFileTree] = useState<FileNode[]>(initial.tree);
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
         try {
-            const saved = localStorage.getItem(EXPANDED_KEY) || localStorage.getItem(LEGACY_EXPANDED_KEY);
+            const saved = nsGetItem(EXPANDED_KEY, [LEGACY_EXPANDED_KEY]);
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (Array.isArray(parsed)) {
@@ -326,7 +327,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         return set;
     });
     const [activeFile, setActiveFileState] = useState<FileNode | null>(() => {
-        const savedActiveId = localStorage.getItem(ACTIVE_FILE_KEY) || localStorage.getItem(LEGACY_ACTIVE_FILE_KEY);
+        const savedActiveId = nsGetItem(ACTIVE_FILE_KEY, [LEGACY_ACTIVE_FILE_KEY]);
         if (savedActiveId) {
             const node = findNodeById(initial.tree, savedActiveId);
             if (node && node.type === 'file') return node;
@@ -371,7 +372,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     // Persist expanded folders so collapse/expand survives refresh and never appears stuck
     useEffect(() => {
         try {
-            localStorage.setItem(EXPANDED_KEY, JSON.stringify(Array.from(expandedFolderIds)));
+            nsSetItem(EXPANDED_KEY, JSON.stringify(Array.from(expandedFolderIds)));
         } catch { /* ignore */ }
     }, [expandedFolderIds]);
 
@@ -407,7 +408,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             }
         } catch { /* best-effort */ }
         if (getSettings().privacy.saveWorkspaceState) {
-            localStorage.setItem(ACTIVE_FILE_KEY, file.id);
+            nsSetItem(ACTIVE_FILE_KEY, file.id);
         }
     }, []);
 
@@ -586,7 +587,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         if (isActiveFileDeleted) {
             setActiveFileState(null);
             setActiveFileMeta(null);
-            localStorage.removeItem(ACTIVE_FILE_KEY);
+            nsRemoveItem(ACTIVE_FILE_KEY);
         }
         setModifiedFiles(prev => {
             if (prev.size === 0) return prev;
@@ -621,7 +622,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             if (isActiveFileDeleted) {
                 setActiveFileState(null);
                 setActiveFileMeta(null);
-                localStorage.removeItem(ACTIVE_FILE_KEY);
+                nsRemoveItem(ACTIVE_FILE_KEY);
             }
         }
         for (const id of ids) {

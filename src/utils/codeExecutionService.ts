@@ -62,7 +62,7 @@ export const getLanguageFromExtension = (filename: string): string => {
 // Get available runtimes
 export const getRuntimes = async (): Promise<Language[]> => {
     try {
-        const response = await fetch(`${EXECUTION_API_URL}/runtimes`);
+        const response = await fetch(`${EXECUTION_API_URL}/runtimes`, { credentials: 'include' });
         if (!response.ok) {
             throw new Error(`Failed to fetch runtimes: ${response.statusText}`);
         }
@@ -119,6 +119,7 @@ export const executeCode = async (
 
         const response = await fetch(`${EXECUTION_API_URL}/execute`, {
             method: 'POST',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
             },

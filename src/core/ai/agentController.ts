@@ -10,6 +10,8 @@ import { generateSemanticPlan, type SemanticPlan } from './semanticPlanner';
 import { semanticPlanToActions, type AIAction, type ExecutionResult } from './aiToolExecutor';
 import { createToolRegistry } from './toolRegistry';
 import { createExecutorDeps, type WorkspaceBridgeActions } from '../editor/workspaceBridge';
+import { createPreviewWorkspace, type PreviewWorkspace, type ProposedChange } from '../editor/previewWorkspace';
+import type { ExecutorDeps } from './aiToolExecutor';
 import type { FileNode } from '../../utils/mockFileSystem';
 import type { ChatMessage } from './types';
 import { AIRequestStore } from './aiRequestStore';
@@ -49,6 +51,13 @@ export interface AgentControllerRequest {
     onActivity?: (activity: AgentActivity) => void;
     /** Pinned context from request creation time — prevents stale file switch from corrupting wrong document */
     requestContext?: AgentRequestContext | null;
+    /**
+     * Preview mode (Accept/Reject gate): the agent plans and validates against
+     * a shadow copy of the workspace. NOTHING is written to the real tree,
+     * Monaco, or React state — the caller receives `proposedChanges` and
+     * applies them only after explicit user approval.
+     */
+    preview?: boolean;
 }
 
 export interface AgentControllerResult extends ExecutionResult {
@@ -57,6 +66,8 @@ export interface AgentControllerResult extends ExecutionResult {
     activities: AgentActivity[];
     planSummary: string;
     diffs?: Array<{ file: string; added: number; removed: number; summary: string }>;
+    /** Preview mode only: ordered before/after changes awaiting user approval. */
+    proposedChanges?: ProposedChange[];
 }
 
 function makeActivity(tool: string, status: AgentToolStatus, message: string, path?: string): AgentActivity {
@@ -398,7 +409,19 @@ Respond ONLY with the complete new file content, no JSON, no fences, no explanat
     const applying = makeActivity('apply', 'running', applyLabel);
     push(applying);
     const effectiveFileId = pinned?.fileId ?? req.fileId ?? getActiveEditorContext()?.fileId ?? null;
-    const deps = createExecutorDeps(req.workspace, fileName || null, effectiveFileId);
+    // Preview gate: apply into a shadow tree. Real files change only when the
+    // caller replays `proposedChanges` after explicit user approval.
+    let preview: PreviewWorkspace | null = null;
+    let deps: ExecutorDeps;
+    if (req.preview) {
+        preview = createPreviewWorkspace(req.workspace.getFileTree() as FileNode[], {
+            fileName: fileName || null,
+            fileId: effectiveFileId,
+        });
+        deps = preview.deps;
+    } else {
+        deps = createExecutorDeps(req.workspace, fileName || null, effectiveFileId);
+    }
     const snapshotForEdit = pinnedContent ? { filePath: fileName, content: pinnedContent, lines: pinnedContent.split('\n'), timestamp: Date.now() } as import('./editEngine').FileSnapshot : null;
     const snapshotMap = new Map<string, import('./editEngine').FileSnapshot>();
     if (snapshotForEdit) snapshotMap.set(snapshotForEdit.filePath, snapshotForEdit);
@@ -442,8 +465,9 @@ Respond ONLY with the complete new file content, no JSON, no fences, no explanat
         }
     }
 
-    // Record recent edits for live context history
-    if (result.success && result.appliedCount > 0) {
+    // Record recent edits for live context history (live applies only —
+    // previewed proposals are recorded when the user accepts them).
+    if (!req.preview && result.success && result.appliedCount > 0) {
         for (const a of actions) {
             const p = (a as { path?: string; file?: string }).path ?? (a as { file?: string }).file ?? fileName;
             if (p) recordRecentEdit(p, (a as { action: string }).action, result.appliedCount);
@@ -451,7 +475,8 @@ Respond ONLY with the complete new file content, no JSON, no fences, no explanat
     }
 
     // [8] Natural response is result.message (brief, verified)
-    return { ...result, activities, planSummary: plan.analysis.summary, diffs };
+    const proposedChanges = preview ? preview.getChanges() : undefined;
+    return { ...result, activities, planSummary: plan.analysis.summary, diffs, proposedChanges };
 }
 
 type ToolRegistryDeps = import('./toolRegistry').ToolRegistryDeps;

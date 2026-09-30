@@ -8,6 +8,12 @@
  */
 import { check, finish } from './_harness';
 
+// Deterministic routing tests: provider availability must not depend on the
+// developer's local .env. A dummy Groq key marks the provider "configured"
+// (routing logic only — the value is never used for network). Each test file
+// runs isolated, so this does not leak into other suites.
+if (!process.env.GROQ_API_KEY) process.env.GROQ_API_KEY = 'unit-test-routing-stub';
+
 // ============================================================================
 // Server router (CJS)
 // ============================================================================
@@ -22,11 +28,18 @@ const { resolveModel, buildRoutingPlan, inferProvider, stripPrefixes, listConfig
     check('server: chat primary is nvidia', m.provider === 'nvidia' && (m.model.includes('deepseek') || m.model.startsWith('nvidia/') || m.model.startsWith('deepseek') || m.model.includes('nemotron')));
     check('server: chat reasoning OFF (fast)', m.reasoningMode === 'off');
     check('server: chat force_nonempty off by default', m.forceNonemptyContent === false);
-    check('server: chat kwargs disable thinking (fast)', m.chatTemplateKwargs && m.chatTemplateKwargs.enable_thinking === false && m.chatTemplateKwargs.reasoning_effort === 'none');
+    // Thinking knob is model-family aware: Nemotron uses `enable_thinking`,
+    // DeepSeek uses `thinking`. Assert the invariant (reasoning disabled),
+    // not the key name, so the suite is independent of local .env models.
+    const thinkingOff = (k: { enable_thinking?: boolean; thinking?: boolean } | null | undefined) =>
+        k?.enable_thinking === false || k?.thinking === false;
+    const thinkingOn = (k: { enable_thinking?: boolean; thinking?: boolean } | null | undefined) =>
+        k?.enable_thinking === true || k?.thinking === true;
+    check('server: chat kwargs disable thinking (fast)', m.chatTemplateKwargs && thinkingOff(m.chatTemplateKwargs) && m.chatTemplateKwargs.reasoning_effort === 'none');
 
     const complex = resolveModel('complex_code', undefined);
     check('server: complex_code reasoning LOW (fast)', complex.reasoningMode === 'low');
-    check('server: complex_code enables thinking + effort=low (fast)', complex.chatTemplateKwargs?.enable_thinking === true && complex.chatTemplateKwargs?.reasoning_effort === 'low');
+    check('server: complex_code enables thinking + effort=low (fast)', thinkingOn(complex.chatTemplateKwargs) && complex.chatTemplateKwargs?.reasoning_effort === 'low');
 
     const deep = resolveModel('deep_reasoning', undefined);
     check('server: deep_reasoning reasoning HIGH', deep.reasoningMode === 'high');

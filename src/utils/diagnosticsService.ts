@@ -438,14 +438,30 @@ async function checkHtmlSyntax(code: string, fileName: string, fileId: string | 
     const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*\/?>/g;
     const stack: { tag: string; line: number; column: number }[] = [];
     const linesForPos = code.split('\n');
-    const offsetToLineCol = (offset: number) => {
+    // H5 fix: precompute line start offsets once + binary search, instead of
+    // a linear scan per tag (which was O(tags × lines) — quadratic).
+    const lineStarts: number[] = new Array(linesForPos.length);
+    {
         let acc = 0;
         for (let i = 0; i < linesForPos.length; i++) {
-            const len = linesForPos[i].length + 1;
-            if (offset < acc + len) return { line: i + 1, column: offset - acc + 1 };
-            acc += len;
+            lineStarts[i] = acc;
+            acc += linesForPos[i].length + 1;
         }
-        return { line: 1, column: 1 };
+    }
+    const offsetToLineCol = (offset: number) => {
+        let lo = 0;
+        let hi = lineStarts.length - 1;
+        let line = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (lineStarts[mid] <= offset) {
+                line = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return { line: line + 1, column: offset - lineStarts[line] + 1 };
     };
     let m: RegExpExecArray | null;
     // eslint-disable-next-line no-cond-assign

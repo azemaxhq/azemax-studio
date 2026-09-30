@@ -31,10 +31,20 @@ export function subscribeDiagnostics(cb: Listener): () => void {
     return () => listeners.delete(cb);
 }
 
+/** Bound the per-file result map — entries for long-deleted files must not accumulate. */
+const MAX_STORED_FILES = 50;
+
 export function setDiagnosticResult(fileId: string | null, result: DiagnosticResultEx): void {
     if (fileId) {
         state.results.set(fileId, result);
         state.currentFileId = fileId;
+        while (state.results.size > MAX_STORED_FILES) {
+            const oldest = state.results.keys().next().value;
+            if (oldest === undefined) break;
+            // Never evict the currently-viewed file's entry.
+            if (oldest === fileId) break;
+            state.results.delete(oldest);
+        }
     }
     state.lastGlobal = result;
     emit();
@@ -82,12 +92,16 @@ export function getDiagnosticResult(fileId: string | null): DiagnosticResultEx |
 }
 
 export function getCurrentDiagnostics(): DiagnosticResultEx | null {
-    if (state.currentFileId) return state.results.get(state.currentFileId) ?? state.lastGlobal;
+    // Strict per-file read: NEVER fall back to another file's result.
+    // Showing file A's errors on file B destroys trust in diagnostics (H6).
+    if (state.currentFileId) return state.results.get(state.currentFileId) ?? null;
     return state.lastGlobal;
 }
 
 export function getCounts(fileId?: string | null): { errors: number; warnings: number; infos: number; hints: number; total: number } {
-    const r = fileId ? state.results.get(fileId) ?? state.lastGlobal : state.lastGlobal;
+    // Strict per-file read (see above) — a file with no results reports zero,
+    // never its neighbor's counts.
+    const r = fileId ? state.results.get(fileId) ?? null : state.lastGlobal;
     if (!r) return { errors: 0, warnings: 0, infos: 0, hints: 0, total: 0 };
     return {
         errors: r.errorCount,

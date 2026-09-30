@@ -86,8 +86,8 @@ describe('AI Provider Routing', () => {
             expect(config.reasoningMode).toBe('off');
             expect(config.chatTemplateKwargs?.reasoning_effort).toBe('none');
             expect(config.chatTemplateKwargs?.enable_thinking).toBe(false);
-            expect(config.maxTokens).toBe(2048);
-            expect(config.temperature).toBe(1.0);
+            expect(config.maxTokens).toBe(1024);
+            expect(config.temperature).toBe(0.7);
         });
 
         it('should have correct reasoning mode for comment', () => {
@@ -95,7 +95,7 @@ describe('AI Provider Routing', () => {
             expect(config.reasoningMode).toBe('off');
             expect(config.chatTemplateKwargs?.reasoning_effort).toBe('none');
             expect(config.chatTemplateKwargs?.enable_thinking).toBe(false);
-            expect(config.maxTokens).toBe(512);
+            expect(config.maxTokens).toBe(2048);
         });
 
         it('should have correct reasoning mode for inline completion', () => {
@@ -111,7 +111,7 @@ describe('AI Provider Routing', () => {
             expect(config.reasoningMode).toBe('off');
             expect(config.chatTemplateKwargs?.reasoning_effort).toBe('none');
             expect(config.chatTemplateKwargs?.enable_thinking).toBe(false);
-            expect(config.maxTokens).toBe(4096);
+            expect(config.maxTokens).toBe(8192);
         });
 
         it('should have correct reasoning mode for code fix', () => {
@@ -119,13 +119,13 @@ describe('AI Provider Routing', () => {
             expect(config.reasoningMode).toBe('low');
             expect(config.chatTemplateKwargs?.reasoning_effort).toBe('low');
             expect(config.chatTemplateKwargs?.enable_thinking).toBe(true);
-            expect(config.maxTokens).toBe(4096);
+            expect(config.maxTokens).toBe(2048);
         });
 
         it('should have correct reasoning mode for refactor', () => {
             const config = getTaskConfig('complex_code');
             expect(config.reasoningMode).toBe('low');
-            expect(config.maxTokens).toBe(4096);
+            expect(config.maxTokens).toBe(2048);
         });
 
         it('should have correct reasoning mode for complex agentic tasks', () => {
@@ -133,7 +133,7 @@ describe('AI Provider Routing', () => {
             expect(config.reasoningMode).toBe('high');
             expect(config.chatTemplateKwargs?.reasoning_effort).toBe('high');
             expect(config.chatTemplateKwargs?.enable_thinking).toBe(true);
-            expect(config.maxTokens).toBe(8192);
+            expect(config.maxTokens).toBe(4096);
         });
     });
 });

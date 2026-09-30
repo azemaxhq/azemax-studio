@@ -1,34 +1,62 @@
 const { TerminalManager, STATES, getDefaultShell, getDefaultShellArgs } = require('../services/terminal/terminalManager.cjs');
+const { verifySession } = require('../services/auth/authService.cjs');
+const { CORS_LIST, LIMITS, ALLOW_SHELL } = require('../config/index.cjs');
+const { recordUsage } = require('../services/auth/authService.cjs');
+const logger = require('../lib/logger.cjs');
 
 // Terminal states after which the session id is safely reusable (process gone
 // or being torn down). STOPPING is included so Run->Stop->Run works immediately:
 // the dying session is disposed, never blocking the next execution.
 const STATES_TERMINAL = [STATES.EXITED, STATES.FAILED, STATES.DISPOSED, STATES.STOPPING];
 
+/** Extract a session token from the WS upgrade request (cookie or ?token=). */
+function tokenFromUpgrade(req) {
+    try {
+        const url = new URL(req.url || '/', 'http://localhost');
+        const q = url.searchParams.get('token');
+        if (q) return q;
+    } catch { /* ignore */ }
+    const header = req.headers && req.headers.cookie;
+    if (typeof header === 'string') {
+        for (const part of header.split(';')) {
+            const idx = part.indexOf('=');
+            if (idx === -1) continue;
+            if (part.slice(0, idx).trim() === 'azemax_session') {
+                const value = decodeURIComponent(part.slice(idx + 1).trim());
+                if (value) return value;
+            }
+        }
+    }
+    return null;
+}
+
+function originAllowed(req) {
+    const origin = req.headers && req.headers.origin;
+    if (!origin) return true; // non-browser clients send no Origin; auth still required
+    try {
+        const normalized = origin.trim();
+        return CORS_LIST.includes(normalized);
+    } catch {
+        return false;
+    }
+}
+
+function clientIp(req) {
+    return (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+
 /**
  * WebSocket transport layer for terminal sessions.
  *
- * The WebSocket is a pure TRANSPORT: it carries protocol frames for the
- * TerminalManager, which owns every process. No process lifecycle logic
- * lives in this file beyond routing + disconnect policy.
- *
- * Protocol (frontend -> backend):
- *   { type: "session.create", sessionId, kind, language?, code?, cwd?, cols, rows, stdinInput?, preStdin? }
- *   { type: "session.input",  sessionId, data }
- *   { type: "session.resize", sessionId, cols, rows }
- *   { type: "session.signal", sessionId, signal }
- *   { type: "session.kill",   sessionId }
- *   { type: "session.dispose", sessionId }
- *
- * Backend -> frontend:
- *   { type: "terminal.ready", sessionId, state }
- *   { type: "terminal.output", sessionId, data }
- *   { type: "terminal.error",  sessionId, message }
- *   { type: "terminal.exit",   sessionId, code, signal }
- *   { type: "terminal.state",  sessionId, state }
- *   { type: "terminal.stdin_required", sessionId }
- *
- * Legacy compatibility (kept): { action: "execute" | "input" | "kill" | "stdin-ready" }
+ * Security model:
+ *  - Authentication is mandatory: the upgrade request must carry a valid
+ *    session (cookie or ?token=). Unauthenticated sockets are closed (4401).
+ *  - When an Origin header is present it must be allowlisted (4403).
+ *  - Every session records its owner's user id; ALL session operations verify
+ *    ownership before touching the session (cross-user access impossible).
+ *  - Session limits are three-tier: per-user, per-IP, global (all configurable).
+ *  - Heartbeat (ping/pong) reaps dead sockets; idle sockets are closed.
+ *  - maxPayload is set at server construction (see server/index.cjs).
  */
 function attachExecutionWebSocket(wss) {
     const manager = new TerminalManager();
@@ -37,16 +65,54 @@ function attachExecutionWebSocket(wss) {
     else global.__terminalManagerRefs = [manager];
 
     // ws re-emits the underlying http server's 'error' events on the
-    // WebSocketServer (see websocket-server.js addListeners). A listener must
-    // exist or that re-emit throws, which would skip later error listeners on
-    // the http server (e.g. listenWithRetry's EADDRINUSE handling) and surface
-    // as an uncaughtException.
+    // WebSocketServer. A listener must exist or that re-emit throws.
     wss.on('error', (err) => {
         if (err && err.code === 'EADDRINUSE') return;
-        console.error('[ws] WebSocket server error:', err && err.message ? err.message : err);
+        logger.error('ws server error', { message: err && err.message ? err.message : String(err) });
     });
 
-    wss.on('connection', (ws, _req) => {
+    // Heartbeat + idle reaper (single interval for the whole server).
+    const heartbeat = setInterval(() => {
+        const now = Date.now();
+        for (const ws of Array.from(wss.clients)) {
+            if (ws.isAlive === false) {
+                try { ws.terminate(); } catch { /* ignore */ }
+                continue;
+            }
+            if (now - (ws.lastActivity || now) > LIMITS.WS_IDLE_TIMEOUT_MS) {
+                try { ws.close(4408, 'Idle timeout'); } catch { /* ignore */ }
+                continue;
+            }
+            ws.isAlive = false;
+            try { ws.ping(); } catch { /* ignore */ }
+        }
+    }, LIMITS.WS_HEARTBEAT_MS);
+    if (heartbeat.unref) heartbeat.unref();
+
+    const countSessions = (predicate) => {
+        let n = 0;
+        for (const s of manager.sessions.values()) if (predicate(s)) n++;
+        return n;
+    };
+
+    wss.on('connection', (ws, req) => {
+        ws.isAlive = true;
+        ws.lastActivity = Date.now();
+        ws.on('pong', () => { ws.isAlive = true; ws.lastActivity = Date.now(); });
+
+        // ---- Handshake authentication (mandatory) ----
+        if (!originAllowed(req)) {
+            try { ws.close(4403, 'Forbidden origin'); } catch { /* ignore */ }
+            return;
+        }
+        const user = verifySession(tokenFromUpgrade(req));
+        if (!user) {
+            try { ws.close(4401, 'Authentication required'); } catch { /* ignore */ }
+            return;
+        }
+        ws.user = user;
+        const ip = clientIp(req);
+
         // Session ID bound to this socket for legacy execute actions.
         let legacySessionId = null;
 
@@ -56,7 +122,18 @@ function attachExecutionWebSocket(wss) {
             }
         };
 
+        /** Ownership check: session must exist AND belong to this socket's user. */
+        const owns = (sessionId) => {
+            const s = manager.getSession(sessionId);
+            return Boolean(s && s.ownerId === user.id);
+        };
+
         ws.on('message', async (message) => {
+            ws.lastActivity = Date.now();
+            if (message && message.length > LIMITS.WS_MAX_PAYLOAD) {
+                sendRaw({ type: 'terminal.error', message: 'Message too large' });
+                return;
+            }
             let data;
             try {
                 data = typeof message === 'string' ? JSON.parse(message) : JSON.parse(message.toString());
@@ -68,155 +145,183 @@ function attachExecutionWebSocket(wss) {
             try {
                 // ---- Terminal session protocol ----
                 if (data.type === 'session.create') {
-                    const id = data.sessionId;
-                    const existing = manager.getSession(id);
-                    if (existing && !STATES_TERMINAL.includes(existing.state)) {
-                        sendRaw({ type: 'terminal.error', message: `Session ${id} still running` });
+                    // Three-tier caps: per-user, per-IP, global.
+                    if (countSessions((s) => s.ownerId === user.id) >= LIMITS.WS_USER_MAX_SESSIONS) {
+                        sendRaw({ type: 'terminal.error', message: `Session limit reached (${LIMITS.WS_USER_MAX_SESSIONS} per user). Close a terminal first.` });
                         return;
                     }
+                    if (countSessions((s) => s.ownerIp === ip) >= LIMITS.WS_IP_MAX_SESSIONS) {
+                        sendRaw({ type: 'terminal.error', message: 'Too many sessions from your network. Try again later.' });
+                        return;
+                    }
+                    if (manager.sessions.size >= LIMITS.WS_GLOBAL_MAX_SESSIONS) {
+                        sendRaw({ type: 'terminal.error', message: 'Server is busy. Try again shortly.' });
+                        return;
+                    }
+                    const id = typeof data.sessionId === 'string' && data.sessionId.length <= 64
+                        ? data.sessionId
+                        : null;
+                    const existing = id ? manager.getSession(id) : null;
                     if (existing) {
+                        if (existing.ownerId !== user.id) {
+                            sendRaw({ type: 'terminal.error', message: 'Session not found' });
+                            return;
+                        }
+                        if (!STATES_TERMINAL.includes(existing.state)) {
+                            sendRaw({ type: 'terminal.error', message: `Session ${id} still running` });
+                            return;
+                        }
                         // Same terminal re-running: dispose the finished session so
                         // the id can be reused without leaking its process/resources.
                         manager.dispose(existing.id);
                     }
+                    const cols = Math.max(10, Math.min(500, Math.floor(Number(data.cols) || 80)));
+                    const rows = Math.max(5, Math.min(200, Math.floor(Number(data.rows) || 30)));
+                    const kind = data.kind === 'shell' ? 'shell' : 'code';
                     const session = manager.createSession(id, {
-                        kind: data.kind || 'code',
-                        title: data.title,
-                        language: data.language,
-                        code: data.code,
-                        cwd: data.cwd,
-                        cols: data.cols || 80,
-                        rows: data.rows || 30,
-                        stdinInput: data.stdinInput || '',
-                        preStdin: data.preStdin || null,
+                        kind,
+                        title: typeof data.title === 'string' ? data.title.slice(0, 120) : undefined,
+                        language: typeof data.language === 'string' ? data.language.slice(0, 50) : undefined,
+                        code: typeof data.code === 'string' ? data.code.slice(0, LIMITS.MAX_CODE_BYTES) : undefined,
+                        cwd: typeof data.cwd === 'string' ? data.cwd.slice(0, 500) : undefined,
+                        cols,
+                        rows,
+                        stdinInput: typeof data.stdinInput === 'string' ? data.stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : '',
+                        preStdin: typeof data.preStdin === 'string' ? data.preStdin.slice(0, LIMITS.MAX_STDIN_BYTES) : null,
+                        ownerId: user.id,
+                        ownerIp: ip,
                     });
-                    legacySessionId = id;
-                    manager.attachTransport(id, ws);
-                    sendRaw({ sessionId: id, type: 'terminal.ready', state: session.state });
+                    legacySessionId = session.id;
+                    manager.attachTransport(session.id, ws);
+                    sendRaw({ sessionId: session.id, type: 'terminal.ready', state: session.state });
 
-                    if (data.kind === 'shell') {
-                        // Interactive shell is disabled in production by default (ephemeral free host).
-                        // Set ALLOW_SHELL=true to re-enable if your host supports persistent PTY.
-                        const isProdShell = process.env.NODE_ENV === 'production';
-                        const allowShell = process.env.ALLOW_SHELL === 'true' || (process.env.ALLOW_SHELL !== 'false' && !isProdShell);
-                        if (!allowShell) {
-                            sendRaw({ sessionId: id, type: 'terminal.error', message: 'Interactive shell is unavailable in this beta environment. Code execution (Run) still works via sandboxed execution.\r\n' });
-                            sendRaw({ sessionId: id, type: 'terminal.exit', code: 1, signal: null });
-                            manager.dispose(id);
+                    if (kind === 'shell') {
+                        // Interactive shell is disabled in production by default (fail-closed).
+                        if (!ALLOW_SHELL) {
+                            sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Interactive shell is unavailable in this environment. Code execution (Run) still works via sandboxed execution.\r\n' });
+                            sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
+                            manager.dispose(session.id);
                             return;
                         }
-                        manager.setState(id, STATES.STARTING);
-                        // VS Code: ITerminalProfileService.getDefaultProfile per OS, not hard-coded '/bin/zsh'
+                        manager.setState(session.id, STATES.STARTING);
                         const shell = getDefaultShell();
                         const shellArgs = getDefaultShellArgs(shell);
                         manager.spawnPty(session, shell, shellArgs);
-                    } else if (data.kind === 'code') {
-                        if (!data.language || !data.code) {
-                            manager.setState(id, STATES.FAILED);
-                            sendRaw({ sessionId: id, type: 'terminal.error', message: 'Language and code required\r\n' });
-                            sendRaw({ sessionId: id, type: 'terminal.exit', code: 1, signal: null });
+                    } else if (kind === 'code') {
+                        if (!session.language || !session.code) {
+                            manager.setState(session.id, STATES.FAILED);
+                            sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Language and code required\r\n' });
+                            sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
                             return;
                         }
+                        recordUsage(user.id, { executions: 1 });
                         const stdinValue = data.stdinInput || data.preStdin || '';
                         await manager.executeCode(session, {
-                            language: data.language,
-                            code: data.code,
-                            stdinInput: stdinValue,
-                            preStdin: data.preStdin || null,
-                            filename: data.filename || null,
+                            language: session.language,
+                            code: session.code,
+                            stdinInput: typeof stdinValue === 'string' ? stdinValue.slice(0, LIMITS.MAX_STDIN_BYTES) : '',
+                            preStdin: null,
+                            filename: typeof data.filename === 'string' ? data.filename.slice(0, 120) : null,
                         });
                     }
                     return;
                 }
 
                 if (data.type === 'session.input') {
-                    if (data.sessionId) manager.sendInput(data.sessionId, data.data);
-                    else if (legacySessionId) manager.sendInput(legacySessionId, data.data);
+                    const target = data.sessionId || legacySessionId;
+                    if (target && owns(target)) manager.sendInput(target, typeof data.data === 'string' ? data.data.slice(0, 65536) : '');
                     return;
                 }
 
                 if (data.type === 'session.resize') {
-                    if (data.sessionId) manager.resize(data.sessionId, data.cols, data.rows);
-                    else if (legacySessionId) manager.resize(legacySessionId, data.cols, data.rows);
+                    const target = data.sessionId || legacySessionId;
+                    if (target && owns(target)) manager.resize(target, data.cols, data.rows);
                     return;
                 }
 
                 if (data.type === 'session.signal') {
                     const target = data.sessionId || legacySessionId;
-                    if (target) manager.signal(target, data.signal || 'SIGINT');
+                    if (target && owns(target)) manager.signal(target, data.signal || 'SIGINT');
                     return;
                 }
 
                 if (data.type === 'session.kill') {
                     const target = data.sessionId || legacySessionId;
-                    if (target) manager.kill(target);
+                    if (target && owns(target)) manager.kill(target);
                     return;
                 }
 
                 if (data.type === 'session.dispose') {
                     const target = data.sessionId || legacySessionId;
-                    if (target) manager.dispose(target);
+                    if (target && owns(target)) manager.dispose(target);
                     return;
                 }
 
                 // ---- Legacy protocol (backward compatible) ----
                 if (data.action === 'kill') {
-                    if (legacySessionId) manager.kill(legacySessionId);
+                    if (legacySessionId && owns(legacySessionId)) manager.kill(legacySessionId);
                     return;
                 }
 
                 if (data.action === 'input' || data.action === 'terminal:data') {
-                    if (legacySessionId) manager.sendInput(legacySessionId, data.data);
+                    if (legacySessionId && owns(legacySessionId)) manager.sendInput(legacySessionId, typeof data.data === 'string' ? data.data.slice(0, 65536) : '');
                     return;
                 }
 
                 if (data.action === 'stdin-ready') {
-                    // Legacy: provide stdin to the running session.
-                    if (legacySessionId) manager.sendInput(legacySessionId, (data.data || '').replace(/\r/g, '\n'));
+                    if (legacySessionId && owns(legacySessionId)) manager.sendInput(legacySessionId, String(data.data || '').replace(/\r/g, '\n').slice(0, 65536));
                     return;
                 }
 
                 if (data.action === 'execute') {
+                    if (countSessions((s) => s.ownerId === user.id) >= LIMITS.WS_USER_MAX_SESSIONS) {
+                        sendRaw({ type: 'terminal.error', message: `Session limit reached (${LIMITS.WS_USER_MAX_SESSIONS} per user). Close a terminal first.` });
+                        return;
+                    }
                     // Legacy run path: auto-create a code session scoped to this socket.
                     const { language, files, stdinInput } = data;
-                    if (!language || !files?.length) {
+                    if (typeof language !== 'string' || !files?.length) {
                         sendRaw({ type: 'terminal.error', message: 'Language and files required\r\n' });
                         sendRaw({ type: 'terminal.exit', code: 1, signal: null });
                         return;
                     }
-                    const code = files[0].content || '';
-                    const legacyFilename = files[0].name || data.filename || null;
+                    const code = String(files[0].content || '').slice(0, LIMITS.MAX_CODE_BYTES);
+                    const legacyFilename = typeof files[0].name === 'string' ? files[0].name.slice(0, 120) : (typeof data.filename === 'string' ? data.filename.slice(0, 120) : null);
                     const id = Math.random().toString(36).substring(2, 10);
                     const session = manager.createSession(id, {
                         kind: 'code',
-                        language: data.language,
+                        language: language.slice(0, 50),
                         code,
-                        stdinInput: stdinInput || '',
-                        preStdin: stdinInput || null,
+                        stdinInput: typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : '',
+                        preStdin: typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : null,
+                        ownerId: user.id,
+                        ownerIp: ip,
                     });
                     legacySessionId = id;
                     manager.attachTransport(id, ws);
+                    recordUsage(user.id, { executions: 1 });
                     sendRaw({ sessionId: id, type: 'terminal.ready', state: session.state });
                     await manager.executeCode(session, {
-                        language: data.language,
+                        language: session.language,
                         code,
-                        stdinInput: stdinInput || '',
-                        preStdin: stdinInput || null,
+                        stdinInput: session.code ? (typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : '') : '',
+                        preStdin: typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : null,
                         filename: legacyFilename,
                     });
                     return;
                 }
             } catch (err) {
-                console.error('[WS] message error:', err);
-                sendRaw({ type: 'terminal.error', message: err.message });
+                logger.error('ws message error', { userId: user.id, message: err && err.message });
+                sendRaw({ type: 'terminal.error', message: 'Request failed' });
             }
         });
 
         const terminateAllForSocket = () => {
             // Disconnect policy: terminate every session attached to this socket so
-            // processes are never orphanged. Sessions are single-transport.
+            // processes are never orphaned. Sessions are single-transport.
+            // Only our own sessions are touched (ownership was set at creation).
             for (const session of Array.from(manager.sessions.values())) {
-                if (session.transport === ws) {
+                if (session.transport === ws && session.ownerId === user.id) {
                     manager.kill(session.id);
                     manager.dispose(session.id);
                 }
@@ -228,16 +333,13 @@ function attachExecutionWebSocket(wss) {
         });
 
         ws.on('error', (err) => {
-            console.error('WebSocket connection error:', err);
+            logger.error('ws connection error', { userId: user.id, message: err && err.message });
             // Socket may not emit 'close' after an error; terminate its sessions
             // so child processes are never orphaned.
             terminateAllForSocket();
         });
     });
 
-    // Return the manager so the entrypoint can terminate live terminal
-    // sessions/PTYs during graceful shutdown. The manager remains per-WebSocket-
-    // server; this is an additive return, not a behavioral change.
     return manager;
 }
 

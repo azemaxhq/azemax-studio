@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { _internal, buildAIContext, checkDiagnosticsEx } from '../src/utils/diagnosticsService';
-import { getCounts, setDiagnosticResult, clearDiagnostics } from '../src/core/diagnostics/diagnosticStore';
+import { getCounts, setDiagnosticResult } from '../src/core/diagnostics/diagnosticStore';
 
 describe('Diagnostics Overhaul - Matrix', () => {
     it('A: Empty file -> No issues', async () => {

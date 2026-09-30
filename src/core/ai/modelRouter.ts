@@ -107,8 +107,10 @@ export function inferProvider(model: string): ProviderId {
     return 'groq';
 }
 
-/** Directly-configured providers (VITE keys), in fallback order. */
+/** Directly-configured providers (VITE keys), in fallback order. Dev only —
+ * production builds must route AI through the backend (see AIClient). */
 export function configuredDirectProviders(): ProviderId[] {
+    if (!import.meta.env?.DEV) return [];
     const list: ProviderId[] = [];
     if (import.meta.env?.VITE_GROQ_API_KEY) list.push('groq');
     if (import.meta.env?.VITE_OPENROUTER_API_KEY) list.push('openrouter');

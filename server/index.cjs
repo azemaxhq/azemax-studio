@@ -1,16 +1,21 @@
 const http = require('http');
 const WebSocket = require('ws');
 const { createApp } = require('./app.cjs');
-const { PORT } = require('./config/index.cjs');
+const { PORT, LIMITS } = require('./config/index.cjs');
 const { attachExecutionWebSocket } = require('./websocket/executionHandler.cjs');
 const { listDetectedRuntimes } = require('./services/execution/runtimeDetection.cjs');
 const { aiRequestManager } = require('./services/ai/aiRequestManager.cjs');
+const { openDatabase, closeDatabase } = require('./db/index.cjs');
+const { pruneExpiredSessions } = require('./services/auth/authService.cjs');
+const logger = require('./lib/logger.cjs');
 const lifecycle = require('./lifecycle.cjs');
 
 // ---- Construction (no I/O yet) ----
+openDatabase(); // migrations run here; fatal on failure
 const app = createApp();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+// maxPayload caps a single WS message (default 100MB is a memory-exhaustion vector).
+const wss = new WebSocket.Server({ server, maxPayload: LIMITS.WS_MAX_PAYLOAD });
 
 // attachExecutionWebSocket owns the TerminalManager; it is returned so graceful
 // shutdown can terminate every live terminal session/PTY before exiting.
@@ -18,7 +23,7 @@ const terminalManager = attachExecutionWebSocket(wss);
 
 // Single-instance + shutdown lifecycle. Installed before the async bind so a
 // signal received during startup is handled correctly.
-const onComplete = () => lifecycle.releaseLock(PORT);
+const onComplete = () => { try { closeDatabase(); } catch { /* ignore */ } lifecycle.releaseLock(PORT); };
 lifecycle.installGracefulShutdown({
     server,
     wss,
@@ -26,6 +31,17 @@ lifecycle.installGracefulShutdown({
     onComplete,
     beforeClose: () => aiRequestManager.abortAll(),
 });
+
+// Prune expired sessions hourly (bounded, single timer).
+const pruneTimer = setInterval(() => {
+    try {
+        const removed = pruneExpiredSessions();
+        if (removed > 0) logger.info('sessions pruned', { removed });
+    } catch (err) {
+        logger.error('session prune failed', { message: err && err.message });
+    }
+}, 3600 * 1000);
+if (pruneTimer.unref) pruneTimer.unref();
 
 // ---- Startup (entrypoint owns it; exactly one listen per process) ----
 const { siblingPid } = lifecycle.acquireLock(PORT);
@@ -46,12 +62,14 @@ lifecycle.listenWithRetry(server, listenOpts)
         const displayHost = process.env.NODE_ENV === 'production' ? HOST : 'localhost';
         const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http';
         const wsProto = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
-        console.log(`\n🚀 Azemax API`);
-        console.log(`   HTTP:      ${proto}://${displayHost}:${PORT}/api`);
-        console.log(`   Health:    ${proto}://${displayHost}:${PORT}/api/health`);
-        console.log(`   WebSocket: ${wsProto}://${displayHost}:${PORT}`);
-        console.log(`   Runtimes:  ${runtimes.length} local language(s) detected`);
-        console.log(`   Env:       ${process.env.NODE_ENV || 'development'}\n`);
+        // Structured startup line (no secrets — counts and flags only).
+        const { publicSummary } = require('./config/index.cjs');
+        logger.info('server listening', {
+            http: `${proto}://${displayHost}:${PORT}/api`,
+            websocket: `${wsProto}://${displayHost}:${PORT}`,
+            localRuntimes: runtimes.length,
+            ...publicSummary(),
+        });
     })
     .catch(async (err) => {
         if (err && err.code === 'EADDRINUSE') {

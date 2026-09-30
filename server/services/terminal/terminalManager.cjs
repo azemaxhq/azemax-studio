@@ -2,12 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
 
 const { getLanguageConfig, canRunLocally } = require('../execution/languageConfig.cjs');
 const { resolveFileName, codeNeedsStdin } = require('../execution/fileNaming.cjs');
 const { streamViaWandbox } = require('../execution/wandboxExecutor.cjs');
 const { EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS } = require('../execution/constants.cjs');
+const { spawnSandboxed, minimalEnv } = require('../execution/sandbox.cjs');
 
 // --- Constants -------------------------------------------------------------
 
@@ -69,7 +69,7 @@ class TerminalManager {
 
     static MAX_SESSIONS = 50;
 
-    createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 80, rows = 30, stdinInput: _stdinInput = '', preStdin: _preStdin = null }) {
+    createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 80, rows = 30, stdinInput: _stdinInput = '', preStdin: _preStdin = null, ownerId = null, ownerIp = null }) {
         if (this.sessions.size >= TerminalManager.MAX_SESSIONS) {
             throw new Error(`Session limit reached (${TerminalManager.MAX_SESSIONS}). Close a terminal first.`);
         }
@@ -103,6 +103,8 @@ class TerminalManager {
             exitCode: null,
             createdAt: Date.now(),
             exitedAt: null,
+            ownerId: ownerId || null,
+            ownerIp: ownerIp || null,
             policy: { reconnect: false }, // WS disconnect -> terminate process (safe default)
         };
         this.sessions.set(id, session);
@@ -158,10 +160,10 @@ class TerminalManager {
      */
     spawnPty(session, runCmd, runArgs) {
         const args = [PTY_RELAY, String(session.cols), String(session.rows), '--', runCmd, ...runArgs];
-        const proc = spawn('python3', args, {
+        // Sandboxed: minimal env + OS resource limits where available.
+        const proc = spawnSandboxed('python3', args, {
             cwd: session.cwd && fs.existsSync(session.cwd) ? session.cwd : os.tmpdir(),
             stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
-            env: this._buildEnv(session),
         });
 
         session.proc = proc;
@@ -205,9 +207,9 @@ class TerminalManager {
 
     /** Spawn a plain child_process (no PTY) — used for wires/compile and non-interactive remote-style exec. */
     spawnPlain(session, runCmd, runArgs, { preStdin = '', cwd } = {}) {
-        const proc = spawn(runCmd, runArgs, {
+        // Sandboxed: minimal env + OS resource limits where available.
+        const proc = spawnSandboxed(runCmd, runArgs, {
             cwd: cwd || session.cwd,
-            env: this._buildEnv(session),
         });
         session.proc = proc;
         session.checkPty = false;
@@ -249,15 +251,10 @@ class TerminalManager {
     }
 
     _buildEnv(session) {
-        // Explicit environment policy: NEVER serialize the full server env to the browser.
-        // Programs run with a minimal, safe env derived from the server's PATH.
+        // Single choke point: the sandbox allowlist. Server env is never
+        // inherited. SHELL/PWD are session-scoped additions on top.
         return {
-            PATH: process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin',
-            HOME: os.homedir(),
-            LANG: process.env.LANG || 'en_US.UTF-8',
-            TERM: 'xterm-256color',
-            COLUMNS: String(session.cols),
-            LINES: String(session.rows),
+            ...minimalEnv({ cwd: session.tmpDir || session.cwd, cols: session.cols, rows: session.rows }),
             SHELL: DEFAULT_SHELL,
             PWD: session.cwd,
         };
@@ -524,9 +521,9 @@ class TerminalManager {
 
     async _compile(config, filePath, session) {
         return new Promise((resolve, reject) => {
-            const compProc = spawn(config.compile.cmd, config.compile.args(filePath), {
+            // Sandboxed compiler invocation (minimal env, no secret inheritance).
+            const compProc = spawnSandboxed(config.compile.cmd, config.compile.args(filePath), {
                 cwd: session.tmpDir,
-                env: this._buildEnv(session),
             });
             // Track the compiler on the session so kill()/dispose() terminate it
             // too — an untracked compiler would be orphaned on stop/dispose.

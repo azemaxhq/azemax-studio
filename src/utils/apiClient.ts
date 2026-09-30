@@ -17,12 +17,19 @@ export class ApiError extends Error {
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
     const response = await fetch(`${API_BASE}${path}`, {
+        credentials: 'include',
         ...options,
         headers: {
             'Content-Type': 'application/json',
             ...(options.headers || {}),
         },
     });
+
+    if (response.status === 401) {
+        // Session expired/revoked mid-use: bounce back to the login gate.
+        // Guarded so background polling cannot loop the event.
+        window.dispatchEvent(new CustomEvent('azemax:unauthorized'));
+    }
 
     if (!response.ok) {
         let details: string | undefined;
@@ -42,10 +49,21 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     return response.json() as Promise<T>;
 }
 
+const LOCALHOST_RE = /^(localhost|127\.0\.0\.1|\[::1\])$/i;
+
 export function getWebSocketUrl(): string {
-    // 1) Explicit override wins
-    if (import.meta.env?.VITE_WS_URL) {
-        return import.meta.env.VITE_WS_URL.replace(/\/$/, '');
+    // 1) Explicit override wins — EXCEPT a localhost override baked at build
+    // time must never apply when the page is served from a public host
+    // (stale .env in CI would otherwise point production WS at localhost).
+    const override = import.meta.env?.VITE_WS_URL;
+    if (override) {
+        const clean = override.replace(/\/$/, '');
+        const isLocalOverride = /^wss?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(clean);
+        const pageHost = typeof window !== 'undefined' ? window.location.hostname : '';
+        if (!isLocalOverride || !pageHost || LOCALHOST_RE.test(pageHost)) {
+            return clean;
+        }
+        // else: fall through to derivation from VITE_API_URL / page host
     }
     // 2) Derive from VITE_API_URL when it is absolute (production)
     const apiUrl = import.meta.env?.VITE_API_URL || '';

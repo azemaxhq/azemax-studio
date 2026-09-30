@@ -43,3 +43,9 @@ secrets/
 data/workspaces/*.json
 data/workspaces/*.log
 !data/workspaces/.gitkeep
+# SQLite databases (contain user accounts, sessions, projects — NEVER commit)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3

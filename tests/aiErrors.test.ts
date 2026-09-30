@@ -44,7 +44,11 @@ const { classifyProviderError, allProvidersFailed, invalidResponse, aiErrorToUse
     check('classify: network failure is retryable', net.code === AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE && net.retryable === true);
 
     const aborted = classifyProviderError({ provider: 'nvidia', model: 'm', cause: new DOMException('x', 'AbortError') });
-    check('classify: abort is not retryable', aborted.code === AI_ERROR_CODES.AI_REQUEST_ABORTED && aborted.retryable === false);
+    // Abort classifies retryable so TIMEOUT-aborts fall back to the next
+    // provider. Genuine user cancellation short-circuits separately in
+    // chatService (isAbortError → quiet return, never a fallback), so this
+    // flag cannot cause a cancelled request to be retried visibly.
+    check('classify: abort is retryable (timeout fallback)', aborted.code === AI_ERROR_CODES.AI_REQUEST_ABORTED && aborted.retryable === true);
 }
 
 {

@@ -4,6 +4,7 @@ import { defaultSettings } from './settingsDefaults';
 import { loadSettings } from './settingsPersistence';
 import type { Settings, SettingValue } from './settingsTypes';
 import { sanitizeSettings, coerceSettingValue, parseImportedSettings } from './settingsValidation';
+import { dialogAlert } from '../components/UI/dialogService';
 
 let current: Settings = loadSettings();
 
@@ -131,9 +132,8 @@ registerActionHandler('privacy.importSettings', () => {
     const file = input.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async () => {
+    reader.onload = () => {
       const result = parseImportedSettings(String(reader.result));
-      const { dialogAlert } = await import('../components/UI/dialogService');
       if (result.ok) {
         setSettings(result.settings);
         dialogAlert({ title: 'Settings imported', message: 'Your settings have been imported successfully.' });

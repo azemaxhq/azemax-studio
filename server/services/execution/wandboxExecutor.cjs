@@ -1,5 +1,12 @@
 const https = require('https');
 const { WANDBOX_LANGUAGES } = require('./constants.cjs');
+const { LIMITS } = require('../../config/index.cjs');
+
+// Hard timeout so a hung third-party API can never hold a socket/promise
+// forever (previously: no timeout at all). Response bodies are capped so a
+// hostile compiler response cannot exhaust server memory.
+const WANDBOX_TIMEOUT_MS = LIMITS.WANDBOX_TIMEOUT_MS;
+const WANDBOX_MAX_BODY_BYTES = 2 * 1024 * 1024;
 
 function buildWandboxPayload(compilerId, language, code, stdin, filename) {
     const lang = String(language).toLowerCase();
@@ -35,10 +42,18 @@ function compileViaWandbox({ language, code, stdin = '', filename = null }) {
     const postData = JSON.stringify(payload);
 
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const done = (fn, arg) => { if (!settled) { settled = true; clearTimeout(timer); fn(arg); } };
+        const timer = setTimeout(() => {
+            try { req.destroy(new Error('Wandbox request timed out')); } catch { /* ignore */ }
+            done(reject, new Error('Wandbox request timed out'));
+        }, WANDBOX_TIMEOUT_MS);
+        if (timer.unref) timer.unref();
         const req = https.request(
             'https://wandbox.org/api/compile.json',
             {
                 method: 'POST',
+                timeout: WANDBOX_TIMEOUT_MS,
                 headers: {
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(postData),
@@ -46,23 +61,36 @@ function compileViaWandbox({ language, code, stdin = '', filename = null }) {
             },
             (res) => {
                 let body = '';
-                res.on('data', (chunk) => { body += chunk; });
+                let bodyBytes = 0;
+                res.on('data', (chunk) => {
+                    bodyBytes += chunk.length;
+                    if (bodyBytes > WANDBOX_MAX_BODY_BYTES) {
+                        try { req.destroy(new Error('Wandbox response too large')); } catch { /* ignore */ }
+                        done(reject, new Error('Wandbox response too large'));
+                        return;
+                    }
+                    body += chunk;
+                });
                 res.on('end', () => {
                     try {
                         const parsed = JSON.parse(body);
-                        resolve({
+                        done(resolve, {
                             stdout: parsed.program_message || '',
                             stderr: `${parsed.compiler_message || ''}${parsed.program_error || ''}`,
                             code: parseInt(parsed.status, 10) || 0,
                         });
                     } catch (_e) {
-                        reject(new Error('Failed to parse Wandbox response'));
+                        done(reject, new Error('Failed to parse Wandbox response'));
                     }
                 });
             },
         );
 
-        req.on('error', reject);
+        req.on('timeout', () => {
+            try { req.destroy(new Error('Wandbox request timed out')); } catch { /* ignore */ }
+            done(reject, new Error('Wandbox request timed out'));
+        });
+        req.on('error', (err) => done(reject, err));
         req.write(postData);
         req.end();
     });
@@ -80,10 +108,23 @@ function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent
     const postData = JSON.stringify(payload);
 
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const doneResolve = () => { if (!settled) { settled = true; clearTimeout(timer); resolve(); } };
+        const timer = setTimeout(() => {
+            try { req.destroy(new Error('Wandbox stream timed out')); } catch { /* ignore */ }
+            if (!settled) {
+                settled = true;
+                onEvent({ type: 'error', data: 'Wandbox request timed out\r\n' });
+                onEvent({ type: 'exit', code: 1 });
+                reject(new Error('Wandbox stream timed out'));
+            }
+        }, WANDBOX_TIMEOUT_MS);
+        if (timer.unref) timer.unref();
         const req = https.request(
             'https://wandbox.org/api/compile.ndjson',
             {
                 method: 'POST',
+                timeout: WANDBOX_TIMEOUT_MS,
                 headers: {
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(postData),
@@ -130,12 +171,19 @@ function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent
                         }
                     }
                     onEvent({ type: 'exit', code: exitCode });
-                    resolve();
+                    doneResolve();
                 });
             },
         );
 
+        req.on('timeout', () => {
+            try { req.destroy(new Error('Wandbox stream timed out')); } catch { /* ignore */ }
+        });
+
         req.on('error', (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
             onEvent({ type: 'error', data: `Wandbox API error: ${err.message}\r\n` });
             onEvent({ type: 'exit', code: 1 });
             reject(err);

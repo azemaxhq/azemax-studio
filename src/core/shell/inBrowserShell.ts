@@ -158,7 +158,18 @@ const COMMANDS: Record<string, CommandHandler> = {
     if (!a[1]) { d.term.write('cat: missing operand'); return; }
     const f = findNode(a[1], d);
     if (!f || f.type !== 'file') d.term.write(`cat: ${a[1]}: No such file or directory`);
-    else d.term.write((f.content || '').replace(/\r?\n/g, '\r\n'));
+    else {
+        // Cap shell output: dumping a multi-MB file into xterm in one write
+        // can throw (xterm backpressure) and wedge the shell (H2).
+        const MAX_CAT_BYTES = 256 * 1024;
+        const content = f.content || '';
+        if (content.length > MAX_CAT_BYTES) {
+            d.term.write(content.slice(0, MAX_CAT_BYTES).replace(/\r?\n/g, '\r\n'));
+            d.term.write(`\r\n\x1b[1;33m[truncated: file is ${(content.length / 1024).toFixed(0)}KB, showing first 256KB]\x1b[0m`);
+        } else {
+            d.term.write(content.replace(/\r?\n/g, '\r\n'));
+        }
+    }
   },
   touch: (a, d) => {
     if (!a[1]) { d.term.write('touch: missing file operand'); return; }

@@ -1,4 +1,5 @@
 import type { AnalysisResult } from './codeAnalysisEngine';
+import { namespacedKey } from './userStorage';
 
 export interface AnalysisSnapshot {
     timestamp: number;
@@ -19,7 +20,7 @@ export interface TrendData {
 }
 
 class AnalysisHistoryManager {
-    private storageKey = 'codeAnalysis_history';
+    private get storageKey() { return namespacedKey('codeAnalysis_history'); }
     private maxSnapshotsPerFile = 50; // Keep last 50 analyses per file
     private maxAgeDays = 90; // Keep data for 90 days
 

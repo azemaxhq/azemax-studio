@@ -29,8 +29,7 @@ interface TraceData {
 
 function isDev(): boolean {
     try {
-        // @ts-ignore
-        return import.meta.env?.DEV === true;
+        return Boolean(import.meta.env?.DEV);
     } catch {
         return false;
     }

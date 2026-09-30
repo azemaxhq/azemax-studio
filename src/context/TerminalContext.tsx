@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { nsGetItem, nsSetItem, namespacedKey } from '../utils/userStorage';
 import { getSettings } from '../settings/settingsStore';
 import { dialogConfirm } from '../components/UI/dialogService';
 import { normalizeTerminalLanguage } from '../core/terminal/terminalProfiles';
@@ -66,7 +67,7 @@ const LEGACY_ACTIVE_TERMINAL_KEY = 'deepcontext-active-terminal-id';
 export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({ children }) => {
     const [terminals, setTerminals] = useState<TerminalSession[]>(() => {
         try {
-            const saved = localStorage.getItem(TERMINALS_STORAGE_KEY) || localStorage.getItem(LEGACY_TERMINALS_STORAGE_KEY);
+            const saved = nsGetItem(TERMINALS_STORAGE_KEY, [LEGACY_TERMINALS_STORAGE_KEY]);
             if (saved) {
                 const parsed = JSON.parse(saved);
                 // Defensive: stored terminals are untrusted. VS Code validates via
@@ -100,7 +101,7 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
     });
 
     const [activeTerminalId, setActiveTerminalId] = useState<string | null>(() => {
-        const saved = localStorage.getItem(ACTIVE_TERMINAL_KEY) || localStorage.getItem(LEGACY_ACTIVE_TERMINAL_KEY) || '1';
+        const saved = nsGetItem(ACTIVE_TERMINAL_KEY, [LEGACY_ACTIVE_TERMINAL_KEY]) || '1';
         // Validate existence will be handled by the effect below; return raw for now
         return saved;
     });
@@ -184,6 +185,8 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
             if (!id) return;
             mountedTerminalsRef.current.add(id);
             if (pendingRunsRef.current.has(id)) {
+                // C1 fix: latch `running` at actual delivery, not before.
+                setTerminalRunning(id, true);
                 deliverPendingRun(id);
             }
         };
@@ -201,7 +204,7 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
 
     useEffect(() => {
         try {
-            debouncedLocalStorageSet(TERMINALS_STORAGE_KEY, JSON.stringify(terminals));
+            debouncedLocalStorageSet(namespacedKey(TERMINALS_STORAGE_KEY), JSON.stringify(terminals));
         } catch {
             // Ignore localStorage errors
         }
@@ -209,7 +212,7 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
 
     useEffect(() => {
         if (activeTerminalId) {
-            localStorage.setItem(ACTIVE_TERMINAL_KEY, activeTerminalId);
+            nsSetItem(ACTIVE_TERMINAL_KEY, activeTerminalId);
         }
     }, [activeTerminalId]);
 
@@ -309,19 +312,19 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = memo(({
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        // Per-terminal running state (vs global) — mirrors vscode ProcessState.Running
-        setTerminalRunning(termId as string, true);
-
+        // Per-terminal running state (vs global) — mirrors vscode ProcessState.Running.
+        // C1 fix: deliver ONLY to a mounted listener, and latch `running` only
+        // on actual delivery. A queued run stays pending until terminalReady
+        // flushes it (which latches there). Never delete the payload without
+        // a consumer, and never latch `running` for a run nobody received.
         // VS Code: ITerminalProfileService normalizes language via shared registry (not duplicated hard-coded if-chain)
         const runLang = normalizeTerminalLanguage(language);
 
         const payload = { id: termId as string, code, language: runLang, filename, stdinInput, cwd };
         pendingRunsRef.current.set(termId as string, payload);
 
-        // Deliver immediately if the target terminal is already mounted & listening;
-        // otherwise flush when that terminal mounts (via terminalReady).
-        const tabExists = Boolean(termId && terminalsRef.current.find(t => t.id === termId));
-        if (tabExists || mountedTerminalsRef.current.has(termId as string)) {
+        if (mountedTerminalsRef.current.has(termId as string)) {
+            setTerminalRunning(termId as string, true);
             deliverPendingRun(termId as string);
         }
 

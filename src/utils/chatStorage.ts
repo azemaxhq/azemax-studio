@@ -1,6 +1,7 @@
 
 
 import { debouncedLocalStorageSet } from './localStorageDebounce';
+import { nsGetItem, nsSetItem, nsRemoveItem, namespacedKey } from './userStorage';
 
 export interface Message {
     id: string;
@@ -76,7 +77,7 @@ const normalizeSession = (raw: unknown): ChatSession | null => {
 
 export const loadSessions = (): ChatSession[] => {
     try {
-        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+        const saved = nsGetItem(STORAGE_KEY, [LEGACY_STORAGE_KEY]);
         if (saved) {
             const sessions = JSON.parse(saved);
             // Defensive: the stored data is untrusted. Keep only well-formed
@@ -115,7 +116,7 @@ export const saveSessions = (sessions: ChatSession[]) => {
                 payload = JSON.stringify(trimmed);
             }
         }
-        debouncedLocalStorageSet(STORAGE_KEY, payload, 0);
+        debouncedLocalStorageSet(namespacedKey(STORAGE_KEY), payload, 0);
     } catch (e) {
         console.warn('Failed to save chat sessions:', e);
     }
@@ -147,12 +148,12 @@ export const deleteSession = (sessions: ChatSession[], sessionId: string): ChatS
 
 export const saveCurrentSessionId = (id: string | null) => {
     if (id) {
-        localStorage.setItem(CURRENT_SESSION_KEY, id);
+        nsSetItem(CURRENT_SESSION_KEY, id);
     } else {
-        localStorage.removeItem(CURRENT_SESSION_KEY);
+        nsRemoveItem(CURRENT_SESSION_KEY);
     }
 };
 
 export const loadCurrentSessionId = (): string | null => {
-    return localStorage.getItem(CURRENT_SESSION_KEY) || localStorage.getItem(LEGACY_CURRENT_SESSION_KEY);
+    return nsGetItem(CURRENT_SESSION_KEY, [LEGACY_CURRENT_SESSION_KEY]);
 };

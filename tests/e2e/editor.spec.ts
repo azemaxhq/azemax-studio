@@ -183,7 +183,7 @@ test.describe('Azemax Editor E2E', () => {
       ed?.trigger('keyboard', 'undo', null);
     });
     await page.waitForTimeout(300);
-    let afterUndo = await getMonacoValue(page);
+    const afterUndo = await getMonacoValue(page);
     expect(afterUndo.length).toBeLessThan(beforeUndo.length);
 
     // Redo
@@ -193,7 +193,7 @@ test.describe('Azemax Editor E2E', () => {
       ed?.trigger('keyboard', 'redo', null);
     });
     await page.waitForTimeout(300);
-    let afterRedo = await getMonacoValue(page);
+    const afterRedo = await getMonacoValue(page);
     expect(afterRedo).toContain('indented');
 
     // Copy/paste (if permitted)
@@ -241,12 +241,12 @@ test.describe('Azemax Editor E2E', () => {
     await focusEditor(page);
     await setMonacoValue(page, '');
     await page.waitForTimeout(300);
-    let cleared = await getMonacoValue(page);
+    const cleared = await getMonacoValue(page);
     expect(cleared).toBe('');
     await focusEditor(page);
     await page.keyboard.type('ABCDE');
     await page.waitForTimeout(300);
-    let typed = await getMonacoValue(page);
+    const typed = await getMonacoValue(page);
     expect(typed).toContain('ABCDE');
     // Wait for autosave debounce (500ms + margin) + localStorage debounce
     await page.waitForTimeout(1100);

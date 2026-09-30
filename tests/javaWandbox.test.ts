@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 describe('Java Wandbox payload — no prog.java for public classes', () => {
   it('produces Factorial.java codes with compiler-option-raw, not prog.java code', () => {

@@ -283,6 +283,9 @@ export const MainLayout: React.FC = () => {
                 }
             }
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+                // H8: don't toggle the sidebar while typing in an input.
+                const t = e.target as HTMLElement;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
                 e.preventDefault();
                 setIsLeftSidebarOpen(prev => !prev);
             }

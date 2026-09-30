@@ -1,6 +1,7 @@
 const { getMaxTokens } = require('./aiClient.cjs');
 const { getTaskConfig } = require('./taskConfig.cjs');
 const { buildRoutingPlan, resolveModel } = require('./modelRouter.cjs');
+const { LIMITS } = require('../../config/index.cjs');
 
 /**
  * Resolves the effective request parameters (temperature / max tokens /
@@ -11,11 +12,14 @@ const { buildRoutingPlan, resolveModel } = require('./modelRouter.cjs');
  */
 function resolveTaskParams({ task, maxTokens, temperature, top_p, responseLength = 'medium' }) {
     const profile = getTaskConfig(task);
+    // Absolute server ceiling applies even when the client supplies maxTokens.
+    const requested = maxTokens ?? (task === 'chat' ? getMaxTokens(responseLength) : profile.maxTokens);
+    const capped = Math.min(Math.max(1, Math.floor(Number(requested) || profile.maxTokens)), LIMITS.AI_MAX_TOKENS_ABSOLUTE);
     return {
         task,
         temperature: temperature ?? profile.temperature,
         top_p: top_p ?? profile.top_p ?? 0.95,
-        maxTokens: maxTokens ?? (task === 'chat' ? getMaxTokens(responseLength) : profile.maxTokens),
+        maxTokens: capped,
         reasoningMode: profile.reasoningMode || 'off',
         chatTemplateKwargs: profile.chatTemplateKwargs || null,
     };

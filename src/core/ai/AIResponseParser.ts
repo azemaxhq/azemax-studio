@@ -593,6 +593,7 @@ export const createLeadingPreambleSuppressor = () => {
         /** Feed visible text; returns the text safe to emit ('' while holding). */
         feed(chunk: string): string {
             if (done) return chunk;
+            const outBefore = out.length;
             buf += chunk;
             let idx;
             while ((idx = buf.indexOf('\n')) !== -1) {
@@ -626,10 +627,16 @@ export const createLeadingPreambleSuppressor = () => {
                 return out;
             }
             if (isPossiblePreamblePrefix(buf)) return out; // keep holding
-            // Only mark as done if we have actual content (not just reasoning preambles)
-            if (!justDropped) {
-                done = true;
-            }
+            // End suppression iff real content flowed to the caller in this
+            // call: a complete content line (handled above), tail content
+            // (non-whitespace remainder), or blank-line output outside a
+            // just-dropped preamble run. Getting this wrong either duplicates
+            // the first chunk via end() (done stuck false) or double-counts
+            // through `out += push()` (done set on empty flushes).
+            const loopGrowth = out.length > outBefore;
+            const loopGrowthNonWs = loopGrowth && /[^\s]/.test(out.slice(outBefore));
+            const tailNonWs = /[^\s]/.test(buf);
+            if (tailNonWs || loopGrowthNonWs || (loopGrowth && !justDropped)) done = true;
             out += buf;
             buf = '';
             return out;

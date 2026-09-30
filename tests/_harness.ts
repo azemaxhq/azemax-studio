@@ -1,12 +1,27 @@
 /**
- * Minimal shared test harness (no framework installed). Mirrors the style of
- * tests/safeTree.test.ts. Run each suite with: npx tsx tests/<file>.test.ts
+ * Shared test harness — works standalone AND under vitest.
+ *
+ * Standalone: `npx tsx tests/<file>.test.ts` prints ok/FAIL lines and exits
+ * non-zero on failure (tsx resolves the vitest import harmlessly; it is only
+ * *called* when VITEST is set).
+ *
+ * Under vitest (`npm test`): every check() registers a real `it()` test, so
+ * failures fail the suite instead of hiding in console output.
  */
+import { it as vitestIt, expect as vitestExpect } from 'vitest';
+
+const IN_VITEST = !!process.env.VITEST;
+
 export let failed = 0;
 export let total = 0;
 
 export const check = (name: string, cond: boolean) => {
     total++;
+    if (IN_VITEST) {
+        vitestIt(name, () => vitestExpect(cond).toBe(true));
+        if (!cond) failed++;
+        return;
+    }
     if (cond) {
         console.log(`ok: ${name}`);
     } else {
@@ -16,7 +31,9 @@ export const check = (name: string, cond: boolean) => {
 };
 
 export const finish = (label: string) => {
-    console.log(failed === 0 ? `\n${label}: ALL PASS (${total})` : `\n${label}: ${failed}/${total} FAILURES`);
+    if (!IN_VITEST) {
+        console.log(failed === 0 ? `\n${label}: ALL PASS (${total})` : `\n${label}: ${failed}/${total} FAILURES`);
+    }
     // Under vitest, process.exit kills the worker and is reported as a suite
     // failure even when every assertion passed. Only exit in standalone mode.
     if (!process.env.VITEST) {
@@ -66,6 +83,11 @@ export const installRafStub = () => {
         callbacks.delete(id);
     };
     return {
+        callbacks,
+        flush: (time = 0) => {
+            for (const [, cb] of Array.from(callbacks)) cb(time);
+            callbacks.clear();
+        },
         /** Run all pending frames immediately. */
         tick: () => {
             const pending = [...callbacks.values()];

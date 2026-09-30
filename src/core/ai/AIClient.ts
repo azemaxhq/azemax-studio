@@ -100,6 +100,17 @@ function providerOf(model: string): string {
 }
 
 function resolveDirectEndpoint(model: string): DirectEndpoint {
+    // Security: direct provider calls embed the key in the BROWSER. This path
+    // exists for local development only (VITE_USE_BACKEND_AI=false) and is
+    // compiled out of production builds — the production guard in
+    // vite.config.ts blanks the keys, and this throws even if one leaks in.
+    if (!import.meta.env?.DEV) {
+        throw new AIError({
+            code: AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR,
+            provider: providerOf(model), model, retryable: false,
+            message: 'Direct provider access is disabled in production. AI requests go through the backend.',
+        });
+    }
     if (model.startsWith('hf:')) {
         const apiKey = import.meta.env?.VITE_HF_TOKEN || '';
         if (!apiKey) throw new AIError({
@@ -162,6 +173,7 @@ async function postBackend(
 ): Promise<Response> {
     return fetch(`${API_BASE}/ai/chat`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         signal: options.signal,
         body: buildBackendBody(messages, options, context, stream),

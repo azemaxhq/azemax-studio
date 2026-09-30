@@ -1,4 +1,3 @@
-const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -6,6 +5,7 @@ const { RUNTIMES } = require('./runtimeDetection.cjs');
 const { getLanguageConfig } = require('./languageConfig.cjs');
 const { resolveFileName } = require('./fileNaming.cjs');
 const { EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS } = require('./constants.cjs');
+const { spawnSandboxed } = require('./sandbox.cjs');
 
 const MAX_OUTPUT_BYTES = Number(process.env.MAX_OUTPUT_BYTES) || 512 * 1024; // 512KB cap
 
@@ -14,7 +14,10 @@ function runCommand(cmd, args, { cwd, stdin, timeout = EXECUTION_TIMEOUT_MS }) {
         let stdout = '';
         let stderr = '';
         let truncated = false;
-        const proc = spawn(cmd, args, { cwd });
+        // SECURITY: sandboxed spawn — minimal allowlist env (never inherits
+        // process.env, so provider keys cannot leak into user programs) plus
+        // OS resource limits where available.
+        const proc = spawnSandboxed(cmd, args, { cwd });
 
         const timer = setTimeout(() => {
             if (!proc.killed) proc.kill('SIGKILL');
@@ -117,14 +120,16 @@ async function executeLocally({ language, code, stdin = '', filename = null }) {
 
 /** Spawn with optional Python PTY wrapper for line-buffered interactive output */
 function spawnWithPty(cmd, args, options) {
+    // Sandboxed: the relay and everything under it get the minimal env.
+    const { spawnSandboxed: sb } = require('./sandbox.cjs');
     if (RUNTIMES.python) {
-        return spawn(
+        return sb(
             RUNTIMES.python,
             ['-c', `import pty, sys; sys.exit(pty.spawn(${JSON.stringify([cmd, ...args])}))`],
             options,
         );
     }
-    return spawn(cmd, args, options);
+    return sb(cmd, args, options);
 }
 
 module.exports = {

@@ -24,10 +24,12 @@ const reasoningOff = (task: string): boolean => {
     return !profile.chatTemplateKwargs?.enable_thinking;
 };
 
+const thinkingOn = (kwargs: { enable_thinking?: boolean; thinking?: boolean } | null | undefined): boolean =>
+    kwargs?.enable_thinking === true || kwargs?.thinking === true;
+
 const reasoningLow = (task: string): boolean => {
     const resolved = resolveModel(task, undefined);
-    return resolved.chatTemplateKwargs?.enable_thinking === true
-        && resolved.chatTemplateKwargs?.reasoning_effort === 'low';
+    return thinkingOn(resolved.chatTemplateKwargs) && resolved.chatTemplateKwargs?.reasoning_effort === 'low';
 };
 
 const reasoningHigh = (task: string): boolean => {
@@ -67,8 +69,8 @@ for (const [task, profile] of Object.entries(AI_TASK_CONFIG)) {
 // ============================================================================
 const MAX_BUDGETS: Record<string, number> = {
     autocomplete: 512,
-    comment: 512,
-    simple_edit: 4096,
+    comment: 2048,
+    simple_edit: 8192,
     chat: 4096,
     explanation: 4096,
     complex_code: 8192,

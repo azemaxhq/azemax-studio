@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 
 import { loadPrism, tryHighlight } from '../../utils/prismLoader';
+import { nsGetItem, nsSetItem, nsRemoveItem } from '../../utils/userStorage';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
 import { buildWorkspaceSnapshot } from '../../core/workspace/workspaceContext';
@@ -132,6 +133,101 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
 
 
 // Memoized Message Item to prevent re-renders
+/**
+ * Code fence renderer with its own hooks (expanded + apply state).
+ * MUST be a real component: calling useState inside react-markdown's inline
+ * `code()` render function attaches state to the parent by call order, so
+ * expanding one block can toggle another's state when the block list shifts
+ * during streaming (Rules-of-Hooks violation with user-visible symptoms).
+ */
+const MessageCodeBlock = ({
+    msg,
+    index,
+    language,
+    code,
+    copiedId,
+    onCopy,
+    onApplyCode,
+    prismReady,
+    isStreaming,
+}: {
+    msg: { text: string; role: 'ai' | 'user'; id: string; timestamp: number };
+    index: number | string;
+    language: string;
+    code: string;
+    copiedId: string | null;
+    onCopy: (text: string, id: string) => void;
+    onApplyCode?: (code: string) => void;
+    prismReady: boolean;
+    isStreaming?: boolean;
+}) => {
+    const codeId = `${msg.id}-${index}-${language}-${code.slice(0, 10)}`;
+    const isLongBlock = code.split('\n').length > 24;
+    const [expanded, setExpanded] = React.useState(!isLongBlock);
+    const [applyState, setApplyState] = React.useState<'idle' | 'applying' | 'applied' | 'failed'>('idle');
+    // Syntax Highlighting — skip during streaming (heavy, causes jank)
+    const highlightedCode = prismReady && !isStreaming ? tryHighlight(code, language) : null;
+    const displayCode = !expanded ? code.split('\n').slice(0, 20).join('\n') : code;
+
+    return (
+        <div className="my-3 rounded-[10px] overflow-hidden border border-[var(--az-border)] bg-[var(--az-surface-2)]">
+            <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--az-surface-3)] border-b border-[var(--az-border)]">
+                <span className="text-[11px] text-[var(--az-text-muted)] font-mono tracking-tight">{language}</span>
+                <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={() => onCopy(displayCode, codeId)}
+                        className="px-2 py-1 rounded-[6px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                    >
+                        {copiedId === codeId ? 'Copied' : 'Copy'}
+                    </button>
+                    {msg.role === 'ai' && onApplyCode && (
+                        <button
+                            onClick={async () => {
+                                if (applyState === 'applying') return;
+                                setApplyState('applying');
+                                try {
+                                    // onApplyCode may return success boolean; treat undefined as success if no exception
+                                    const res: unknown = await onApplyCode(code);
+                                    const ok = res === false ? false : true;
+                                    setApplyState(ok ? 'applied' : 'failed');
+                                    if (ok) setTimeout(() => setApplyState('idle'), 2500);
+                                    else setTimeout(() => setApplyState('idle'), 3000);
+                                } catch {
+                                    setApplyState('failed');
+                                    setTimeout(() => setApplyState('idle'), 3000);
+                                }
+                            }}
+                            disabled={applyState === 'applying'}
+                            className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${applyState === 'applied' ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-300' : applyState === 'failed' ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border-[var(--az-accent)]'} ${applyState === 'applying' ? 'opacity-70 cursor-wait' : ''}`}
+                            title={applyState === 'failed' ? 'Apply failed — retry' : applyState === 'applied' ? 'Applied' : 'Apply to editor'}
+                        >
+                            {applyState === 'idle' && 'Apply'}
+                            {applyState === 'applying' && 'Applying…'}
+                            {applyState === 'applied' && 'Applied ✓'}
+                            {applyState === 'failed' && 'Failed — Retry'}
+                        </button>
+                    )}
+                </div>
+            </div>
+            <div className="relative">
+                <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] bg-[#0C1118] max-h-[360px] overflow-y-auto">
+                    {highlightedCode && expanded
+                        ? <code dangerouslySetInnerHTML={{ __html: isLongBlock && !expanded ? tryHighlight(displayCode, language) || '' : highlightedCode }} />
+                        : <code>{displayCode}</code>}
+                </pre>
+                {isLongBlock && !expanded && (
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0C1118] to-transparent pointer-events-none" />
+                )}
+            </div>
+            {isLongBlock && (
+                <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] font-medium text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] hover:bg-white/[0.02] border-t border-[var(--az-border)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10">
+                    {expanded ? 'Show less' : `Show ${code.split('\n').length - 20} more lines`}
+                </button>
+            )}
+        </div>
+    );
+};
+
 const MessageItem = React.memo(({
     msg,
     index,
@@ -173,71 +269,19 @@ const MessageItem = React.memo(({
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : 'text';
             const code = String(children).replace(/\n$/, '');
-            const codeId = `${msg.id}-${index}-${language}-${code.slice(0, 10)}`;
-            const isLongBlock = !inline && !!match && code.split('\n').length > 24;
-            const [expanded, setExpanded] = React.useState(!isLongBlock);
-            const [applyState, setApplyState] = React.useState<'idle'|'applying'|'applied'|'failed'>('idle');
             if (!inline && match) {
-                // Syntax Highlighting — skip during streaming (heavy, causes jank)
-                const highlightedCode = prismReady && !isStreaming ? tryHighlight(code, language) : null;
-                const displayCode = !expanded ? code.split('\n').slice(0, 20).join('\n') : code;
-
                 return (
-                    <div className="my-3 rounded-[10px] overflow-hidden border border-[var(--az-border)] bg-[var(--az-surface-2)]">
-                        <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--az-surface-3)] border-b border-[var(--az-border)]">
-                            <span className="text-[11px] text-[var(--az-text-muted)] font-mono tracking-tight">{language}</span>
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    onClick={() => onCopy(displayCode, codeId)}
-                                    className="px-2 py-1 rounded-[6px] text-[11px] font-medium text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] hover:bg-white/[0.06] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
-                                >
-                                    {copiedId === codeId ? 'Copied' : 'Copy'}
-                                </button>
-                                {msg.role === 'ai' && onApplyCode && (
-                                    <button
-                                        onClick={async () => {
-                                            if (applyState === 'applying') return;
-                                            setApplyState('applying');
-                                            try {
-                                                // onApplyCode may return success boolean; treat undefined as success if no exception
-                                                const res: any = await onApplyCode(code);
-                                                const ok = res === false ? false : true;
-                                                setApplyState(ok ? 'applied' : 'failed');
-                                                if (ok) setTimeout(() => setApplyState('idle'), 2500);
-                                                else setTimeout(() => setApplyState('idle'), 3000);
-                                            } catch {
-                                                setApplyState('failed');
-                                                setTimeout(() => setApplyState('idle'), 3000);
-                                            }
-                                        }}
-                                        disabled={applyState === 'applying'}
-                                        className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${applyState === 'applied' ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-300' : applyState === 'failed' ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border-[var(--az-accent)]'} ${applyState === 'applying' ? 'opacity-70 cursor-wait' : ''}`}
-                                        title={applyState === 'failed' ? 'Apply failed — retry' : applyState === 'applied' ? 'Applied' : 'Apply to editor'}
-                                    >
-                                        {applyState === 'idle' && 'Apply'}
-                                        {applyState === 'applying' && 'Applying…'}
-                                        {applyState === 'applied' && 'Applied ✓'}
-                                        {applyState === 'failed' && 'Failed — Retry'}
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                        <div className="relative">
-                            <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] bg-[#0C1118] max-h-[360px] overflow-y-auto">
-                                {highlightedCode && expanded
-                                    ? <code dangerouslySetInnerHTML={{ __html: isLongBlock && !expanded ? tryHighlight(displayCode, language) || '' : highlightedCode }} />
-                                    : <code>{displayCode}</code>}
-                            </pre>
-                            {isLongBlock && !expanded && (
-                                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0C1118] to-transparent pointer-events-none" />
-                            )}
-                        </div>
-                        {isLongBlock && (
-                            <button onClick={() => setExpanded(!expanded)} className="w-full px-3 py-2 text-[11px] font-medium text-[var(--az-text-faint)] hover:text-[var(--az-text-muted)] hover:bg-white/[0.02] border-t border-[var(--az-border)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10">
-                                {expanded ? 'Show less' : `Show ${code.split('\n').length - 20} more lines`}
-                            </button>
-                        )}
-                    </div>
+                    <MessageCodeBlock
+                        msg={msg}
+                        index={index}
+                        language={language}
+                        code={code}
+                        copiedId={copiedId}
+                        onCopy={onCopy}
+                        onApplyCode={onApplyCode}
+                        prismReady={prismReady}
+                        isStreaming={isStreaming}
+                    />
                 );
             }
             // Inline code — neutral, editor-native
@@ -615,11 +659,11 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const COMPOSER_DRAFT_KEY = 'azemax:composer:draft';
     const COMPOSER_MODE_KEY = 'azemax:composer:mode';
     const [input, setInput] = useState(() => {
-        try { return localStorage.getItem(COMPOSER_DRAFT_KEY) || ''; } catch { return ''; }
+        try { return nsGetItem(COMPOSER_DRAFT_KEY) || ''; } catch { return ''; }
     });
     const [composerMode, setComposerMode] = useState<'Agent' | 'Ask' | 'Edit'>(() => {
         try {
-            const v = localStorage.getItem(COMPOSER_MODE_KEY);
+            const v = nsGetItem(COMPOSER_MODE_KEY);
             return (v === 'Agent' || v === 'Ask' || v === 'Edit') ? v : 'Agent';
         } catch { return 'Agent'; }
     });
@@ -632,6 +676,13 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({}); // msgId -> reaction
     const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
     const [lastDiffs, setLastDiffs] = useState<Array<{ file: string; added: number; removed: number; summary: string }>>([]);
+    // Pending agent proposal (Accept/Reject gate): shadow-tree changes awaiting
+    // explicit user approval. Real files are untouched until Accept replays them
+    // with a staleness re-check per change.
+    const [pendingProposal, setPendingProposal] = useState<{
+        changes: import('../../core/editor/previewWorkspace').ProposedChange[];
+        at: number;
+    } | null>(null);
 
     // Lazy-load Prism so its ~250KB stays out of the initial bundle
     const [prismReady, setPrismReady] = useState(false);
@@ -648,12 +699,12 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
     // Persist composer draft/mode across refresh (survives reload, cleared on send)
     useEffect(() => {
         try {
-            if (input) localStorage.setItem(COMPOSER_DRAFT_KEY, input);
-            else localStorage.removeItem(COMPOSER_DRAFT_KEY);
+            if (input) nsSetItem(COMPOSER_DRAFT_KEY, input);
+            else nsRemoveItem(COMPOSER_DRAFT_KEY);
         } catch { /* ignore */ }
     }, [input]);
     useEffect(() => {
-        try { localStorage.setItem(COMPOSER_MODE_KEY, composerMode); } catch { /* ignore */ }
+        try { nsSetItem(COMPOSER_MODE_KEY, composerMode); } catch { /* ignore */ }
     }, [composerMode]);
 
     // Restore textarea height after draft restore
@@ -918,6 +969,107 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         handleSend(prompt);
     };
 
+    /** Append a small assistant note to the current chat session. */
+    const appendSystemNote = useCallback((text: string) => {
+        const note: Message = {
+            id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            role: 'ai',
+            text,
+            timestamp: Date.now(),
+        };
+        setSessions((prev) => prev.map((s) => {
+            if (s.id === currentSessionId) {
+                return { ...s, messages: [...s.messages, note], updatedAt: Date.now() };
+            }
+            return s;
+        }));
+    }, [currentSessionId]);
+
+    /** Accept a pending agent proposal: staleness-check every change against
+     * the LIVE tree, then replay. A change whose base moved is refused. */
+    const handleAcceptProposal = useCallback(() => {
+        if (!pendingProposal) return;
+        const liveTree = getFileTree();
+        const findLive = (id: string | null) => {
+            if (!id) return null;
+            const walk = (nodes: ReturnType<typeof getFileTree>): { id: string; name: string; content?: string } | null => {
+                for (const n of nodes as Array<{ id: string; name: string; content?: string; children?: unknown }>) {
+                    if (n.id === id) return n;
+                    if (n.children) {
+                        const f = walk(n.children as never);
+                        if (f) return f;
+                    }
+                }
+                return null;
+            };
+            return walk(liveTree);
+        };
+        let applied = 0;
+        const skipped: string[] = [];
+        for (const c of pendingProposal.changes) {
+            try {
+                if (c.kind === 'update' || c.kind === 'delete') {
+                    const live = findLive(c.fileId);
+                    const liveContent = live && typeof live.content === 'string' ? live.content : null;
+                    if (!live || liveContent !== c.before) {
+                        skipped.push(c.path);
+                        continue;
+                    }
+                    if (c.kind === 'update' && c.after !== null && c.fileId) {
+                        const r = updateFileContent(c.fileId, c.after);
+                        if ((r as { error?: unknown }).error) { skipped.push(c.path); continue; }
+                        applied++;
+                    } else if (c.kind === 'delete' && c.fileId) {
+                        deleteNode(c.fileId);
+                        applied++;
+                    }
+                } else if (c.kind === 'create' && c.after !== null) {
+                    const r = createFile(c.path, c.after);
+                    if ((r as { error?: unknown }).error) { skipped.push(c.path); continue; }
+                    applied++;
+                } else if (c.kind === 'rename' && c.fileId && c.newPath) {
+                    const live = findLive(c.fileId);
+                    const liveContent = live && typeof live.content === 'string' ? live.content : null;
+                    if (!live || liveContent !== c.before) {
+                        skipped.push(c.path);
+                        continue;
+                    }
+                    const newName = c.newPath.split('/').pop() || c.newPath;
+                    const r = renameNode(c.fileId, newName);
+                    if ((r as { error?: unknown }).error) { skipped.push(c.path); continue; }
+                    applied++;
+                }
+            } catch {
+                skipped.push(c.path);
+            }
+        }
+        setPendingProposal(null);
+        setLastDiffs(pendingProposal.changes
+            .filter((c) => !skipped.includes(c.path))
+            .map((c) => {
+                const beforeLines = c.before ? c.before.split('\n').length : 0;
+                const afterLines = c.after ? c.after.split('\n').length : 0;
+                const added = Math.max(0, afterLines - beforeLines);
+                const removed = Math.max(0, beforeLines - afterLines);
+                return {
+                    file: c.kind === 'rename' && c.newPath ? `${c.path} → ${c.newPath}` : c.path,
+                    added, removed,
+                    summary: c.kind === 'create' ? `Created · ${afterLines} lines` : c.kind === 'delete' ? 'Deleted' : `${added} added, ${removed} removed`,
+                };
+            }));
+        appendSystemNote(
+            applied > 0
+                ? `Applied ${applied} change${applied !== 1 ? 's' : ''}${skipped.length ? ` (${skipped.length} skipped — file changed since proposal: ${skipped.join(', ')})` : ''}.`
+                : `No changes applied${skipped.length ? ` — ${skipped.length} skipped (file changed since proposal).` : '.'}`,
+        );
+    }, [pendingProposal, getFileTree, updateFileContent, createFile, deleteNode, renameNode, appendSystemNote]);
+
+    /** Reject a pending proposal: shadow changes are simply dropped. */
+    const handleRejectProposal = useCallback(() => {
+        setPendingProposal(null);
+        appendSystemNote('Proposal discarded — no files were changed.');
+    }, [appendSystemNote]);
+
     const handleEditMessage = useCallback((msg: Message) => {
         setEditingMessageId(msg.id);
         setEditText(msg.text);
@@ -1058,7 +1210,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
         // If user mentioned a file via pill (@ file), that file is the intended context — not just the current editor file
         let chipMentionPath: string | null = null;
         try {
-            const raw = localStorage.getItem('azemax:composer:chips');
+            const raw = nsGetItem('azemax:composer:chips');
             if (raw) {
                 const chips = JSON.parse(raw) as Array<{ id: string; label: string }>;
                 const firstAt = chips.find(c => c.id?.startsWith('at-') && c.label);
@@ -1129,7 +1281,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             const userAtPaths = [...userMessageText.matchAll(/@([^\s@,;]+)/g)].map(m => m[1].trim()).filter(Boolean);
             const chipPaths: string[] = [];
             try {
-                const raw = localStorage.getItem('azemax:composer:chips');
+                const raw = nsGetItem('azemax:composer:chips');
                 if (raw) {
                     const chips = JSON.parse(raw) as Array<{ id: string; label: string }>;
                     for (const c of chips) if (c.id?.startsWith('at-') && c.label) chipPaths.push(c.label.trim());
@@ -1138,7 +1290,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
             // Bare filename mentions without @ (e.g., "what is in the hello.py file") — treat as context too
             const bareMentions: string[] = [];
             try {
-                const extPat = /\b([\w\-\/]+\.(?:py|java|js|ts|jsx|tsx|json|md|txt|cpp|c|html|css))\b/gi;
+                const extPat = /\b([\w\-/]+\.(?:py|java|js|ts|jsx|tsx|json|md|txt|cpp|c|html|css))\b/gi;
                 // Collect basenames from fileTree to verify existence
                 const allNames = new Set<string>();
                 const walkNames = (nodes: any[]) => {
@@ -1281,6 +1433,10 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                     ? [...historyForPipeline, { role: 'user', content: `Full workspace context (dynamic, ${dynamicContext.included.length} files):\n${dynamicContext.fragments.slice(0, 10000)}` } as ChatMessage]
                     : historyForPipeline;
                 // Verify still-current before applying: pass pinned requestContext so late file switch doesn't corrupt wrong file
+                // Preview gate (Phase 8): the agent applies into a SHADOW tree.
+                // Nothing touches real files until the user explicitly accepts
+                // the proposal below (Accept/Reject) — prompt-injected model
+                // output can never silently mutate the workspace.
                 const result = await runAgentController({
                     userMessage: userMessageText,
                     workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent, setActiveFile } as unknown as import('../../core/editor/workspaceBridge').WorkspaceBridgeActions & { setActiveFile?: unknown },
@@ -1288,6 +1444,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                     fileId: requestContext.fileId,
                     history: enrichedHistory,
                     signal: abortController.signal,
+                    preview: true,
                     requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
                     onActivity: (act) => {
                         if (currentRequestIdRef.current !== requestId) return;
@@ -1305,7 +1462,16 @@ export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = tru
                 });
 
                 if (import.meta.env.DEV) console.log('[AgentController] result:', result);
-                responseText = result.message || (result.success ? 'Changes applied.' : 'No changes were made.');
+                const proposed = (result as { proposedChanges?: import('../../core/editor/previewWorkspace').ProposedChange[] }).proposedChanges;
+                if (proposed && proposed.length > 0) {
+                    // Proposal awaiting explicit user approval — real files untouched.
+                    setPendingProposal({ changes: proposed, at: Date.now() });
+                    responseText = `I've prepared ${proposed.length} change${proposed.length !== 1 ? 's' : ''}. Review below and Accept to apply, or Reject to discard.`;
+                    setLastDiffs([]);
+                } else {
+                    setPendingProposal(null);
+                    responseText = result.message || (result.success ? 'No changes were needed.' : 'No changes were made.');
+                }
                 // Keep final activities for streaming card display, cleared on next send
                 setAgentActivities(result.activities.slice(-4));
                 setLastDiffs(result.success && (result as { diffs?: typeof lastDiffs }).diffs ? (result as { diffs: typeof lastDiffs }).diffs : []);
@@ -1510,7 +1676,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
             if (pendingStreamFrameRef.current !== null) { cancelAnimationFrame(pendingStreamFrameRef.current); pendingStreamFrameRef.current = null; }
             abortControllerRef.current = null;
             currentRequestIdRef.current = null;
-            try { localStorage.removeItem('azemax:composer:chips'); } catch { /* ignore */ }
+            try { nsRemoveItem('azemax:composer:chips'); } catch { /* ignore */ }
             window.dispatchEvent(new Event('azemax:clear-chips'));
         }
     }, [input, sessions, currentSessionId, aiLoading, handleNewChat, settings, getActiveFile, getFileTree, composerMode]);
@@ -2030,6 +2196,81 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             </div>
                         </div>
                     )}
+                    {/* Agent proposal gate — NOTHING is applied until Accept.
+                        The agent computed these against a shadow copy; Accept
+                        replays each change with a staleness re-check, Reject
+                        drops them. */}
+                    {pendingProposal && pendingProposal.changes.length > 0 && (
+                        <div className="rounded-[10px] border border-[rgba(91,140,255,0.25)] bg-[var(--az-surface-2)] overflow-hidden" role="group" aria-label="Proposed file changes awaiting review">
+                            <div className="flex items-center justify-between px-3 py-2.5 gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <span className="w-7 h-7 rounded-[7px] bg-[rgba(91,140,255,0.10)] border border-[rgba(91,140,255,0.20)] flex items-center justify-center shrink-0">
+                                        <Eye size={13} strokeWidth={1.75} className="text-[#8FADFF]" />
+                                    </span>
+                                    <div className="min-w-0">
+                                        <div className="text-[12.5px] font-medium tracking-tight leading-none" style={{ color: 'var(--az-text)' }}>
+                                            {pendingProposal.changes.length} proposed change{pendingProposal.changes.length !== 1 ? 's' : ''} — review required
+                                        </div>
+                                        <div className="text-[11px] mt-0.5" style={{ color: 'var(--az-text-faint)' }}>
+                                            No files changed yet. Accept applies, Reject discards.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        onClick={handleRejectProposal}
+                                        aria-label="Reject proposed changes"
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[7px] text-[11px] font-medium bg-white/[0.04] border border-white/[0.07] text-[var(--az-text-secondary)] hover:bg-white/[0.07] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
+                                    >
+                                        <X size={11} strokeWidth={2} />
+                                        Reject
+                                    </button>
+                                    <button
+                                        onClick={handleAcceptProposal}
+                                        aria-label="Accept and apply proposed changes"
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[7px] text-[11px] font-semibold bg-[rgba(46,160,67,0.16)] border border-[rgba(46,160,67,0.30)] text-emerald-200 hover:bg-[rgba(46,160,67,0.24)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-300/30"
+                                    >
+                                        <Check size={11} strokeWidth={2.25} />
+                                        Accept
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="border-t border-white/[0.05] bg-[rgba(255,255,255,0.01)]">
+                                {pendingProposal.changes.map((c, i) => {
+                                    const beforeLines = c.before ? c.before.split('\n').length : 0;
+                                    const afterLines = c.after ? c.after.split('\n').length : 0;
+                                    return (
+                                        <details key={`${c.kind}-${c.path}-${i}`} className="border-b last:border-b-0 border-white/[0.04]">
+                                            <summary className="flex items-center justify-between gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.02] transition-colors list-none">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className="text-[10px] font-mono font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.07]" style={{ color: c.kind === 'delete' ? '#FF8A9D' : c.kind === 'create' ? '#7EE2A8' : '#8FADFF' }}>
+                                                        {c.kind}
+                                                    </span>
+                                                    <span className="text-[12.5px] truncate" style={{ color: 'var(--az-text-secondary)' }}>
+                                                        {c.kind === 'rename' && c.newPath ? `${c.path} → ${c.newPath}` : c.path}
+                                                    </span>
+                                                </div>
+                                                <span className="font-mono text-[11px] shrink-0">
+                                                    {c.after !== null && <span className="text-emerald-400/70">+{afterLines} </span>}
+                                                    {c.before !== null && <span className="text-red-400/60">-{beforeLines}</span>}
+                                                </span>
+                                            </summary>
+                                            {c.after !== null && (
+                                                <pre className="mx-3 mb-2.5 p-2.5 rounded-lg bg-[#0B0E13] border border-white/10 overflow-x-auto text-[11px] font-mono leading-relaxed text-[#E7ECF3] max-h-[240px] overflow-y-auto whitespace-pre-wrap break-words">
+                                                    {c.after.slice(0, 6000)}{c.after.length > 6000 ? '\n… (truncated preview)' : ''}
+                                                </pre>
+                                            )}
+                                            {c.after === null && c.before !== null && (
+                                                <p className="mx-3 mb-2.5 text-[11px]" style={{ color: 'var(--az-text-faint)' }}>
+                                                    {beforeLines} lines will be deleted.
+                                                </p>
+                                            )}
+                                        </details>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                     {/* Premium change summary — Azemax workspace */}
                     {lastDiffs.length > 0 && (
                         <div className="rounded-[10px] border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset,0_4px_12px_rgba(0,0,0,0.14)]">
@@ -2060,7 +2301,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                             const find = (nodes: ReturnType<typeof getFileTree>, target: string): unknown => {
                                                 for (const n of nodes) {
                                                     if (n.name === target) return n;
-                                                    // @ts-ignore
                                                     if (n.children) { const f = find(n.children as never, target); if (f) return f; }
                                                 }
                                                 return null;
@@ -2068,7 +2308,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                             const node = find(getFileTree(), first.file) as { id: string; name: string } | null;
                                             if (node) {
                                                 const fromTree = getFileTree().find(n => n.id === node.id) || node;
-                                                // @ts-ignore
                                                 setActiveFile(fromTree as never);
                                             }
                                         }}
@@ -2102,7 +2341,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                     const find = (nodes: ReturnType<typeof getFileTree>, target: string): unknown => {
                                                         for (const n of nodes) {
                                                             if (n.name === target) return n;
-                                                            // @ts-ignore
                                                             if (n.children) { const f = find(n.children as never, target); if (f) return f; }
                                                         }
                                                         return null;
@@ -2110,7 +2348,6 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                     const node = find(getFileTree(), d.file) as { id: string; name: string } | null;
                                                     if (node) {
                                                         const fromTree = getFileTree().find(n => n.id === node.id) || node;
-                                                        // @ts-ignore
                                                         setActiveFile(fromTree as never);
                                                     }
                                                 }}

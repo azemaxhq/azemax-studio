@@ -138,7 +138,7 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
     );
 }
 
-async function streamChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', res, req, task, allowFallback = true }) {
+async function streamChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', res, req, task, allowFallback = true, userId: _userId = null, onUsage = null }) {
     const params = resolveTaskParams({ task, maxTokens, temperature, top_p, responseLength });
     const plan = buildRoutingPlan(task, model, { allowFallback });
     const attempts = [plan.primary, ...plan.fallbacks];
@@ -263,6 +263,9 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                     writeSse(res, { type: 'token', content: cleanResponse(content) });
                     if (!res.writableEnded && !res.destroyed) {
                         writeSse(res, { type: 'done', model: resolved.model, usage: data.usage });
+                        if (typeof onUsage === 'function') {
+                            try { onUsage(data.usage); } catch { /* accounting must not break streams */ }
+                        }
                         res.write('data: [DONE]\n\n');
                         res.end();
                     }
@@ -310,6 +313,9 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                 if (tokenCount > 0) {
                     if (!res.writableEnded && !res.destroyed) {
                         writeSse(res, { type: 'done', model: resolved.model, usage });
+                        if (typeof onUsage === 'function') {
+                            try { onUsage(usage); } catch { /* accounting must not break streams */ }
+                        }
                         res.write('data: [DONE]\n\n');
                         res.end();
                     }

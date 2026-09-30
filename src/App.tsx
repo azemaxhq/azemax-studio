@@ -4,6 +4,8 @@ import { TerminalProvider } from './context/TerminalContext';
 import { ExplanationProvider } from './context/ExplanationContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { PerformanceProvider } from './context/PerformanceContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthGate } from './components/Auth/AuthGate';
 import { DialogProvider } from './components/UI/DialogProvider';
 import { ErrorBoundary } from './components/UI/ErrorBoundary';
 import { composeProviders } from './core/composeProviders';
@@ -46,6 +48,20 @@ const AppProviders = composeProviders(
   ExplanationProvider,
   SettingsProvider,
 );
+
+// Workspace shell: gated on authentication, and keyed by user id so ALL
+// provider state (file tree, terminals, chat, settings caches) resets when
+// the signed-in user changes. No cross-user state leakage by construction.
+function WorkspaceShell() {
+  const { user } = useAuth();
+  return (
+    <AuthGate>
+      <AppProviders key={user ? user.id : 'anon'}>
+        <AppContent />
+      </AppProviders>
+    </AuthGate>
+  );
+}
 
 function RootErrorFallback(error: Error) {
   return (
@@ -103,9 +119,9 @@ export default function App() {
 
   return (
     <ErrorBoundary fallback={RootErrorFallback}>
-      <AppProviders>
-        <AppContent />
-      </AppProviders>
+      <AuthProvider>
+        <WorkspaceShell />
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
