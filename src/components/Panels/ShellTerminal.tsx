@@ -324,11 +324,11 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         try {
             const sh = getDefaultShell();
             const label = getShellLabel(sh);
-            term.writeln(`\x1b[1;38;2;127;169;255mWelcome to ${label} — Azemax Terminal\x1b[0m`);
+            term.writeln(`\x1b[1;38;2;100;149;255m◆ Azemax Terminal\x1b[0m  \x1b[38;2;110;135;165m${label}\x1b[0m`);
         } catch {
-            term.writeln('\x1b[1;38;2;127;169;255mWelcome to Azemax Terminal\x1b[0m');
+            term.writeln('\x1b[1;38;2;100;149;255m◆ Azemax Terminal\x1b[0m');
         }
-        term.writeln('Type \x1b[1;32mhelp\x1b[0m to see available commands.');
+        term.writeln('\x1b[38;2;105;130;165mtype \x1b[0;38;2;100;155;255mhelp\x1b[38;2;105;130;165m for available commands\x1b[0m');
         writePrompt();
 
         const updateBuffer = (newCmd: string) => {
@@ -589,9 +589,9 @@ const handleRunData = (e: Event) => {
             if (getSettings().terminal.clearBeforeRun) {
                 term.clear();
             }
-            term.writeln(`\r\n\x1b[3;36m> Running ${displayName} [${runLanguage}]...\x1b[0m`);
+            term.writeln(`\r\n\x1b[1;38;2;91;140;255m▶\x1b[0m \x1b[1;38;2;210;225;245m${displayName}\x1b[0m  \x1b[38;2;120;148;185m${runLanguage}\x1b[0m`);
             if (preStdin) {
-                term.writeln(`\x1b[3;33m  (with pre-provided stdin)\x1b[0m`);
+                term.writeln(`  \x1b[38;2;200;155;60m⎋\x1b[0m \x1b[38;2;175;145;90mwith pre-provided stdin\x1b[0m`);
             }
             term.focus();
 
@@ -630,7 +630,7 @@ const handleRunData = (e: Event) => {
                         if (!droppedNoticeShown) {
                             droppedNoticeShown = true;
                             try {
-                                t.writeln('\r\n\x1b[1;33m[output truncated — producer outran the terminal]\x1b[0m');
+                                t.writeln('\r\n\x1b[38;2;220;160;60m⚠\x1b[0m  \x1b[38;2;175;145;90mOutput truncated — producer outran the terminal\x1b[0m');
                             } catch { /* terminal gone — nothing to do */ }
                         }
                     }
@@ -706,10 +706,11 @@ const handleRunData = (e: Event) => {
                         const t = xtermRef.current;
                         if (!t) return;
                     if (signal) {
-                        t.writeln(`\r\n\x1b[1;31mProcess terminated by ${signal}\x1b[0m`);
+                        t.writeln(`\r\n\x1b[38;2;240;110;120m✗\x1b[0m \x1b[38;2;220;160;165mKilled\x1b[0m  \x1b[38;2;165;110;115m${signal}\x1b[0m`);
+                    } else if (code === 0) {
+                        t.writeln(`\r\n\x1b[38;2;72;195;145m✓\x1b[0m \x1b[38;2;140;210;175mDone\x1b[0m  \x1b[38;2;100;160;125mexit 0\x1b[0m`);
                     } else {
-                        const exitColor = code === 0 ? '32' : '31';
-                        t.writeln(`\r\n\x1b[1;${exitColor}mProcess finished with exit code ${code ?? 0}\x1b[0m`);
+                        t.writeln(`\r\n\x1b[38;2;240;110;120m✗\x1b[0m \x1b[38;2;220;160;165mFailed\x1b[0m  \x1b[38;2;175;110;115mexit ${code ?? 1}\x1b[0m`);
                     }
                     const perf = session!.getPerformanceData();
                     setExecutionData(terminalId, {
@@ -731,15 +732,15 @@ const handleRunData = (e: Event) => {
                     const t = xtermRef.current;
                     if (!t) return;
                     if (interactive) {
-                        t.writeln('\r\n\x1b[3;33mProgram is waiting for input — type below (PTY echoes).\x1b[0m');
+                        t.writeln('\r\n\x1b[38;2;200;155;60m⎋\x1b[0m \x1b[38;2;175;150;100mWaiting for input  \x1b[38;2;140;120;80mPTY echoes keystrokes\x1b[0m');
                     } else {
-                        t.writeln('\r\n\x1b[3;33mProgram requires input — type a line and press Enter.\x1b[0m');
+                        t.writeln('\r\n\x1b[38;2;200;155;60m⎋\x1b[0m \x1b[38;2;175;150;100mInput required — type a line and press Enter\x1b[0m');
                     }
                 },
                 onError: (message: string) => {
                     const t = xtermRef.current;
                     if (!t) return;
-                    t.writeln(`\r\n\x1b[1;31m${message}\x1b[0m`);
+                    t.writeln(`\r\n\x1b[38;2;240;110;120m✗\x1b[0m \x1b[38;2;210;150;155m${message}\x1b[0m`);
                 },
             };
         };

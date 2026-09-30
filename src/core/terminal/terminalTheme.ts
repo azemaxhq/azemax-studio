@@ -20,24 +20,24 @@ import { subscribe } from '../../settings/settingsStore';
 
 type XtermTheme = Record<string, string | undefined>;
 
-// Azemax terminal ANSI — restrained, native to the IDE (never neon)
+// Azemax terminal ANSI — calibrated for contrast and readability
 const FALLBACK_ANSI = {
   black: '#0C1118',
-  red: '#F27788',
-  green: '#62D6A7',
-  yellow: '#E4B86A',
-  blue: '#5B8CFF',
-  magenta: '#9D8BFF',
-  cyan: '#6FB9C9',
-  white: '#D8DEE7',
-  brightBlack: '#778291',
-  brightRed: '#F6919F',
-  brightGreen: '#7FDDB4',
-  brightYellow: '#EAC887',
+  red: '#F47A85',          // error messages
+  green: '#4EC994',         // exit code 0 / success
+  yellow: '#E5C07B',        // warnings / stdin prompts
+  blue: '#5B8CFF',          // links / info
+  magenta: '#C678DD',       // special
+  cyan: '#56D4E8',          // status lines ("Running...")
+  white: '#ABB2BF',         // dim output / secondary text (distinct from foreground)
+  brightBlack: '#5C6370',   // comments / muted
+  brightRed: '#F28B82',
+  brightGreen: '#66D9A6',
+  brightYellow: '#ECD289',
   brightBlue: '#7FA9FF',
-  brightMagenta: '#B3A4FF',
-  brightCyan: '#8AC4D2',
-  brightWhite: '#E7ECF3',
+  brightMagenta: '#D19FFF',
+  brightCyan: '#7EE8F5',    // bright status / highlights
+  brightWhite: '#EAEEF4',   // primary foreground (used by bold text)
 } as const;
 
 function cssVar(name: string, fallback: string): string {
@@ -53,8 +53,9 @@ export function getXtermTheme(): XtermTheme {
   // Prefer CSS variables (live theme), fall back to settings-driven palette
   const isDark = settingsTheme === 'dark' || (settingsTheme === 'auto' && (typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)').matches : true));
   // Terminal lives on its own layer: #0C1118, never pure black
-  const background = cssVar('--az-terminal-bg', isDark ? '#0C1118' : '#ffffff');
-  const foreground = isDark ? '#D8DEE7' : '#24292e';
+  const background = cssVar('--az-terminal-bg', isDark ? '#0C1118' : '#f8f9fa');
+  // Foreground: bright enough to be clearly readable against the dark terminal bg
+  const foreground = cssVar('--az-terminal-fg', isDark ? '#CDD6E0' : '#24292e');
   const selectionBackground = cssVar('--az-selection-bg', 'rgba(91,140,255,0.28)');
   // Cursor: Azemax bright accent for visibility
   const cursor = cssVar('--az-terminal-cursor', '#78A7FF');

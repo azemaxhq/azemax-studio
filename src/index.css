@@ -34,6 +34,9 @@
   --az-surface-active: #222B38;
   --az-overlay: #181E29;
   --az-terminal-bg: #0C1118;
+  --az-terminal-fg: #CDD6E0;
+  --az-terminal-cursor: #78A7FF;
+  --az-terminal-cursor-accent: #0C1118;
   --az-editor-bg: #10141B;
   --az-composer-bg: #151A22;
   --az-composer-bg-hover: #161C26;
