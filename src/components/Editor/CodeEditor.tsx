@@ -206,7 +206,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     const [isFormatting, setIsFormatting] = useState(false);
     const [, setIsAiProcessing] = useState(false);
     const [activeAiLine, setActiveAiLine] = useState<number | null>(null);
-    const [activeAiIntent, setActiveAiIntent] = useState<string | null>(null);
+    const [_activeAiIntent, setActiveAiIntent] = useState<string | null>(null);
     const pendingLocalCheckRef = useRef(false);
     const isCheckingRef = useRef(false);
     const scheduleLocalCheckRef = useRef<() => void>(() => {});
@@ -1223,7 +1223,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         commentDecorationsRef.current = editorRef.current.createDecorationsCollection(newDecorations);
     }, []);
 
-    // Premium — breathing on comment range + caret; spinner is overlay widget (no layout shift)
+    // Glyph-margin spinner handled by AICommentIndicator DOM overlay.
+    // Decorations here: breathing animation on the /// text + trailing caret.
     const updateLoadingDecoration = useCallback(() => {
         if (!editorRef.current || !monacoRef.current) return;
         if (loadingDecorationRef.current) {
@@ -1237,20 +1238,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
             const commentStartCol = slashIdx !== -1 ? slashIdx + 1 : 1;
             const endCol = lineContent.length + 1;
             loadingDecorationRef.current = editorRef.current.createDecorationsCollection([
+                // Subtle line background wash while processing
                 {
-                    range: new monacoRef.current!.Range(activeAiLine, commentStartCol, activeAiLine, endCol),
+                    range: new monacoRef.current!.Range(activeAiLine, 1, activeAiLine, 1),
                     options: {
-                        isWholeLine: false,
-                        inlineClassName: 'ai-comment-breathing'
+                        isWholeLine: true,
+                        className: 'az-ai-active-line',
+                        stickiness: monacoRef.current!.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
                     }
                 },
+                // Breathing animation on the /// command text
+                {
+                    range: new monacoRef.current!.Range(activeAiLine, commentStartCol, activeAiLine, endCol),
+                    options: { isWholeLine: false, inlineClassName: 'ai-comment-breathing' }
+                },
+                // Blinking caret after the command
                 {
                     range: new monacoRef.current!.Range(activeAiLine, endCol, activeAiLine, endCol),
-                    options: {
-                        isWholeLine: false,
-                        inlineClassName: 'ai-comment-caret'
-                    }
-                }
+                    options: { isWholeLine: false, inlineClassName: 'ai-comment-caret' }
+                },
             ]);
         }
     }, [activeAiLine]);
@@ -2156,7 +2162,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     onMount={handleEditorMount}
                     options={editorOptions}
                 />
-                <AICommentIndicator activeLine={activeAiLine} intent={activeAiIntent} editorRef={editorRef} monacoRef={monacoRef} />
+                <AICommentIndicator activeLine={activeAiLine} editorRef={editorRef} monacoRef={monacoRef} />
             </div>
 
             {/* Status Bar — neutral, calm */}

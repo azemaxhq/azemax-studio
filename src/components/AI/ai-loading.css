@@ -1,91 +1,136 @@
-/* Premium Azemax processing — calm intelligent indicator — cohesive inline unit */
+/* ── Premium Azemax AI Processing Indicator ── */
 .ai-loading-minimal {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     padding: 4px 0 2px;
     min-height: 20px;
-    animation: ai-loading-in 180ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)) both, ai-processing-breathe 3.2s ease-in-out infinite 800ms;
     will-change: opacity, transform;
     contain: layout;
 }
 @keyframes ai-loading-in {
-    from { opacity: 0; transform: translateY(3px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(4px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-@keyframes ai-processing-breathe {
-    0%, 100% { opacity: 0.92; }
-    50% { opacity: 1; }
+
+/* ── Label text: subtle gradient shimmer during processing ── */
+.ai-loading-minimal-text {
+    display: inline-flex;
+    align-items: center;
+    min-height: 16px;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    line-height: 1.5;
+    white-space: nowrap;
+    /* Gradient text: neutral → accent → neutral sweep */
+    background: linear-gradient(
+        90deg,
+        var(--az-text-secondary, #A7B0BF) 0%,
+        var(--az-accent-bright, #78A7FF) 45%,
+        var(--az-text-secondary, #A7B0BF) 90%
+    );
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ai-label-shimmer 3.8s ease-in-out infinite;
+    will-change: background-position;
 }
+@keyframes ai-label-shimmer {
+    0%   { background-position: 220% center; }
+    50%  { background-position: -50% center; }
+    100% { background-position: 220% center; }
+}
+
+/* ── Dots: accent-colored wave, staggered and size-scaled ── */
 .ai-dots-fixed {
-    width: 18px;
+    width: 22px;
     justify-content: flex-start;
     flex-shrink: 0;
 }
 .ai-loading-dots-subtle {
     display: inline-flex;
     align-items: center;
-    gap: 3.5px;
+    gap: 4px;
     margin-left: 0;
-    width: 18px;
+    width: 22px;
     justify-content: flex-start;
     flex-shrink: 0;
 }
 .ai-dot-subtle {
-    width: 3px;
-    height: 3px;
+    width: 3.5px;
+    height: 3.5px;
     border-radius: 999px;
-    background: var(--az-text-muted, #707680);
+    background: var(--az-accent, #5B8CFF);
     opacity: 0.22;
-    animation: ai-dot-pulse-premium 1400ms ease-in-out infinite;
+    animation: ai-dot-wave 1300ms cubic-bezier(0.4, 0, 0.6, 1) infinite;
     will-change: opacity, transform;
 }
-.ai-dot-subtle:nth-child(2) { animation-delay: 180ms; }
-.ai-dot-subtle:nth-child(3) { animation-delay: 360ms; }
-@keyframes ai-dot-pulse-premium {
-    0%, 100% { opacity: 0.22; transform: scale(0.92); }
-    50% { opacity: 0.78; transform: scale(1); }
-}
-.ai-loading-minimal-text {
-    display: inline-flex;
-    align-items: center;
-    min-height: 16px;
-    font-size: 12.5px;
-    font-weight: 450;
-    letter-spacing: -0.01em;
-    color: var(--az-text-secondary, #A7ACB5);
-    line-height: 1.5;
-    white-space: nowrap;
+.ai-dot-subtle:nth-child(1) { animation-delay: 0ms; }
+.ai-dot-subtle:nth-child(2) { animation-delay: 160ms; }
+.ai-dot-subtle:nth-child(3) { animation-delay: 320ms; }
+@keyframes ai-dot-wave {
+    0%, 100% {
+        opacity: 0.22;
+        transform: scale(0.88) translateY(0);
+        background: var(--az-accent, #5B8CFF);
+        box-shadow: none;
+    }
+    45% {
+        opacity: 1;
+        transform: scale(1.18) translateY(-1px);
+        background: var(--az-accent-bright, #78A7FF);
+        box-shadow: 0 0 6px 1px rgba(91,140,255,0.45);
+    }
+    65% {
+        opacity: 0.72;
+        transform: scale(1.05) translateY(0);
+    }
 }
 
-/* Container */
-.ai-response-container { animation: ai-response-in 200ms ease-out both; will-change: opacity, transform; }
-@keyframes ai-response-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+/* ── Response container entrance ── */
+.ai-response-container {
+    animation: ai-response-in 220ms ease-out both;
+    will-change: opacity, transform;
+}
+@keyframes ai-response-in {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
 
-/* Smooth streaming content — stable, no per-chunk fade (prevents flicker on bursts) */
+/* ── Smooth streaming content ── */
 .smooth-streaming-content {
     will-change: auto;
 }
 
-/* Streaming caret — minimal */
+/* ── Streaming caret — glowing accent blink ── */
 .streaming-caret-premium {
     display: inline-block;
     width: 1.5px;
-    height: 1.05em;
+    height: 1.1em;
     margin-left: 2px;
     vertical-align: -2px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.38);
-    animation: ai-caret-blink 1.1s step-end infinite;
+    border-radius: 2px;
+    background: var(--az-accent, #5B8CFF);
+    box-shadow: 0 0 5px 1px rgba(91,140,255,0.50);
+    animation: ai-caret-blink 1.05s step-end infinite;
     will-change: opacity;
 }
-@keyframes ai-caret-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+@keyframes ai-caret-blink {
+    0%, 48%  { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
 
-/* Reduced motion — static, no pulse, minimal */
+/* ── Reduced motion: static, no pulse, minimal ── */
 @media (prefers-reduced-motion: reduce) {
-    .streaming-caret-premium, .ai-dot-subtle { animation: none !important; }
-    .ai-loading-minimal, .ai-response-container, .smooth-streaming-content { transition: opacity 120ms ease !important; animation: none !important; }
-    .ai-dot-subtle { opacity: 0.42; transform: none !important; }
+    .streaming-caret-premium,
+    .ai-dot-subtle { animation: none !important; }
+    .ai-loading-minimal,
+    .ai-response-container,
+    .smooth-streaming-content { transition: opacity 120ms ease !important; animation: none !important; }
+    .ai-dot-subtle { opacity: 0.42; transform: none !important; box-shadow: none !important; }
     .ai-loading-minimal { animation: none !important; opacity: 1 !important; }
-    .ai-dot-subtle { opacity: 0.38; }
+    .ai-loading-minimal-text { animation: none !important; background: none; -webkit-text-fill-color: var(--az-text-secondary, #A7B0BF); }
+    .streaming-caret-premium { box-shadow: none; }
 }

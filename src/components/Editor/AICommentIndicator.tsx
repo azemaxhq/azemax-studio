@@ -3,163 +3,165 @@ import type * as Monaco from 'monaco-editor';
 
 interface Props {
   activeLine: number | null;
-  intent?: string | null;
   editorRef: React.MutableRefObject<Monaco.editor.IStandaloneCodeEditor | null>;
   monacoRef: React.MutableRefObject<typeof Monaco | null>;
 }
 
 /**
- * Minimal inline square spinner — appears exactly where AI is working.
- * No label, no dots, no card. 12px rounded-square, theme-aware, overlay.
+ * Premium AI processing indicator — positioned in the glyph margin column
+ * (left of the line number), using Monaco layout coords for pixel-perfect placement.
+ *
+ * Design: 12px spinning arc + 3px glowing core dot. Pure imperative DOM,
+ * no React DOM output, zero layout shift, scroll-tracked via RAF.
  */
 export const AICommentIndicator: React.FC<Props> = ({ activeLine, editorRef, monacoRef }) => {
-  const domRef = useRef<HTMLDivElement | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const domRef   = useRef<HTMLDivElement | null>(null);
+  const rafRef   = useRef<number | null>(null);
 
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
 
-    // cleanup previous overlay
-    if (domRef.current && domRef.current.parentNode) {
+    // ── Cleanup any prior overlay ──────────────────────────────────────────
+    if (domRef.current?.parentNode) {
       domRef.current.parentNode.removeChild(domRef.current);
       domRef.current = null;
     }
     if (activeLine === null) return;
 
-    // Create overlay spinner anchored to far right of active line
-    const container = editor.getDomNode()?.parentElement as HTMLElement | null;
-    if (!container) return;
-    // Ensure container is relative for absolute positioning
-    const prevPosition = container.style.position;
-    if (getComputedStyle(container).position === 'static') {
-      container.style.position = 'relative';
+    // Attach directly to Monaco's DOM node so coordinate systems match
+    const editorDom = editor.getDomNode() as HTMLElement | null;
+    if (!editorDom) return;
+
+    // Monaco's DOM node is position:relative — we can overlay directly
+    const prevPos = editorDom.style.position;
+    if (getComputedStyle(editorDom).position === 'static') {
+      editorDom.style.position = 'relative';
     }
 
-    const domNode = document.createElement('div');
-    domNode.className = 'ai-inline-square-spinner-overlay';
-    domNode.setAttribute('aria-hidden', 'true');
-    domNode.style.position = 'absolute';
-    domNode.style.right = '16px';
-    domNode.style.width = '16px';
-    domNode.style.height = '16px';
-    domNode.style.display = 'inline-flex';
-    domNode.style.alignItems = 'center';
-    domNode.style.justifyContent = 'center';
-    domNode.style.pointerEvents = 'none';
-    domNode.style.opacity = '0';
-    domNode.style.transform = 'scale(0.9)';
-    domNode.style.transition = 'opacity 200ms cubic-bezier(0.16,1,0.3,1), transform 200ms cubic-bezier(0.16,1,0.3,1)';
-    domNode.style.willChange = 'opacity, transform';
-    domNode.style.zIndex = '5';
+    // ── Build spinner DOM ──────────────────────────────────────────────────
+    const wrap = document.createElement('div');
+    wrap.setAttribute('aria-hidden', 'true');
+    Object.assign(wrap.style, {
+      position:      'absolute',
+      width:         '16px',
+      height:        '16px',
+      display:       'flex',
+      alignItems:    'center',
+      justifyContent:'center',
+      pointerEvents: 'none',
+      opacity:       '0',
+      transform:     'scale(0.55)',
+      transition:    'opacity 220ms cubic-bezier(0.16,1,0.3,1), transform 240ms cubic-bezier(0.16,1,0.3,1)',
+      willChange:    'opacity, transform',
+      zIndex:        '50',
+    });
 
-    // Premium square spinner — 15px rounded-square, thin refined stroke, subtle accent glow
-    const frame = document.createElement('div');
-    frame.style.width = '15px';
-    frame.style.height = '15px';
-    frame.style.position = 'relative';
-    frame.style.display = 'inline-flex';
-    frame.style.alignItems = 'center';
-    frame.style.justifyContent = 'center';
-    frame.style.willChange = 'transform, opacity';
+    // Outer arc ring — thin, spins at 800ms
+    const ring = document.createElement('div');
+    Object.assign(ring.style, {
+      position:     'absolute',
+      inset:        '0',
+      borderRadius: '50%',
+      border:       '1.5px solid rgba(91,140,255,0.10)',
+      borderTopColor:   '#5B8CFF',
+      borderRightColor: 'rgba(91,140,255,0.38)',
+      boxSizing:    'border-box',
+      animation:    'az-ind-spin 800ms linear infinite',
+      willChange:   'transform',
+    });
 
-    const outer = document.createElement('div');
-    outer.style.position = 'absolute';
-    outer.style.inset = '0';
-    outer.style.borderRadius = '4px';
-    outer.style.border = '1px solid rgba(255,255,255,0.08)';
-    outer.style.borderTopColor = 'var(--az-accent, #5B8CFF)';
-    outer.style.borderTopWidth = '1.35px';
-    outer.style.boxSizing = 'border-box';
-    outer.style.background = 'rgba(255,255,255,0.015)';
-    outer.style.backdropFilter = 'blur(2px)';
-    outer.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.03), 0 2px 10px rgba(0,0,0,0.14), 0 0 12px rgba(91,140,255,0.08)';
-    outer.style.animation = 'ai-square-spin-premium 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite';
-    outer.style.willChange = 'transform';
+    // Inner pulsing glow dot
+    const dot = document.createElement('div');
+    Object.assign(dot.style, {
+      position:     'absolute',
+      width:        '3.5px',
+      height:       '3.5px',
+      borderRadius: '50%',
+      background:   '#5B8CFF',
+      boxShadow:    '0 0 5px 1.5px rgba(91,140,255,0.75)',
+      animation:    'az-ind-dot 1.55s ease-in-out infinite',
+      willChange:   'transform, opacity',
+    });
 
-    const inner = document.createElement('div');
-    inner.style.position = 'absolute';
-    inner.style.inset = '4.5px';
-    inner.style.borderRadius = '2px';
-    inner.style.background = 'var(--az-accent, #5B8CFF)';
-    inner.style.opacity = '0.10';
-    inner.style.animation = 'ai-square-pulse 1.8s cubic-bezier(0.65, 0, 0.35, 1) infinite';
-    inner.style.willChange = 'opacity, transform';
+    wrap.appendChild(ring);
+    wrap.appendChild(dot);
+    editorDom.appendChild(wrap);
+    domRef.current = wrap;
 
-    frame.appendChild(outer);
-    frame.appendChild(inner);
-    domNode.appendChild(frame);
-    domRef.current = domNode;
-    container.appendChild(domNode);
-
-    if (!document.getElementById('ai-square-spin-premium-style')) {
+    // Inject keyframes once per page lifetime
+    if (!document.getElementById('az-ind-style')) {
       const style = document.createElement('style');
-      style.id = 'ai-square-spin-premium-style';
+      style.id = 'az-ind-style';
       style.textContent = `
-        @keyframes ai-square-spin-premium { 0% { transform: rotate(0deg) scale(1); border-radius: 4px; } 25% { border-radius: 5px; } 50% { transform: rotate(180deg) scale(0.99); } 100% { transform: rotate(360deg) scale(1); border-radius: 4px; } }
-        @keyframes ai-square-pulse { 0%,100% { opacity: 0.10; transform: scale(1); } 50% { opacity: 0.18; transform: scale(0.90); } }
-        .ai-inline-square-spinner-overlay > div > div { animation: ai-square-spin-premium 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
-        .ai-inline-square-spinner-overlay > div > div > div:last-child { animation: ai-square-pulse 1.8s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
-        @media (prefers-reduced-motion: reduce) {
-          .ai-inline-square-spinner-overlay > div > div, .ai-inline-square-spinner-overlay > div > div > div:last-child { animation: none !important; opacity: 0.7; transform: none !important; }
-          .ai-inline-square-spinner-overlay { transition: opacity 120ms ease !important; transform: none !important; }
+        @keyframes az-ind-spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes az-ind-dot {
+          0%,100% { transform:scale(1);   opacity:0.80; box-shadow:0 0 4px 1.5px rgba(91,140,255,0.65); }
+          50%      { transform:scale(1.45); opacity:1;    box-shadow:0 0 9px 2px rgba(91,140,255,0.45),0 0 16px 3px rgba(167,139,250,0.18); }
+        }
+        @media (prefers-reduced-motion:reduce) {
+          [data-az-ind] > div:first-child { animation:none !important; }
+          [data-az-ind] > div:last-child  { animation:none !important; }
         }
       `;
       document.head.appendChild(style);
     }
+    wrap.setAttribute('data-az-ind', '1');
 
-    const updateTop = () => {
+    // ── Position tracker — glyph margin column, left of line number ────────
+    const place = () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
         const ed = editorRef.current;
         if (!ed || activeLine === null || !domRef.current) return;
-        const topForLine = ed.getTopForLineNumber(activeLine);
-        const scrollTop = ed.getScrollTop();
+
+        const layout     = ed.getLayoutInfo();
         const lineHeight = ed.getOption(monacoRef.current!.editor.EditorOption.lineHeight) as number;
-        const y = topForLine - scrollTop + lineHeight / 2 - 8; // 16px /2
-        const layout = ed.getLayoutInfo();
-        const editorHeight = layout.height;
-        const clampedY = Math.max(4, Math.min(y, editorHeight - 20));
-        domRef.current!.style.top = clampedY + 'px';
-        // keep right padding comfortable, never touches scrollbar
-        domRef.current!.style.right = '16px';
+        const topForLine = ed.getTopForLineNumber(activeLine);
+        const scrollTop  = ed.getScrollTop();
+
+        // Horizontal: centre of the glyph margin column
+        const x = layout.glyphMarginLeft + layout.glyphMarginWidth / 2 - 8;  // 8 = 16px/2
+        // Vertical:  centre of the target line
+        const y = topForLine - scrollTop + lineHeight / 2 - 8;
+        const clampedY = Math.max(2, Math.min(y, layout.height - 18));
+
+        domRef.current!.style.left = `${Math.max(0, x)}px`;
+        domRef.current!.style.top  = `${clampedY}px`;
       });
     };
 
-    updateTop();
-    // fade/scale-in
-    requestAnimationFrame(() => {
-      domNode.style.opacity = '1';
-      domNode.style.transform = 'scale(1)';
-    });
+    place();
 
-    const d1 = editor.onDidScrollChange(updateTop);
-    const d2 = editor.onDidLayoutChange(updateTop);
-    const d3 = editor.onDidChangeModelContent(updateTop);
-    const ro = new ResizeObserver(updateTop);
-    const dom = editor.getDomNode();
-    if (dom) ro.observe(dom);
+    // Spring entrance — two rAF ticks so the browser paints the initial state first
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!domRef.current) return;
+      domRef.current.style.opacity   = '1';
+      domRef.current.style.transform = 'scale(1)';
+    }));
+
+    const d1 = editor.onDidScrollChange(place);
+    const d2 = editor.onDidLayoutChange(place);
+    const d3 = editor.onDidChangeModelContent(place);
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      d1.dispose();
-      d2.dispose();
-      d3.dispose();
-      ro.disconnect();
-      if (domRef.current) {
-        const n = domRef.current;
-        n.style.opacity = '0';
-        n.style.transform = 'scale(0.9)';
+      d1.dispose(); d2.dispose(); d3.dispose();
+
+      const n = domRef.current;
+      if (n) {
+        n.style.opacity   = '0';
+        n.style.transform = 'scale(0.55)';
         setTimeout(() => {
           if (n.parentNode) n.parentNode.removeChild(n);
           if (domRef.current === n) domRef.current = null;
-        }, 180);
+        }, 220);
       }
-      // restore container position if we changed it
-      if (prevPosition) container.style.position = prevPosition;
+      if (prevPos !== undefined) editorDom.style.position = prevPos;
     };
   }, [activeLine, editorRef, monacoRef]);
 
-  // No React DOM — content widget handles rendering
   return null;
 };

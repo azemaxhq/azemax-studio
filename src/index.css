@@ -438,99 +438,160 @@ body {
   font-style: italic; font-weight: 400;
   background: none; text-shadow: none; -webkit-text-fill-color: initial;
 }
-/* Premium Azemax inline comment — subtle hierarchy, still code */
+
+/* ── Premium Azemax /// AI Command Syntax — shimmer mark + living suggestion ── */
 .ai-comment-slash {
-  color: var(--az-accent, #5B8CFF) !important;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  position: relative;
+  font-weight: 600;
   font-style: normal !important;
-  opacity: 0.95;
+  letter-spacing: 0.015em;
+  /* Animated gradient sweep — signals it's AI-powered, not a regular comment */
+  background: linear-gradient(
+    90deg,
+    var(--az-accent, #5B8CFF) 0%,
+    #a78bfa 40%,
+    var(--az-accent-bright, #78A7FF) 70%,
+    var(--az-accent, #5B8CFF) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ai-slash-shimmer 3s linear infinite;
+  will-change: background-position;
 }
+@keyframes ai-slash-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
 .ai-comment-suggestion {
-  color: #AAB4C8 !important;
+  color: #C4CEDF !important;
   font-style: italic;
   font-weight: 400;
-  opacity: 0.96;
   letter-spacing: 0.01em;
+  opacity: 0.93;
+  /* Soft left glow border via text-shadow — no layout shift */
+  text-shadow: 0 0 18px rgba(91,140,255,0.12);
 }
 .ai-comment-suggestion.ai-comment-streaming {
-  animation: ai-comment-reveal 200ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)) both;
+  animation: ai-comment-reveal 220ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)) both;
 }
 @keyframes ai-comment-reveal {
-  from { opacity: 0; transform: translateY(1px); }
-  to { opacity: 0.96; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(1.5px); }
+  to { opacity: 0.93; transform: translateY(0); }
 }
+
 .ai-comment-line-premium {
   background: transparent !important;
-  transition: background 160ms var(--az-ease, cubic-bezier(0.2,0,0,1));
+  transition: background 180ms var(--az-ease, cubic-bezier(0.2,0,0,1));
 }
 .ai-comment-line-premium:hover {
-  background: rgba(255,255,255,0.015) !important;
+  background: rgba(91,140,255,0.028) !important;
 }
+
+/* Active-processing line: chromatic gradient sweep instead of plain opacity breathe */
 .ai-comment-breathing {
-  animation: ai-comment-breathe 2.4s ease-in-out infinite;
+  animation: ai-comment-sweep 2.2s ease-in-out infinite;
   will-change: opacity;
 }
-@keyframes ai-comment-breathe {
-  0%, 100% { opacity: 0.72; }
-  50% { opacity: 1; }
+@keyframes ai-comment-sweep {
+  0%   { opacity: 0.68; }
+  45%  { opacity: 1; }
+  55%  { opacity: 1; }
+  100% { opacity: 0.68; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-comment-breathing { animation: none !important; opacity: 1 !important; }
 }
+
+/* ── Active-line processing wash — subtle gradient background on the /// line ── */
+.az-ai-active-line {
+  background: linear-gradient(
+    90deg,
+    rgba(91,140,255,0.07) 0%,
+    rgba(167,139,250,0.04) 60%,
+    transparent 100%
+  ) !important;
+}
+
+/* Glyph margin accent bar — living left rail for /// lines */
 .ai-comment-glyph-premium {
-  border-left: 1.5px solid rgba(122,142,185,0.28) !important;
+  border-left: 2px solid rgba(91,140,255,0.25) !important;
   margin-left: 3px;
-  opacity: 0.9;
-  transition: border-color 160ms ease, opacity 160ms ease;
+  opacity: 1;
+  transition: border-color 200ms ease;
 }
 .ai-comment-line-premium:hover .ai-comment-glyph-premium,
 .ai-comment-glyph-premium:hover {
-  border-left-color: rgba(122,142,185,0.45) !important;
-  opacity: 1;
+  border-left-color: rgba(91,140,255,0.60) !important;
 }
+
 .ai-comment-line { background: rgba(91,140,255,0.05) !important; }
+
 /* Transient /// failure marker — trigger line kept, reason in hover */
 .ai-comment-error {
-  background: rgba(255,100,124,0.07) !important;
-  border-bottom: 1px solid rgba(255,100,124,0.55);
+  background: rgba(255,100,124,0.08) !important;
+  border-bottom: 1.5px solid rgba(255,100,124,0.60);
   border-radius: 2px;
+  box-shadow: 0 1px 0 0 rgba(255,100,124,0.18);
 }
 .ai-comment-glyph { border-left: 2px solid var(--az-border-strong); }
 .glass-line-highlight { background: rgba(91,140,255,0.07) !important; }
 .glass-line-highlight::before { display: none; }
-/* Minimal inline AI indicator — Azemax spark, ultra small, editor-native */
+
+/* ── Inline AI activity badge — premium pill, icon + text ── */
 .ai-loading-spinner::after {
-  content: '✦ Writing comment';
+  content: '⬡ Azemax is thinking';
   font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
-  margin-left: 10px; padding: 2px 8px; border-radius: 6px;
-  color: var(--az-text-muted);
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  margin-left: 12px;
+  padding: 2px 10px 2px 8px;
+  border-radius: 20px;
+  color: var(--az-accent-bright, #78A7FF);
+  background: rgba(91,140,255,0.09);
+  border: 1px solid rgba(91,140,255,0.22);
   display: inline-block;
-  animation: ai-comment-reveal 180ms ease-out both;
+  animation: ai-badge-in 200ms var(--az-ease-out, cubic-bezier(0.16,1,0.3,1)) both,
+             ai-badge-breathe 2.8s ease-in-out infinite 400ms;
+  box-shadow: 0 0 12px rgba(91,140,255,0.12), inset 0 0 0 0 transparent;
 }
+@keyframes ai-badge-in {
+  from { opacity: 0; transform: translateX(-4px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes ai-badge-breathe {
+  0%, 100% { box-shadow: 0 0 10px rgba(91,140,255,0.10); opacity: 0.90; }
+  50%       { box-shadow: 0 0 18px rgba(91,140,255,0.22); opacity: 1; }
+}
+
+/* AI caret — glowing accent pulse */
 .ai-comment-caret {
   position: relative;
 }
 .ai-comment-caret::after {
   content: '';
   position: absolute;
-  right: -1px; top: 1px; bottom: 1px;
-  width: 1px;
+  right: -2px; top: 1px; bottom: 1px;
+  width: 1.5px;
   background: var(--az-accent, #5B8CFF);
-  opacity: 0.72;
-  border-radius: 1px;
-  animation: ai-caret-pulse 1100ms ease-in-out infinite;
+  opacity: 0.85;
+  border-radius: 2px;
+  box-shadow: 0 0 6px 1px rgba(91,140,255,0.55);
+  animation: ai-caret-glow-pulse 1050ms cubic-bezier(0.4,0,0.6,1) infinite;
+  will-change: opacity, box-shadow;
 }
-@keyframes ai-caret-pulse {
-  0%, 100% { opacity: 0.72; }
-  50% { opacity: 0.22; }
+@keyframes ai-caret-glow-pulse {
+  0%, 100% { opacity: 0.85; box-shadow: 0 0 6px 1px rgba(91,140,255,0.55); }
+  50%       { opacity: 0.15; box-shadow: 0 0 2px 0 rgba(91,140,255,0.10); }
 }
+
 @media (prefers-reduced-motion: reduce) {
+  .ai-comment-slash { animation: none !important; background: var(--az-accent, #5B8CFF); -webkit-text-fill-color: var(--az-accent, #5B8CFF); }
   .ai-comment-suggestion.ai-comment-streaming { animation: none !important; }
-  .ai-comment-caret::after { animation: none !important; opacity: 0.5; }
+  .ai-comment-caret::after { animation: none !important; opacity: 0.6; box-shadow: none; }
   .ai-loading-spinner::after { animation: none !important; }
 }
 
