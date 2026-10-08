@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Loader2, Search, Terminal, MoreVertical, WrapText, Zap, Settings as SettingsIcon } from 'lucide-react';
+import {
+    Play, Square, Search, MoreVertical,
+    WrapText, Zap, Map as MapIcon, CheckCircle2, AlignLeft,
+    Terminal, AlertTriangle, FileOutput, Command, Settings as SettingsIcon,
+} from 'lucide-react';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { useProjectFile } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
@@ -8,12 +12,21 @@ import { ExplorerFileIcon } from '../Sidebar/ExplorerIcons';
 import { getLanguageFromFilename } from '../../utils/language';
 
 interface MobileHeaderProps {
-    onOpenSearch: () => void;
+    onOpenSearch: (tab?: 'files' | 'commands') => void;
     onToggleTerminal: () => void;
     isTerminalOpen?: boolean;
     onOpenSettings?: () => void;
 }
 
+/**
+ * Compact mobile IDE header (~56px + safe-area).
+ *
+ *   A  welcome.java     ▶  ⌕   ⋮
+ *
+ * Single primary Run action (becomes Stop while running).
+ * No terminal icon here — terminal lives in the bottom sheet
+ * (grabber bar / More menu), keeping the header to one row.
+ */
 export const MobileHeader: React.FC<MobileHeaderProps> = ({
     onOpenSearch,
     onToggleTerminal,
@@ -21,15 +34,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     onOpenSettings,
 }) => {
     const { activeFile } = useProjectFile();
-    const { runCode, isRunning } = useTerminal();
+    const { runCode, stopProcess, isRunning, activeTerminalId } = useTerminal();
     const { settings, updateSettings } = useSettings();
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    // Language detection
     const language = activeFile ? getLanguageFromFilename(activeFile.name) : 'plaintext';
 
-    // Close menu on click outside
     useEffect(() => {
         if (!showMenu) return;
         const handleClickOutside = (e: MouseEvent) => {
@@ -37,183 +48,243 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                 setShowMenu(false);
             }
         };
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowMenu(false);
+        };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEscape);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape);
+        };
     }, [showMenu]);
 
-    const handleRun = () => {
+    const handleRunOrStop = () => {
+        if (isRunning) {
+            if (activeTerminalId) stopProcess(activeTerminalId);
+            return;
+        }
         if (!activeFile) return;
         window.dispatchEvent(new CustomEvent('run-button-clicked'));
         runCode(activeFile.content || '', language, activeFile.name);
     };
 
+    const closeAnd = (fn: () => void) => () => {
+        setShowMenu(false);
+        fn();
+    };
+
+    const openTerminalTab = (tab: 'terminal' | 'problems' | 'output') => {
+        window.dispatchEvent(new CustomEvent('mobile-open-terminal', { detail: { tab } }));
+    };
+
     return (
         <header
-            className="flex flex-col border-b shrink-0 z-30 select-none"
+            className="border-b shrink-0 z-30 select-none"
             style={{
                 background: 'var(--az-bg)',
                 borderColor: 'var(--az-border)',
                 paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)',
+                minHeight: '56px',
+                height: '56px',
             }}
         >
-            <div className="h-11 px-2.5 flex items-center justify-between gap-1.5 w-full">
-                {/* Left: Brand + Active File Context */}
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 shrink-0" title="Azemax">
-                        <AzemaxLogo size={18} />
-                        <span className="text-[12px] font-bold tracking-tight text-[var(--az-text)] hidden xs:inline">
-                            Azemax
-                        </span>
-                    </div>
-
-                    {/* Active File Context Badge (tappable to search) */}
-                    <button
-                        onClick={onOpenSearch}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono truncate max-w-[150px] transition-colors border"
-                        style={{
-                            background: 'var(--az-surface-2)',
-                            borderColor: 'var(--az-border)',
-                            color: activeFile ? 'var(--az-text)' : 'var(--az-text-muted)',
-                        }}
-                        title={activeFile ? `Current file: ${activeFile.name} (Tap to switch)` : 'Select or search files'}
-                        aria-label="Switch file"
-                    >
-                        {activeFile ? (
-                            <>
-                                <div className="shrink-0 flex items-center justify-center">
-                                    <ExplorerFileIcon name={activeFile.name} />
-                                </div>
-                                <span className="truncate">{activeFile.name}</span>
-                            </>
-                        ) : (
-                            <span className="truncate text-[var(--az-text-muted)]">No file open</span>
-                        )}
-                    </button>
+            <div className="h-14 px-2 flex items-center gap-1.5 w-full">
+                {/* LEFT: Azemax logo only */}
+                <div className="flex items-center shrink-0 w-10 h-10 justify-center" title="Azemax">
+                    <AzemaxLogo size={20} />
                 </div>
 
-                {/* Right: Primary Actions (Run, Search, Terminal, Overflow) */}
-                <div className="flex items-center gap-1 shrink-0">
-                    {/* Primary Action 1: RUN BUTTON (Prominent & Accessible) */}
+                {/* CENTER: current file / project context */}
+                <button
+                    onClick={() => onOpenSearch('files')}
+                    className="flex items-center gap-1.5 px-2 h-9 rounded-md text-[12px] font-mono truncate flex-1 min-w-0 transition-colors border text-left"
+                    style={{
+                        background: 'var(--az-surface-2)',
+                        borderColor: 'var(--az-border)',
+                        color: activeFile ? 'var(--az-text)' : 'var(--az-text-muted)',
+                    }}
+                    title={activeFile ? `Current file: ${activeFile.name} (tap to switch)` : 'Select or search files'}
+                    aria-label="Current file — tap to switch"
+                >
+                    {activeFile ? (
+                        <>
+                            <span className="shrink-0 flex items-center justify-center">
+                                <ExplorerFileIcon name={activeFile.name} />
+                            </span>
+                            <span className="truncate">{activeFile.name}</span>
+                        </>
+                    ) : (
+                        <span className="truncate">No file open</span>
+                    )}
+                </button>
+
+                {/* RIGHT: single Run/Stop · Search · More */}
+                <div className="flex items-center gap-0.5 shrink-0">
                     <button
-                        onClick={handleRun}
-                        disabled={isRunning || !activeFile}
-                        aria-label={isRunning ? 'Running code' : 'Run code'}
-                        className={`h-8 px-2.5 rounded-md font-semibold text-[11px] flex items-center gap-1.5 transition-all shadow-sm active:scale-95
+                        onClick={handleRunOrStop}
+                        disabled={!isRunning && !activeFile}
+                        aria-label={isRunning ? 'Stop execution' : 'Run code'}
+                        className={`h-9 min-w-9 px-2.5 rounded-md font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all active:scale-95 border
                             ${isRunning
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                ? 'bg-red-500/15 text-red-300 border-red-500/30'
                                 : !activeFile
-                                    ? 'bg-white/[0.04] text-white/30 border border-white/[0.06] cursor-not-allowed'
-                                    : 'bg-[var(--az-accent)] hover:bg-[var(--az-accent-hover)] text-white border border-[var(--az-accent-bright)]'
+                                    ? 'bg-white/[0.04] text-white/30 border-white/[0.06]'
+                                    : 'bg-[var(--az-accent)] text-white border-[var(--az-accent-bright)]'
                             }
                         `}
                     >
                         {isRunning ? (
                             <>
-                                <Loader2 size={12} className="animate-spin shrink-0" />
-                                <span>Running</span>
+                                <Square size={12} className="fill-current shrink-0" />
+                                <span>Stop</span>
                             </>
                         ) : (
                             <>
-                                <Play size={11} className="fill-current shrink-0" />
+                                <Play size={12} className="fill-current shrink-0" />
                                 <span>Run</span>
                             </>
                         )}
                     </button>
 
-                    {/* Primary Action 2: SEARCH BUTTON */}
                     <button
-                        onClick={onOpenSearch}
+                        onClick={() => onOpenSearch('files')}
                         aria-label="Search files"
-                        className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] transition-colors active:scale-95 border border-transparent"
+                        className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--az-icon)] active:scale-95 border border-transparent"
                     >
-                        <Search size={15} />
+                        <Search size={17} />
                     </button>
 
-                    {/* Primary Action 3: TERMINAL TOGGLE */}
-                    <button
-                        onClick={onToggleTerminal}
-                        aria-label="Toggle terminal"
-                        aria-pressed={isTerminalOpen}
-                        className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors active:scale-95 border
-                            ${isTerminalOpen
-                                ? 'bg-[var(--az-surface-3)] text-[var(--az-accent)] border-[var(--az-border-strong)]'
-                                : 'text-[var(--az-icon)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] border-transparent'
-                            }
-                        `}
-                    >
-                        <Terminal size={15} />
-                    </button>
-
-                    {/* Overflow Menu */}
                     <div className="relative" ref={menuRef}>
                         <button
                             onClick={() => setShowMenu(prev => !prev)}
                             aria-label="More actions"
                             aria-expanded={showMenu}
-                            className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] transition-colors active:scale-95 border border-transparent"
+                            className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--az-icon)] active:scale-95 border border-transparent"
                         >
-                            <MoreVertical size={15} />
+                            <MoreVertical size={17} />
                         </button>
 
                         {showMenu && (
                             <div
-                                className="absolute right-0 top-full mt-1.5 w-48 rounded-xl shadow-2xl border py-1.5 z-50 text-[12px] animate-in fade-in zoom-in-95 duration-100"
+                                role="menu"
+                                className="absolute right-0 top-full mt-1 w-56 rounded-xl shadow-2xl border py-1.5 z-50 text-[13px] max-h-[70dvh] overflow-y-auto custom-scrollbar"
                                 style={{
                                     background: 'var(--az-overlay)',
                                     borderColor: 'var(--az-border-strong)',
                                 }}
                             >
-                                <button
-                                    onClick={() => {
-                                        setShowMenu(false);
-                                        updateSettings('editor', { wordWrap: !settings.editor.wordWrap });
-                                    }}
-                                    className="w-full px-3 py-2 text-left flex items-center justify-between hover:bg-white/[0.06] text-[var(--az-text)] transition-colors min-h-[36px]"
-                                >
-                                    <span className="flex items-center gap-2">
-                                        <WrapText size={14} className="text-[var(--az-icon)]" />
-                                        Word Wrap
-                                    </span>
-                                    <span className="text-[10px] font-mono px-1 rounded bg-white/10">
-                                        {settings.editor.wordWrap ? 'ON' : 'OFF'}
-                                    </span>
-                                </button>
+                                <MenuItem
+                                    icon={<CheckCircle2 size={15} className="text-[var(--az-icon)]" />}
+                                    label="Check code"
+                                    hint="⌃."
+                                    onClick={closeAnd(() => window.dispatchEvent(new CustomEvent('azemax-mobile-check')))}
+                                />
+                                <MenuItem
+                                    icon={<AlignLeft size={15} className="text-[var(--az-icon)]" />}
+                                    label="Format document"
+                                    onClick={closeAnd(() => window.dispatchEvent(new CustomEvent('azemax-mobile-format')))}
+                                />
+                                <MenuItem
+                                    icon={<WrapText size={15} className="text-[var(--az-icon)]" />}
+                                    label="Word Wrap"
+                                    right={<TogglePill on={settings.editor.wordWrap} />}
+                                    onClick={closeAnd(() => updateSettings('editor', { wordWrap: !settings.editor.wordWrap }))}
+                                />
+                                <MenuItem
+                                    icon={<MapIcon size={15} className="text-[var(--az-icon)]" />}
+                                    label="Minimap"
+                                    right={<TogglePill on={settings.editor.showMinimap} />}
+                                    onClick={closeAnd(() => updateSettings('editor', { showMinimap: !settings.editor.showMinimap }))}
+                                />
+                                <MenuItem
+                                    icon={<Zap size={15} className="text-[var(--az-icon)]" />}
+                                    label="AI Suggestions"
+                                    right={<TogglePill on={settings.ai.inlineSuggestions} />}
+                                    onClick={closeAnd(() => updateSettings('ai', { inlineSuggestions: !settings.ai.inlineSuggestions }))}
+                                />
 
-                                <button
-                                    onClick={() => {
-                                        setShowMenu(false);
-                                        updateSettings('ai', { inlineSuggestions: !settings.ai.inlineSuggestions });
-                                    }}
-                                    className="w-full px-3 py-2 text-left flex items-center justify-between hover:bg-white/[0.06] text-[var(--az-text)] transition-colors min-h-[36px]"
-                                >
-                                    <span className="flex items-center gap-2">
-                                        <Zap size={14} className="text-[var(--az-icon)]" />
-                                        AI Suggestions
-                                    </span>
-                                    <span className="text-[10px] font-mono px-1 rounded bg-white/10">
-                                        {settings.ai.inlineSuggestions ? 'ON' : 'OFF'}
-                                    </span>
-                                </button>
+                                <div className="h-px bg-white/[0.06] my-1.5 mx-2" />
 
-                                <div className="h-px bg-white/[0.06] my-1" />
+                                <MenuItem
+                                    icon={<Terminal size={15} className="text-[var(--az-icon)]" />}
+                                    label={isTerminalOpen ? 'Hide Terminal' : 'Open Terminal'}
+                                    onClick={closeAnd(() => {
+                                        if (isTerminalOpen) onToggleTerminal();
+                                        else openTerminalTab('terminal');
+                                    })}
+                                />
+                                <MenuItem
+                                    icon={<AlertTriangle size={15} className="text-[var(--az-icon)]" />}
+                                    label="Problems"
+                                    onClick={closeAnd(() => openTerminalTab('problems'))}
+                                />
+                                <MenuItem
+                                    icon={<FileOutput size={15} className="text-[var(--az-icon)]" />}
+                                    label="Output"
+                                    onClick={closeAnd(() => openTerminalTab('output'))}
+                                />
+                                <MenuItem
+                                    icon={<Command size={15} className="text-[var(--az-icon)]" />}
+                                    label="Commands…"
+                                    onClick={closeAnd(() => onOpenSearch('commands'))}
+                                />
 
                                 {onOpenSettings && (
-                                    <button
-                                        onClick={() => {
-                                            setShowMenu(false);
-                                            onOpenSettings();
-                                        }}
-                                        className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-white/[0.06] text-[var(--az-text)] transition-colors min-h-[36px]"
-                                    >
-                                        <SettingsIcon size={14} className="text-[var(--az-icon)]" />
-                                        Open Settings
-                                    </button>
+                                    <>
+                                        <div className="h-px bg-white/[0.06] my-1.5 mx-2" />
+                                        <MenuItem
+                                            icon={<SettingsIcon size={15} className="text-[var(--az-icon)]" />}
+                                            label="Settings"
+                                            onClick={closeAnd(() => onOpenSettings())}
+                                        />
+                                    </>
                                 )}
                             </div>
                         )}
                     </div>
                 </div>
             </div>
+            {isRunning && (
+                <div className="h-px w-full overflow-hidden" style={{ background: 'var(--az-border)' }} aria-hidden>
+                    <div className="h-full w-1/3 rounded-full animate-pulse" style={{ background: 'var(--az-accent)' }} />
+                </div>
+            )}
         </header>
     );
 };
+
+const MenuItem: React.FC<{
+    icon: React.ReactNode;
+    label: string;
+    hint?: string;
+    right?: React.ReactNode;
+    onClick: () => void;
+}> = ({ icon, label, hint, right, onClick }) => (
+    <button
+        role="menuitem"
+        onClick={onClick}
+        className="w-full px-3 min-h-[44px] py-2 text-left flex items-center gap-2.5 text-[var(--az-text)] transition-colors"
+    >
+        <span className="shrink-0 w-5 flex justify-center">{icon}</span>
+        <span className="flex-1 truncate">{label}</span>
+        {hint && <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.07] text-white/40">{hint}</kbd>}
+        {right}
+    </button>
+);
+
+const TogglePill: React.FC<{ on: boolean }> = ({ on }) => (
+    <span
+        className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border ${on
+            ? 'text-[var(--az-accent-bright)] border-[var(--az-accent-border)] bg-[var(--az-accent-soft)]'
+            : 'text-[var(--az-text-muted)] border-[var(--az-border)] bg-white/[0.04]'
+            }`}
+    >
+        {on ? 'ON' : 'OFF'}
+    </span>
+);
+
+// Re-exported so other mobile surfaces can trigger the same editor actions.
+export const MOBILE_CHECK_EVENT = 'azemax-mobile-check';
+export const MOBILE_FORMAT_EVENT = 'azemax-mobile-format';
+export const MOBILE_OPEN_TERMINAL_EVENT = 'mobile-open-terminal';

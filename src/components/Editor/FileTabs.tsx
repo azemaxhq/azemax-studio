@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { useProjectFile, useProjectActions } from '../../context/ProjectContext';
 import { ExplorerFileIcon } from '../Sidebar/ExplorerIcons';
 import type { FileNode } from '../../utils/mockFileSystem';
@@ -39,8 +39,8 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
             style={{
                 background: 'var(--az-surface)',
                 borderColor: 'var(--az-border)',
-                height: isMobile ? '38px' : '34px',
-                minHeight: isMobile ? '38px' : '34px',
+                height: isMobile ? '42px' : '34px',
+                minHeight: isMobile ? '42px' : '34px',
             }}
         >
             {openFiles.map((file: FileNode) => {
@@ -65,7 +65,7 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
                             }
                         }}
                         className={`group relative flex items-center gap-2 border-r transition-colors duration-150 cursor-pointer shrink-0
-                            ${isMobile ? 'px-3 h-[38px] text-[12.5px]' : 'px-3 h-[34px] text-[12px]'}
+                            ${isMobile ? 'px-3 h-[42px] text-[13px]' : 'px-3 h-[34px] text-[12px]'}
                             ${isActive
                                 ? 'bg-[var(--az-surface-2)] text-[var(--az-text)] font-medium'
                                 : 'text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-white/[0.03]'
@@ -77,7 +77,7 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
                         }}
                         title={file.name}
                     >
-                        {/* Active indicator bar at top or bottom */}
+                        {/* Active indicator bar at bottom */}
                         {isActive && (
                             <div
                                 className="absolute bottom-0 left-0 right-0 h-[2px]"
@@ -95,32 +95,54 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
                             {file.name}
                         </span>
 
-                        {/* Dirty Dot or Close Button */}
-                        <div className="flex items-center shrink-0 ml-1">
-                            {isDirty && !isMobile && (
-                                <span
-                                    className="w-1.5 h-1.5 rounded-full mr-1 group-hover:hidden"
-                                    style={{ background: 'var(--az-accent)' }}
-                                    title="Unsaved changes"
-                                />
-                            )}
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    closeFile(file.id);
-                                }}
-                                aria-label={`Close ${file.name}`}
-                                className={`w-4 h-4 rounded flex items-center justify-center transition-colors text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-white/10
-                                    ${isDirty && !isMobile ? 'hidden group-hover:flex' : 'opacity-70 group-hover:opacity-100'}
-                                `}
-                            >
-                                <X size={isMobile ? 12 : 11} strokeWidth={2} />
-                            </button>
-                        </div>
+                        {/* Unsaved indicator — desktop keeps its dot-until-hover
+                            language; mobile always shows the dot (no hover). */}
+                        {isDirty && !isMobile && (
+                            <span
+                                className="w-1.5 h-1.5 rounded-full mr-1 group-hover:hidden"
+                                style={{ background: 'var(--az-accent)' }}
+                                title="Unsaved changes"
+                            />
+                        )}
+                        {isDirty && isMobile && (
+                            <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0 ml-0.5"
+                                style={{ background: 'var(--az-warning)' }}
+                                title="Unsaved changes"
+                            />
+                        )}
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                closeFile(file.id);
+                            }}
+                            aria-label={`Close ${file.name}`}
+                            className={`rounded flex items-center justify-center transition-colors text-[var(--az-text-muted)] hover:text-[var(--az-text)] hover:bg-white/10 shrink-0
+                                ${isMobile
+                                    ? 'w-7 h-7 -mr-1.5 opacity-80'
+                                    : `w-4 h-4 ${isDirty ? 'hidden group-hover:flex' : 'opacity-70 group-hover:opacity-100'}`
+                                }
+                            `}
+                        >
+                            <X size={isMobile ? 14 : 11} strokeWidth={2} />
+                        </button>
                     </div>
                 );
             })}
+
+            {/* Mobile: quick entry to Explorer (file creation lives there) */}
+            {isMobile && (
+                <button
+                    type="button"
+                    aria-label="Open Explorer to create or browse files"
+                    title="Open Explorer"
+                    onClick={() => window.dispatchEvent(new CustomEvent('mobile-open-explorer'))}
+                    className="shrink-0 w-10 h-[42px] flex items-center justify-center text-[var(--az-text-muted)]"
+                >
+                    <Plus size={15} />
+                </button>
+            )}
         </div>
     );
 };

@@ -148,11 +148,18 @@ interface CodeEditorProps {
     onToggleAi?: () => void;
     isSidebarOpen?: boolean;
     onToggleSidebar?: () => void;
+    /**
+     * Mobile presentation (<768px): hides the desktop toolbar row
+     * (which duplicates the header Run action) in favour of a slim
+     * icon-only action strip, clamps code type to 13–15px and parks
+     * the minimap. Desktop rendering is untouched.
+     */
+    isMobile?: boolean;
 }
 
 let githubDarkThemeDefined = false;
 
-export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) => {
+export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, isMobile = false }) => {
     const { activeFile } = useProjectFile();
     const { updateFileContent, getFileTree, createFile, deleteNode, renameNode } = useProjectActions();
     const { settings, updateSettings } = useSettings();
@@ -1594,6 +1601,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         }
     }, [activeFile, updateFileContent]);
 
+    // Latest-format ref so the mobile event listener below never calls a
+    // stale closure (handleFormat is re-created per render by design).
+    const handleFormatRef = useRef<() => void>(() => {});
+    handleFormatRef.current = handleFormat;
+
+    // Mobile surfaces (header More menu, slim strip overflow, command
+    // palette) trigger the SAME editor actions via these events — no
+    // duplicated logic, desktop shortcuts untouched.
+    useEffect(() => {
+        const onCheck = () => { runDiagnostics(); };
+        const onFormat = () => { handleFormatRef.current(); };
+        window.addEventListener('azemax-mobile-check', onCheck);
+        window.addEventListener('azemax-mobile-format', onFormat);
+        return () => {
+            window.removeEventListener('azemax-mobile-check', onCheck);
+            window.removeEventListener('azemax-mobile-format', onFormat);
+        };
+    }, [runDiagnostics]);
+
     const handleEditorBeforeMount: BeforeMount = (monaco) => {
         // Register the custom dark theme BEFORE @monaco-editor/react calls
         // monaco.editor.setTheme(theme) during editor creation. If it were
@@ -1805,9 +1831,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
     }, [settings.general.uiDensity]);
 
     const editorOptions = useMemo<Monaco.editor.IStandaloneEditorConstructionOptions>(() => ({
-        minimap: { enabled: settings.editor.showMinimap, renderCharacters: !settings.performance.optimizeEditorRendering },
+        // Mobile: minimap is parked below 768px (it would steal ~15% of a
+        // phone viewport). The Map toggle keeps working — it persists the
+        // setting and applies on tablet/desktop widths.
+        minimap: { enabled: isMobile ? false : settings.editor.showMinimap, renderCharacters: !settings.performance.optimizeEditorRendering },
         wordWrap: settings.editor.wordWrap ? 'on' : 'off',
-        fontSize: settings.editor.fontSize,
+        // Mobile: professional coding size, clamped to 13–15px regardless of
+        // the desktop font-size setting (line numbers track ~2px smaller).
+        fontSize: isMobile ? Math.min(15, Math.max(13, settings.editor.fontSize)) : settings.editor.fontSize,
         fontFamily: settings.editor.fontFamily,
         // Force geometric precision & no letter-spacing so char width matches guide math
         letterSpacing: 0,
@@ -1914,6 +1945,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
         settings.code.formatOnType,
         settings.performance.optimizeEditorRendering,
         settings.ai.inlineSuggestions,
+        isMobile,
         densityPadding,
     ]);
 
@@ -1955,7 +1987,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
 
     return (
         <div className="w-full h-full bg-transparent flex flex-col relative group">
-            {/* Toolbar — shares --az-topbar-height with Explorer header for perfect alignment */}
+            {/* Desktop toolbar — hidden on mobile. The mobile header owns the
+                single Run action and the bottom nav owns AI, so rendering this
+                row on phones would duplicate Run and waste vertical chrome. */}
+            {!isMobile && (
             <div className="flex items-center justify-between px-3 shrink-0 overflow-hidden" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}>
                 <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
                     {/* Check Errors — Premium AI DeepCheck (production-grade) */}
@@ -2143,6 +2178,76 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     <AITopbarToggle isOpen={isAiOpen} onToggle={onToggleAi} />
                 </div>
             </div>
+            )}
+
+            {/* Mobile slim action strip — icon-only [Check][Format][Wrap][Map].
+                No Run (single action lives in the mobile header), no AI toggle
+                (bottom nav owns it), no font stepper. 36px tall. */}
+            {isMobile && (
+            <div
+                role="toolbar"
+                aria-label="Editor actions"
+                className="flex items-center gap-0.5 px-2 shrink-0 overflow-x-auto no-scrollbar"
+                style={{ height: '36px', minHeight: '36px', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}
+            >
+                <button
+                    onClick={settings.code.diagnostics ? runDiagnostics : undefined}
+                    disabled={!settings.code.diagnostics || isFormatting}
+                    aria-label={hasErrors ? 'Has errors — tap to re-check' : 'Check code'}
+                    title={diagnosticSummary || 'Check code'}
+                    className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
+                        ${!settings.code.diagnostics
+                            ? 'text-[var(--az-text-disabled)] border-transparent opacity-50'
+                            : hasErrors
+                                ? 'text-[var(--az-error)] border-[var(--az-error-border)] bg-[var(--az-error-soft)]'
+                                : hasWarnings || isCheckSuccess
+                                    ? 'text-[var(--az-success)] border-[var(--az-success-border)] bg-[var(--az-success-soft)]'
+                                    : 'text-[var(--az-icon)] border-transparent'
+                        }`}
+                >
+                    {isChecking ? <Loader2 size={15} className="animate-spin" /> : hasErrors || hasWarnings ? <AlertCircle size={15} /> : <CheckCircle size={15} />}
+                </button>
+                <button
+                    onClick={() => { handleFormat(); }}
+                    disabled={isFormatting}
+                    aria-label="Format document"
+                    title="Format document"
+                    className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center text-[var(--az-icon)] border border-transparent transition-colors active:scale-95"
+                >
+                    {isFormatting ? <Loader2 size={15} className="animate-spin" /> : <AlignLeft size={15} />}
+                </button>
+                <button
+                    onClick={() => updateSettings('editor', { wordWrap: !settings.editor.wordWrap })}
+                    aria-label="Toggle word wrap"
+                    aria-pressed={settings.editor.wordWrap}
+                    title="Toggle word wrap"
+                    className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
+                        ${settings.editor.wordWrap
+                            ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border-[var(--az-border-strong)]'
+                            : 'text-[var(--az-icon)] border-transparent'}`}
+                >
+                    <WrapText size={15} />
+                </button>
+                <button
+                    onClick={() => updateSettings('editor', { showMinimap: !settings.editor.showMinimap })}
+                    aria-label="Toggle minimap"
+                    aria-pressed={settings.editor.showMinimap}
+                    title="Toggle minimap (applies on tablet/desktop widths)"
+                    className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
+                        ${settings.editor.showMinimap
+                            ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border-[var(--az-border-strong)]'
+                            : 'text-[var(--az-icon)] border-transparent'}`}
+                >
+                    <MapIcon size={15} />
+                </button>
+                <span className="flex-1" />
+                <span className="text-[10px] font-mono tabular-nums px-1 shrink-0" style={{ color: 'var(--az-text-faint)' }} title="Diagnostics">
+                    {diagCounts.errors > 0 && <span className="text-[#FF647C] font-semibold mr-1.5">●{diagCounts.errors}</span>}
+                    {diagCounts.warnings > 0 && <span className="text-[#F5B94C] font-semibold">●{diagCounts.warnings}</span>}
+                    {diagCounts.total === 0 && <span>{language.toUpperCase()}</span>}
+                </span>
+            </div>
+            )}
 
             {/* Desktop File Tabs */}
             <FileTabs className="hidden md:flex" />
@@ -2169,8 +2274,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                 <AICommentIndicator activeLine={activeAiLine} editorRef={editorRef} monacoRef={monacoRef} />
             </div>
 
-            {/* Status Bar — neutral, calm */}
-            {settings.general.showStatusBar && (
+            {/* Status Bar — desktop only. On mobile the slim strip above already
+                carries diagnostics + language, so this 24px row is parked to
+                give the editor maximum space. */}
+            {settings.general.showStatusBar && !isMobile && (
                 <div className="h-6 min-h-6 text-[11px] leading-none flex items-center justify-between px-3 shrink-0 select-none font-medium overflow-hidden antialiased" style={{ background: 'var(--az-surface-2)', color: 'var(--az-text-muted)', borderTop: '1px solid var(--az-border)'}}>
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none">

@@ -51,7 +51,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0px)',
             }}
         >
-            <div className="h-[50px] flex items-center justify-around px-2">
+            <div className="h-16 flex items-stretch justify-around px-2" style={{ minHeight: '64px' }}>
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id;
                     return (
@@ -62,7 +62,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                             aria-selected={isActive}
                             aria-label={tab.label}
                             role="tab"
-                            className={`flex-1 flex flex-col items-center justify-center h-full min-w-[48px] py-1 relative transition-colors duration-150 active:opacity-75
+                            className={`flex-1 flex flex-col items-center justify-center min-h-[64px] min-w-[48px] py-2 relative transition-colors duration-150 active:opacity-75
                                 ${isActive
                                     ? 'text-[var(--az-accent-bright)]'
                                     : 'text-[var(--az-text-muted)] hover:text-[var(--az-text)]'

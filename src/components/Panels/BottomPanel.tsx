@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lock, TrendingDown, ChevronRight, ChevronDown, Zap, RefreshCw, Wand2, Loader2, CheckCircle, TrendingUp, Calendar, BarChart3, X, Maximize2, Minimize2 } from 'lucide-react';
+import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lock, TrendingDown, ChevronRight, ChevronDown, Zap, RefreshCw, Wand2, Loader2, CheckCircle, TrendingUp, Calendar, BarChart3, X, Maximize2, Minimize2, FileOutput } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useProjectFile, useProjectActions } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
@@ -381,8 +381,57 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
 
 
 // ────────────────────────────────────────────
+// Output tab — read-only view over the EXISTING execution data
+// (TerminalContext.lastExecutionData). No new execution path.
+// ────────────────────────────────────────────
+const OutputTab: React.FC = () => {
+    const { lastExecutionData, activeTerminalId } = useTerminal();
+    if (!lastExecutionData || (!lastExecutionData.stdout && !lastExecutionData.stderr)) {
+        return (
+            <div className="h-full flex flex-col items-center justify-center gap-2 py-8 text-center px-4">
+                <FileOutput size={22} className="text-[var(--az-text-faint)]" />
+                <p className="text-[12px] font-medium text-[var(--az-text-secondary)]">No output yet</p>
+                <p className="text-[11px] text-[var(--az-text-muted)] max-w-[240px] leading-relaxed">
+                    Press Run to execute the active file — stdout and stderr will appear here.
+                </p>
+            </div>
+        );
+    }
+    const exitOk = lastExecutionData.exitCode === 0;
+    return (
+        <div className="h-full overflow-y-auto custom-scrollbar p-3 font-mono text-[12px] leading-relaxed">
+            <div className="flex items-center gap-2 mb-2 text-[11px] font-sans">
+                <span
+                    className={`px-1.5 py-0.5 rounded font-semibold ${exitOk ? 'bg-[var(--az-success-soft)] text-[var(--az-success)]' : 'bg-[var(--az-error-soft)] text-[var(--az-error)]'}`}
+                >
+                    exit {lastExecutionData.exitCode}
+                </span>
+                <span className="text-[var(--az-text-faint)] tabular-nums">
+                    {(lastExecutionData.executionTime / 1000).toFixed(2)}s
+                    {activeTerminalId ? ` · ${activeTerminalId.slice(0, 8)}` : ''}
+                </span>
+                <span className="text-[var(--az-text-faint)] tabular-nums ml-auto">
+                    {new Date(lastExecutionData.timestamp).toLocaleTimeString()}
+                </span>
+            </div>
+            {lastExecutionData.stdout && (
+                <pre className="whitespace-pre-wrap break-words text-[var(--az-terminal-fg)] mb-2">{lastExecutionData.stdout}</pre>
+            )}
+            {lastExecutionData.stderr && (
+                <pre className="whitespace-pre-wrap break-words text-[#FF8A9D]">{lastExecutionData.stderr}</pre>
+            )}
+        </div>
+    );
+};
+
+// ────────────────────────────────────────────
 // Main BottomPanel Component
 // ────────────────────────────────────────────
+type BottomTab = 'performance' | 'ageing' | 'terminal' | 'problems' | 'output';
+
+const isBottomTab = (v: string | null): v is BottomTab =>
+    v === 'performance' || v === 'ageing' || v === 'terminal' || v === 'problems' || v === 'output';
+
 export const BottomPanel: React.FC<{
     isOverlay?: boolean;
     isOpen?: boolean;
@@ -390,12 +439,25 @@ export const BottomPanel: React.FC<{
     onClose?: () => void;
     isExpanded?: boolean;
     onToggleExpand?: () => void;
-}> = ({ isOverlay, isOpen, onToggle, onClose, isExpanded, onToggleExpand }) => {
+    /**
+     * Mobile presentation: reorders tabs to Terminal / Problems / Output
+     * first (phone priority) and makes the tab bar horizontally scrollable.
+     * Desktop order and content are unchanged.
+     */
+    isMobile?: boolean;
+}> = ({ isOverlay, isOpen, onToggle, onClose, isExpanded, onToggleExpand, isMobile = false }) => {
     // Persist Active Tab
-    const [activeTab, setActiveTab] = useState<'performance' | 'ageing' | 'terminal' | 'problems'>(() => {
+    const [activeTab, setActiveTab] = useState<BottomTab>(() => {
         const saved = localStorage.getItem('bottomPanel_activeTab');
-        return (saved === 'performance' || saved === 'ageing' || saved === 'terminal' || saved === 'problems' ? saved : 'performance') as 'performance' | 'ageing' | 'terminal' | 'problems';
+        return isBottomTab(saved) ? saved : 'performance';
     });
+
+    // The Output tab is a mobile-sheet tab. If a phone-persisted 'output'
+    // value reaches a wider viewport (same browser, resized), fall back to
+    // Terminal so desktop keeps its exact four-tab layout.
+    useEffect(() => {
+        if (!isMobile && activeTab === 'output') setActiveTab('terminal');
+    }, [isMobile, activeTab]);
 
     useEffect(() => {
         localStorage.setItem('bottomPanel_activeTab', activeTab);
@@ -430,6 +492,16 @@ export const BottomPanel: React.FC<{
             window.removeEventListener('run-button-clicked', handleRunButtonClick);
         };
     }, [activeTab, autoOpenTerminalSetting]);
+
+    // Mobile More menu / grabber can request a specific sheet tab.
+    useEffect(() => {
+        const handleOpenTab = (e: Event) => {
+            const tab = (e as CustomEvent).detail?.tab as string | undefined;
+            if (isBottomTab(tab ?? null)) setActiveTab(tab as BottomTab);
+        };
+        window.addEventListener('mobile-open-terminal', handleOpenTab);
+        return () => window.removeEventListener('mobile-open-terminal', handleOpenTab);
+    }, []);
     
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [showAllHotspots, setShowAllHotspots] = useState(false);
@@ -728,42 +800,46 @@ Apply the fix while preserving all other code exactly as-is.`;
 
     return (
         <div className={`h-full flex flex-col bg-transparent ${isOverlay && !isOpen ? 'overflow-hidden' : ''}`}>
-            {/* Tab Bar — 32px stable, centered */}
-            <div className="flex items-center gap-1 px-2 border-b shrink-0 h-8 min-h-8 overflow-hidden" style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
-                <button
-                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'performance' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('performance')}
-                >
-                    <Activity size={13} />
-                    <span className="hidden xs:inline">Performance</span>
-                </button>
-                <button
-                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'ageing' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('ageing')}
-                >
-                    <AlertTriangle size={13} />
-                    <span className="hidden xs:inline">Ageing</span>
-                </button>
-                <button
-                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'terminal' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('terminal')}
-                >
-                    <Terminal size={13} />
-                    <span>Terminal</span>
-                </button>
-                <button
-                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'problems' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('problems')}
-                >
-                    <AlertTriangle size={13} />
-                    <span>Problems</span>
-                    {(problemCounts.errors > 0 || problemCounts.warnings > 0) && (
-                        <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#FF647C] text-white' : 'bg-[#F5B94C] text-black'}`}>
-                            {problemCounts.errors + problemCounts.warnings}
-                        </span>
-                    )}
-                </button>
-                <div className="flex-1" />
+            {/* Tab Bar — 32px stable. Desktop keeps its exact tab order;
+                mobile leads with Terminal / Problems / Output and scrolls. */}
+            <div className={`flex items-center gap-1 px-2 border-b shrink-0 h-8 min-h-8 ${isMobile ? 'overflow-x-auto no-scrollbar' : 'overflow-hidden'}`} style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
+                {(isMobile
+                    ? (['terminal', 'problems', 'output', 'performance', 'ageing'] as BottomTab[])
+                    : (['performance', 'ageing', 'terminal', 'problems'] as BottomTab[])
+                ).map((tab) => (
+                    <button
+                        key={tab}
+                        className={`glass-tab shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${isMobile ? 'min-h-[44px]' : ''} ${activeTab === tab ? 'active' : ''}`}
+                        onClick={() => setActiveTab(tab)}
+                        aria-selected={activeTab === tab}
+                        role="tab"
+                    >
+                        {tab === 'performance' && (<><Activity size={13} /><span className="hidden xs:inline">Performance</span></>)}
+                        {tab === 'ageing' && (<><AlertTriangle size={13} /><span className="hidden xs:inline">Ageing</span></>)}
+                        {tab === 'terminal' && (<><Terminal size={13} /><span>Terminal</span></>)}
+                        {tab === 'problems' && (
+                            <>
+                                <AlertTriangle size={13} />
+                                <span>Problems</span>
+                                {(problemCounts.errors > 0 || problemCounts.warnings > 0) && (
+                                    <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#FF647C] text-white' : 'bg-[#F5B94C] text-black'}`}>
+                                        {problemCounts.errors + problemCounts.warnings}
+                                    </span>
+                                )}
+                            </>
+                        )}
+                        {tab === 'output' && (
+                            <>
+                                <FileOutput size={13} />
+                                <span>Output</span>
+                                {lastExecutionData && lastExecutionData.exitCode !== 0 && (lastExecutionData.stdout || lastExecutionData.stderr) && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#FF647C]" title={`Exit ${lastExecutionData.exitCode}`} />
+                                )}
+                            </>
+                        )}
+                    </button>
+                ))}
+                <div className="flex-1 shrink-0 min-w-2" />
                 {onToggleExpand && (
                     <button
                         onClick={onToggleExpand}
@@ -1025,6 +1101,11 @@ Apply the fix while preserving all other code exactly as-is.`;
                     {activeTab === 'problems' && (
                         <div className="h-full overflow-hidden">
                             <ProblemsPanel />
+                        </div>
+                    )}
+                    {activeTab === 'output' && (
+                        <div className="h-full overflow-hidden">
+                            <OutputTab />
                         </div>
                     )}
                 </div>

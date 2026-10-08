@@ -1408,4 +1408,25 @@ button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
   }
 }
 
+/* === Mobile IDE corrective layer — phones only (<768px). Desktop untouched. === */
+@media (max-width: 767px) {
+  /* No horizontal page scrolling; long code lines scroll inside Monaco. */
+  html, body, #root {
+    overflow-x: clip;
+    max-width: 100vw;
+  }
+  /* Remove tap delay / double-tap zoom on buttons. */
+  button {
+    touch-action: manipulation;
+  }
+  /* 16px inputs prevent iOS Safari auto-zoom-on-focus breaking layout. */
+  .mobile-no-zoom {
+    font-size: 16px !important;
+  }
+  /* Line numbers track ~2px under the 13–15px mobile code size. */
+  .monaco-editor .line-numbers {
+    font-size: 12px !important;
+  }
+}
+
 

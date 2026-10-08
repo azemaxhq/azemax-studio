@@ -11,6 +11,8 @@ import { getSettings } from '../../settings/settingsStore';
 import { useSettingsSelector } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useMobileViewport } from '../../hooks/useMobileViewport';
+import { useProjectFile } from '../../context/ProjectContext';
+import { getCounts, subscribeDiagnostics } from '../../core/diagnostics/diagnosticStore';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav, type MobileTab } from './MobileBottomNav';
 import { MobileSearchModal } from '../UI/MobileSearchModal';
@@ -40,13 +42,109 @@ export const MainLayout: React.FC = () => {
     // tracked via matchMedia (no resize listeners / polling).
     const isDesktop = useMediaQuery('(min-width: 1024px)');
     const isMobile = useMediaQuery('(max-width: 767px)');
-    const { isKeyboardOpen } = useMobileViewport();
+    const { isKeyboardOpen, viewportHeight } = useMobileViewport();
 
     // Mobile state management
     const [mobileTab, setMobileTab] = React.useState<MobileTab>('editor');
     const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
+    const [mobileSearchTab, setMobileSearchTab] = React.useState<'files' | 'commands'>('files');
     const [isMobileTerminalOpen, setIsMobileTerminalOpen] = React.useState(false);
     const [isMobileTerminalExpanded, setIsMobileTerminalExpanded] = React.useState(false);
+
+    // Mobile IDE helpers (hooks only — consumed by the mobile branch below)
+    const { activeFile: mobileActiveFile } = useProjectFile();
+    const autoOpenTerminalOnRun = useSettingsSelector(s => s.terminal.autoOpenTerminal);
+    const [mobileProblemCount, setMobileProblemCount] = React.useState(0);
+    const mobileSheetRef = React.useRef<HTMLDivElement>(null);
+    const mobileSheetDragRef = React.useRef<{ startY: number; startHeight: number } | null>(null);
+
+    // Height of the on-screen keyboard (px) so the terminal sheet and AI
+    // composer stay above it instead of being buried underneath.
+    const mobileKeyboardHeight = isKeyboardOpen && viewportHeight != null
+        ? Math.max(0, window.innerHeight - viewportHeight)
+        : 0;
+
+    // Mobile: live problem count for the terminal grabber badge.
+    React.useEffect(() => {
+        const update = () => {
+            const c = getCounts(mobileActiveFile?.id ?? null);
+            setMobileProblemCount(c.errors + c.warnings);
+        };
+        update();
+        const unsub = subscribeDiagnostics(update);
+        return unsub;
+    }, [mobileActiveFile?.id]);
+
+    // Mobile: pressing Run opens the bottom sheet (terminal tab) so output
+    // is visible — honouring the existing auto-open-terminal setting.
+    // A specific sheet tab can be requested via `mobile-open-terminal`.
+    // The tab is persisted first so a freshly mounting BottomPanel
+    // (sheet was closed) initializes on the requested tab.
+    React.useEffect(() => {
+        const persistTab = (tab: unknown) => {
+            if (tab === 'terminal' || tab === 'problems' || tab === 'output') {
+                try { localStorage.setItem('bottomPanel_activeTab', tab as string); } catch { /* ignore */ }
+            }
+        };
+        const onRun = () => {
+            if (autoOpenTerminalOnRun) setIsMobileTerminalOpen(true);
+        };
+        const onOpenSheet = (e: Event) => {
+            persistTab((e as CustomEvent).detail?.tab);
+            setIsMobileTerminalOpen(true);
+        };
+        window.addEventListener('run-button-clicked', onRun);
+        window.addEventListener('mobile-open-terminal', onOpenSheet);
+        return () => {
+            window.removeEventListener('run-button-clicked', onRun);
+            window.removeEventListener('mobile-open-terminal', onOpenSheet);
+        };
+    }, [autoOpenTerminalOnRun]);
+
+    // Mobile: picking a file in Explorer returns to the Editor with that
+    // file active. Same file state — only the presentation tab changes.
+    const mobilePrevFileIdRef = React.useRef<string | null>(null);
+    React.useEffect(() => {
+        const currentId = mobileActiveFile?.id ?? null;
+        if (mobileTab !== 'explorer') {
+            mobilePrevFileIdRef.current = currentId;
+        } else if (currentId && mobilePrevFileIdRef.current !== currentId) {
+            mobilePrevFileIdRef.current = currentId;
+            setMobileTab('editor');
+        }
+    }, [mobileActiveFile?.id, mobileTab]);
+
+    // Mobile sheet drag: vertical drag on the grabber resizes live (direct
+    // DOM write, zero re-renders); release commits expanded/collapsed or
+    // dismisses the sheet on a long downward drag.
+    const onMobileSheetDragStart = React.useCallback((e: React.PointerEvent) => {
+        const el = mobileSheetRef.current;
+        if (!el) return;
+        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+        mobileSheetDragRef.current = { startY: e.clientY, startHeight: el.offsetHeight };
+    }, []);
+    const onMobileSheetDragMove = React.useCallback((e: React.PointerEvent) => {
+        const drag = mobileSheetDragRef.current;
+        const el = mobileSheetRef.current;
+        if (!drag || !el) return;
+        const next = Math.min(window.innerHeight * 0.88, Math.max(window.innerHeight * 0.24, drag.startHeight + (drag.startY - e.clientY)));
+        el.style.height = `${next}px`;
+    }, []);
+    const onMobileSheetDragEnd = React.useCallback((e: React.PointerEvent) => {
+        const drag = mobileSheetDragRef.current;
+        const el = mobileSheetRef.current;
+        mobileSheetDragRef.current = null;
+        if (!drag || !el) return;
+        try { (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); } catch { /* ignore */ }
+        const dy = drag.startY - e.clientY;
+        el.style.height = '';
+        if (dy < -110) {
+            setIsMobileTerminalOpen(false);
+        } else {
+            const ratio = el.offsetHeight / window.innerHeight;
+            setIsMobileTerminalExpanded(ratio > 0.66);
+        }
+    }, []);
 
     // Helper to load from storage or default
     const loadState = (key: string, defaultVal: number) => {
@@ -328,11 +426,21 @@ export const MainLayout: React.FC = () => {
             if (isMobile) setMobileTab('ai');
             else setIsAiSidebarOpen(true);
         };
+        const onOpenExplorer = () => {
+            if (isMobile) setMobileTab('explorer');
+        };
+        const onOpenSettings = () => {
+            if (isMobile) setMobileTab('settings');
+        };
         window.addEventListener('mobile-switch-to-editor', onSwitchEditor);
         window.addEventListener('ai-panel-open', onOpenAi);
+        window.addEventListener('mobile-open-explorer', onOpenExplorer);
+        window.addEventListener('mobile-open-settings', onOpenSettings);
         return () => {
             window.removeEventListener('mobile-switch-to-editor', onSwitchEditor);
             window.removeEventListener('ai-panel-open', onOpenAi);
+            window.removeEventListener('mobile-open-explorer', onOpenExplorer);
+            window.removeEventListener('mobile-open-settings', onOpenSettings);
         };
     }, [isMobile]);
 
@@ -346,55 +454,103 @@ export const MainLayout: React.FC = () => {
         return () => document.removeEventListener('contextmenu', handleContextMenu);
     }, []);
 
-    // Dedicated Mobile IDE presentation (under 768px)
+    // Dedicated Mobile IDE presentation (under 768px).
+    // Vertical budget: header 56px + tabs 42px + editor (flex) +
+    // terminal grabber 28px + bottom nav 64px. No duplicated Run.
     if (isMobile) {
         return (
             <div
                 className="flex flex-col app-viewport w-full overflow-hidden relative select-none"
                 style={{ background: 'var(--az-bg)', color: 'var(--az-text)' }}
             >
-                {/* Mobile Header: Logo, Active File Context, Run, Search, Terminal, Overflow Menu */}
+                {/* Compact IDE header: logo · file · Run/Stop · Search · More */}
                 <MobileHeader
-                    onOpenSearch={() => setIsMobileSearchOpen(true)}
+                    onOpenSearch={(tab) => {
+                        setMobileSearchTab(tab ?? 'files');
+                        setIsMobileSearchOpen(true);
+                    }}
                     onToggleTerminal={() => setIsMobileTerminalOpen(prev => !prev)}
                     isTerminalOpen={isMobileTerminalOpen}
                     onOpenSettings={() => setMobileTab('settings')}
                 />
 
-                {/* File Tabs: Horizontal scrollable tabs */}
+                {/* Compact horizontal file tabs */}
                 <FileTabs isMobile={true} />
 
-                {/* Main Editor Center Container */}
+                {/* Editor — receives all remaining space */}
                 <div data-testid="editor-root" className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
                     <div data-testid="editor" className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-surface)' }}>
                         <CodeEditor
+                            isMobile={true}
                             isAiOpen={mobileTab === 'ai'}
                             onToggleAi={() => setMobileTab(prev => prev === 'ai' ? 'editor' : 'ai')}
                         />
                     </div>
 
-                    {/* Mobile Terminal Bottom Sheet */}
+                    {/* Terminal / Problems / Output bottom sheet (real xterm,
+                        real diagnostics, real execution output) */}
                     {isMobileTerminalOpen && (
                         <div
-                            className="absolute left-0 right-0 bottom-0 z-40 flex flex-col shadow-2xl border-t animate-in slide-in-from-bottom duration-200"
+                            ref={mobileSheetRef}
+                            className="absolute left-0 right-0 z-40 flex flex-col shadow-2xl border-t rounded-t-xl overflow-hidden"
                             style={{
+                                bottom: mobileKeyboardHeight,
                                 height: isMobileTerminalExpanded ? '85dvh' : '48dvh',
                                 background: 'var(--az-surface-2)',
                                 borderColor: 'var(--az-border-strong)',
                             }}
                         >
-                            <BottomPanel
-                                isOverlay={false}
-                                isOpen={true}
-                                isExpanded={isMobileTerminalExpanded}
-                                onToggleExpand={() => setIsMobileTerminalExpanded(prev => !prev)}
-                                onClose={() => setIsMobileTerminalOpen(false)}
-                            />
+                            {/* Drag grabber — tap toggles expand, drag resizes */}
+                            <div
+                                className="shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none"
+                                style={{ height: '20px', touchAction: 'none' }}
+                                onPointerDown={onMobileSheetDragStart}
+                                onPointerMove={onMobileSheetDragMove}
+                                onPointerUp={onMobileSheetDragEnd}
+                                onPointerCancel={onMobileSheetDragEnd}
+                                onClick={() => setIsMobileTerminalExpanded(prev => !prev)}
+                                role="separator"
+                                aria-label="Drag to resize terminal panel, tap to expand"
+                                title="Drag to resize · tap to expand"
+                            >
+                                <div className="w-10 h-1 rounded-full bg-white/20" />
+                            </div>
+                            <div className="flex-1 min-h-0 flex flex-col">
+                                <BottomPanel
+                                    isMobile={true}
+                                    isOverlay={false}
+                                    isOpen={true}
+                                    isExpanded={isMobileTerminalExpanded}
+                                    onToggleExpand={() => setIsMobileTerminalExpanded(prev => !prev)}
+                                    onClose={() => setIsMobileTerminalOpen(false)}
+                                />
+                            </div>
                         </div>
                     )}
                 </div>
 
-                {/* Mobile Bottom Navigation Bar (Hidden when virtual keyboard is open) */}
+                {/* Terminal grabber — one-tap Terminal/Problems/Output access
+                    when the sheet is closed (hidden with the nav on keyboard) */}
+                {!isMobileTerminalOpen && !isKeyboardOpen && (
+                    <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('mobile-open-terminal', { detail: { tab: 'terminal' } }))}
+                        aria-label="Open terminal panel"
+                        className="shrink-0 flex items-center justify-center gap-2 border-t active:bg-white/[0.04]"
+                        style={{ height: '28px', background: 'var(--az-surface)', borderColor: 'var(--az-border)' }}
+                    >
+                        <span className="w-8 h-1 rounded-full bg-white/15" aria-hidden />
+                        <span className="text-[10px] font-medium tracking-wide" style={{ color: 'var(--az-text-muted)' }}>
+                            Terminal
+                        </span>
+                        {mobileProblemCount > 0 && (
+                            <span className="text-[9px] px-1.5 py-px rounded-full font-mono font-bold bg-[#F5B94C]/15 text-[#F5B94C] border border-[#F5B94C]/25">
+                                {mobileProblemCount} problem{mobileProblemCount === 1 ? '' : 's'}
+                            </span>
+                        )}
+                    </button>
+                )}
+
+                {/* Bottom navigation (hidden when the virtual keyboard is open) */}
                 {!isKeyboardOpen && (
                     <MobileBottomNav
                         activeTab={mobileTab}
@@ -404,12 +560,15 @@ export const MainLayout: React.FC = () => {
                     />
                 )}
 
-                {/* Full-Screen Drawers for Mobile Navigation */}
+                {/* Full-screen mobile workspaces — reuse the desktop components */}
                 {mobileTab === 'explorer' && (
                     <div
                         data-testid="sidebar"
-                        className="absolute inset-0 z-50 flex flex-col animate-in slide-in-from-left duration-200"
-                        style={{ background: 'var(--az-surface)' }}
+                        className="absolute inset-0 z-50 flex flex-col"
+                        style={{
+                            background: 'var(--az-surface)',
+                            paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)',
+                        }}
                     >
                         <Sidebar onClose={() => setMobileTab('editor')} />
                     </div>
@@ -417,8 +576,12 @@ export const MainLayout: React.FC = () => {
 
                 {mobileTab === 'ai' && (
                     <div
-                        className="absolute inset-0 z-50 flex flex-col animate-in slide-in-from-right duration-200"
-                        style={{ background: 'var(--az-surface)' }}
+                        className="absolute inset-x-0 top-0 z-50 flex flex-col"
+                        style={{
+                            bottom: mobileKeyboardHeight,
+                            background: 'var(--az-surface)',
+                            paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)',
+                        }}
                     >
                         <AIAssistant isVisible={true} onClose={() => setMobileTab('editor')} />
                     </div>
@@ -426,16 +589,20 @@ export const MainLayout: React.FC = () => {
 
                 {mobileTab === 'settings' && (
                     <div
-                        className="absolute inset-0 z-50 flex flex-col animate-in slide-in-from-bottom duration-200"
-                        style={{ background: 'var(--az-surface)' }}
+                        className="absolute inset-0 z-50 flex flex-col"
+                        style={{
+                            background: 'var(--az-surface)',
+                            paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)',
+                        }}
                     >
                         <SettingsSidebar onClose={() => setMobileTab('editor')} />
                     </div>
                 )}
 
-                {/* Mobile Search / Quick Open Modal */}
+                {/* Search / command palette modal */}
                 <MobileSearchModal
                     isOpen={isMobileSearchOpen}
+                    initialTab={mobileSearchTab}
                     onClose={() => setIsMobileSearchOpen(false)}
                 />
 
