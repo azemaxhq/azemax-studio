@@ -4,7 +4,7 @@ import {
     FilePlus, FolderPlus, ChevronsDownUp, ChevronsUpDown,
     RefreshCw, Search, MoreHorizontal,
     ArrowUpDown, ArrowUp, ArrowDown, Folder,
-    FileType, Clock, HardDrive,
+    FileType, Clock, HardDrive, X,
 } from 'lucide-react';
 import { FileExplorer } from './FileExplorer';
 import { useProjectFile, useProjectUI, useProjectActions } from '../../context/ProjectContext';
@@ -117,7 +117,11 @@ const HeaderActionBtn = ({
     );
 };
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+    onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     const { fileTree } = useProjectFile();
     const { selectedFolder, expandedFolderIds, creationState } = useProjectUI();
     const { startCreating, collapseAll, expandAll } = useProjectActions();
@@ -350,6 +354,16 @@ export const Sidebar: React.FC = () => {
                                 </div>
                             )}
                         </div>
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className="w-7 h-7 flex items-center justify-center rounded-[6px] border border-transparent hover:bg-white/[0.08] hover:border-[var(--az-border)] text-[var(--az-icon)] hover:text-[var(--az-text)] transition-colors ml-1 shrink-0"
+                                aria-label="Close Explorer"
+                                title="Close Explorer"
+                            >
+                                <X size={15} strokeWidth={1.75} />
+                            </button>
+                        )}
                     </div>
                 </div>
 

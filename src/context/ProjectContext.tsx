@@ -30,6 +30,7 @@ const ACTIVE_FILE_KEY = 'azemax-active-file-id';
 const LEGACY_ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
 const EXPANDED_KEY = 'azemax-expanded-folders';
 const LEGACY_EXPANDED_KEY = 'deepcontext-expanded-folders';
+const OPEN_FILES_KEY = 'azemax-open-files';
 
 // AI error sentinels must never be persisted as file content — if a previous
 // bug wrote an error string into a file, treat it as corruption and reset.
@@ -225,6 +226,7 @@ interface ProjectFileState {
     fileTree: FileNode[];
     activeFile: FileNode | null;
     modifiedFiles: Set<string>;
+    openFiles: FileNode[];
 }
 
 interface ProjectUIState {
@@ -239,6 +241,7 @@ interface ProjectUIState {
 
 interface ProjectActions {
     setActiveFile: (file: FileNode) => void;
+    closeFile: (fileId: string) => void;
     setSelectedFolder: (folderId: string | null) => void;
     setSelectedNode: (nodeId: string | null) => void;
     toggleFolder: (folderId: string) => void;
@@ -347,6 +350,22 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
     const [clipboard, setClipboard] = useState<{ nodeIds: string[]; mode: 'cut' | 'copy' } | null>(null);
     const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
+    const [openFileIds, setOpenFileIds] = useState<string[]>(() => {
+        try {
+            const saved = nsGetItem(OPEN_FILES_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const valid = parsed.filter(id => {
+                        const node = findNodeById(initial.tree, id);
+                        return node && node.type === 'file';
+                    });
+                    if (valid.length > 0) return valid;
+                }
+            }
+        } catch { /* ignore */ }
+        return activeFile ? [activeFile.id] : [];
+    });
 
     // Latest-state ref so every action stays referentially stable while still
     // reading the freshest tree/active file/selection. `latestTreeRef` is the
@@ -410,7 +429,36 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         if (getSettings().privacy.saveWorkspaceState) {
             nsSetItem(ACTIVE_FILE_KEY, file.id);
         }
+        setOpenFileIds(prev => {
+            if (prev.includes(file.id)) return prev;
+            const next = [...prev, file.id];
+            try { nsSetItem(OPEN_FILES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+            return next;
+        });
     }, []);
+
+    const closeFile = useCallback((fileId: string) => {
+        setOpenFileIds(prev => {
+            const next = prev.filter(id => id !== fileId);
+            try { nsSetItem(OPEN_FILES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+            if (stateRef.current.activeFile?.id === fileId) {
+                const nextActiveId = next[next.length - 1];
+                if (nextActiveId) {
+                    const node = findNodeById(latestTreeRef.current, nextActiveId);
+                    if (node && node.type === 'file') {
+                        setActiveFile(node);
+                    } else {
+                        setActiveFileState(null);
+                        setActiveFileMeta(null);
+                    }
+                } else {
+                    setActiveFileState(null);
+                    setActiveFileMeta(null);
+                }
+            }
+            return next;
+        });
+    }, [setActiveFile]);
 
     /**
      * Refresh the active-file node + meta from the latest committed tree. Ids
@@ -850,20 +898,36 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         expandRecursively,
         getFileTree,
         getActiveFile,
+        closeFile,
     }), [
         setActiveFile, setSelectedFolder, setSelectedNode, toggleFolder, createFile, createFolder, createNestedFolders,
         createFileInFolder, createFolderInFolder, ensureFolderUnder,
         createProjectTemplate, deleteNode, updateFileContent, startCreating, cancelCreation, commitCreation,
         renameNode, collapseAll, expandAll, moveNode, toggleSelection, selectRange, selectAll,
         deleteMultipleNodes, clearSelection, cutNodes, copyNodes, pasteNodes, duplicateNode,
-        expandRecursively, getFileTree, getActiveFile,
+        expandRecursively, getFileTree, getActiveFile, closeFile,
     ]);
+
+    const openFiles = React.useMemo(() => {
+        const list: FileNode[] = [];
+        for (const id of openFileIds) {
+            const node = findNodeById(fileTree, id);
+            if (node && node.type === 'file') {
+                list.push(node);
+            }
+        }
+        if (activeFile && !list.some(f => f.id === activeFile.id)) {
+            list.push(activeFile);
+        }
+        return list;
+    }, [openFileIds, fileTree, activeFile]);
 
     const fileValue = React.useMemo<ProjectFileState>(() => ({
         fileTree,
         activeFile,
         modifiedFiles,
-    }), [fileTree, activeFile, modifiedFiles]);
+        openFiles,
+    }), [fileTree, activeFile, modifiedFiles, openFiles]);
 
     const uiValue = React.useMemo<ProjectUIState>(() => ({
         selectedFolder,

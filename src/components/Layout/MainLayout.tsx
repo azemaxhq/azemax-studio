@@ -10,6 +10,11 @@ import { PerformanceBudgetMonitor } from '../PerformanceBudgetMonitor';
 import { getSettings } from '../../settings/settingsStore';
 import { useSettingsSelector } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useMobileViewport } from '../../hooks/useMobileViewport';
+import { MobileHeader } from './MobileHeader';
+import { MobileBottomNav, type MobileTab } from './MobileBottomNav';
+import { MobileSearchModal } from '../UI/MobileSearchModal';
+import { FileTabs } from '../Editor/FileTabs';
 
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 
@@ -34,6 +39,14 @@ export const MainLayout: React.FC = () => {
     // slide over the editor instead of stealing inline width. The media query is
     // tracked via matchMedia (no resize listeners / polling).
     const isDesktop = useMediaQuery('(min-width: 1024px)');
+    const isMobile = useMediaQuery('(max-width: 767px)');
+    const { isKeyboardOpen } = useMobileViewport();
+
+    // Mobile state management
+    const [mobileTab, setMobileTab] = React.useState<MobileTab>('editor');
+    const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
+    const [isMobileTerminalOpen, setIsMobileTerminalOpen] = React.useState(false);
+    const [isMobileTerminalExpanded, setIsMobileTerminalExpanded] = React.useState(false);
 
     // Helper to load from storage or default
     const loadState = (key: string, defaultVal: number) => {
@@ -308,6 +321,21 @@ export const MainLayout: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [toggleAiSidebar]);
 
+    // Mobile event listeners
+    React.useEffect(() => {
+        const onSwitchEditor = () => setMobileTab('editor');
+        const onOpenAi = () => {
+            if (isMobile) setMobileTab('ai');
+            else setIsAiSidebarOpen(true);
+        };
+        window.addEventListener('mobile-switch-to-editor', onSwitchEditor);
+        window.addEventListener('ai-panel-open', onOpenAi);
+        return () => {
+            window.removeEventListener('mobile-switch-to-editor', onSwitchEditor);
+            window.removeEventListener('ai-panel-open', onOpenAi);
+        };
+    }, [isMobile]);
+
     // Disable native browser context menu globally
     React.useEffect(() => {
         const handleContextMenu = (e: MouseEvent) => {
@@ -317,6 +345,104 @@ export const MainLayout: React.FC = () => {
         document.addEventListener('contextmenu', handleContextMenu);
         return () => document.removeEventListener('contextmenu', handleContextMenu);
     }, []);
+
+    // Dedicated Mobile IDE presentation (under 768px)
+    if (isMobile) {
+        return (
+            <div
+                className="flex flex-col app-viewport w-full overflow-hidden relative select-none"
+                style={{ background: 'var(--az-bg)', color: 'var(--az-text)' }}
+            >
+                {/* Mobile Header: Logo, Active File Context, Run, Search, Terminal, Overflow Menu */}
+                <MobileHeader
+                    onOpenSearch={() => setIsMobileSearchOpen(true)}
+                    onToggleTerminal={() => setIsMobileTerminalOpen(prev => !prev)}
+                    isTerminalOpen={isMobileTerminalOpen}
+                    onOpenSettings={() => setMobileTab('settings')}
+                />
+
+                {/* File Tabs: Horizontal scrollable tabs */}
+                <FileTabs isMobile={true} />
+
+                {/* Main Editor Center Container */}
+                <div data-testid="editor-root" className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
+                    <div data-testid="editor" className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-surface)' }}>
+                        <CodeEditor
+                            isAiOpen={mobileTab === 'ai'}
+                            onToggleAi={() => setMobileTab(prev => prev === 'ai' ? 'editor' : 'ai')}
+                        />
+                    </div>
+
+                    {/* Mobile Terminal Bottom Sheet */}
+                    {isMobileTerminalOpen && (
+                        <div
+                            className="absolute left-0 right-0 bottom-0 z-40 flex flex-col shadow-2xl border-t animate-in slide-in-from-bottom duration-200"
+                            style={{
+                                height: isMobileTerminalExpanded ? '85dvh' : '48dvh',
+                                background: 'var(--az-surface-2)',
+                                borderColor: 'var(--az-border-strong)',
+                            }}
+                        >
+                            <BottomPanel
+                                isOverlay={false}
+                                isOpen={true}
+                                isExpanded={isMobileTerminalExpanded}
+                                onToggleExpand={() => setIsMobileTerminalExpanded(prev => !prev)}
+                                onClose={() => setIsMobileTerminalOpen(false)}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Mobile Bottom Navigation Bar (Hidden when virtual keyboard is open) */}
+                {!isKeyboardOpen && (
+                    <MobileBottomNav
+                        activeTab={mobileTab}
+                        onTabChange={(tab) => {
+                            setMobileTab(tab);
+                        }}
+                    />
+                )}
+
+                {/* Full-Screen Drawers for Mobile Navigation */}
+                {mobileTab === 'explorer' && (
+                    <div
+                        data-testid="sidebar"
+                        className="absolute inset-0 z-50 flex flex-col animate-in slide-in-from-left duration-200"
+                        style={{ background: 'var(--az-surface)' }}
+                    >
+                        <Sidebar onClose={() => setMobileTab('editor')} />
+                    </div>
+                )}
+
+                {mobileTab === 'ai' && (
+                    <div
+                        className="absolute inset-0 z-50 flex flex-col animate-in slide-in-from-right duration-200"
+                        style={{ background: 'var(--az-surface)' }}
+                    >
+                        <AIAssistant isVisible={true} onClose={() => setMobileTab('editor')} />
+                    </div>
+                )}
+
+                {mobileTab === 'settings' && (
+                    <div
+                        className="absolute inset-0 z-50 flex flex-col animate-in slide-in-from-bottom duration-200"
+                        style={{ background: 'var(--az-surface)' }}
+                    >
+                        <SettingsSidebar onClose={() => setMobileTab('editor')} />
+                    </div>
+                )}
+
+                {/* Mobile Search / Quick Open Modal */}
+                <MobileSearchModal
+                    isOpen={isMobileSearchOpen}
+                    onClose={() => setIsMobileSearchOpen(false)}
+                />
+
+                <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development' && developerDiagnostics} />
+            </div>
+        );
+    }
 
     return (
         <div className={`flex app-viewport w-full overflow-hidden relative ${resizingSide ? 'select-none' : ''}`} style={{ background: 'var(--az-bg)', color: 'var(--az-text)' }}>

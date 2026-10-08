@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lock, TrendingDown, ChevronRight, ChevronDown, Zap, RefreshCw, Wand2, Loader2, CheckCircle, TrendingUp, Calendar, BarChart3 } from 'lucide-react';
+import { Activity, AlertTriangle, Terminal, Shield, Code, Layers, Paintbrush, Lock, TrendingDown, ChevronRight, ChevronDown, Zap, RefreshCw, Wand2, Loader2, CheckCircle, TrendingUp, Calendar, BarChart3, X, Maximize2, Minimize2 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useProjectFile, useProjectActions } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
@@ -383,7 +383,14 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
 // ────────────────────────────────────────────
 // Main BottomPanel Component
 // ────────────────────────────────────────────
-export const BottomPanel: React.FC<{ isOverlay?: boolean; isOpen?: boolean; onToggle?: () => void }> = ({ isOverlay, isOpen, onToggle }) => {
+export const BottomPanel: React.FC<{
+    isOverlay?: boolean;
+    isOpen?: boolean;
+    onToggle?: () => void;
+    onClose?: () => void;
+    isExpanded?: boolean;
+    onToggleExpand?: () => void;
+}> = ({ isOverlay, isOpen, onToggle, onClose, isExpanded, onToggleExpand }) => {
     // Persist Active Tab
     const [activeTab, setActiveTab] = useState<'performance' | 'ageing' | 'terminal' | 'problems'>(() => {
         const saved = localStorage.getItem('bottomPanel_activeTab');
@@ -724,50 +731,68 @@ Apply the fix while preserving all other code exactly as-is.`;
             {/* Tab Bar — 32px stable, centered */}
             <div className="flex items-center gap-1 px-2 border-b shrink-0 h-8 min-h-8 overflow-hidden" style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
                 <button
-                    className={`glass-tab flex items-center gap-2 ${activeTab === 'performance' ? 'active' : ''}`}
+                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'performance' ? 'active' : ''}`}
                     onClick={() => setActiveTab('performance')}
                 >
-                    <Activity size={14} />
-                    <span className="hidden sm:inline">Performance</span>
+                    <Activity size={13} />
+                    <span className="hidden xs:inline">Performance</span>
                 </button>
                 <button
-                    className={`glass-tab flex items-center gap-2 ${activeTab === 'ageing' ? 'active' : ''}`}
+                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'ageing' ? 'active' : ''}`}
                     onClick={() => setActiveTab('ageing')}
                 >
-                    <AlertTriangle size={14} />
-                    <span className="hidden sm:inline">Code Ageing</span>
+                    <AlertTriangle size={13} />
+                    <span className="hidden xs:inline">Ageing</span>
                 </button>
                 <button
-                    className={`glass-tab flex items-center gap-2 ${activeTab === 'terminal' ? 'active' : ''}`}
+                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'terminal' ? 'active' : ''}`}
                     onClick={() => setActiveTab('terminal')}
                 >
-                    <Terminal size={14} />
-                    <span className="hidden sm:inline">Terminal</span>
+                    <Terminal size={13} />
+                    <span>Terminal</span>
                 </button>
                 <button
-                    className={`glass-tab flex items-center gap-2 ${activeTab === 'problems' ? 'active' : ''}`}
+                    className={`glass-tab flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === 'problems' ? 'active' : ''}`}
                     onClick={() => setActiveTab('problems')}
                 >
-                    <AlertTriangle size={14} />
-                    <span className="hidden sm:inline">Problems</span>
+                    <AlertTriangle size={13} />
+                    <span>Problems</span>
                     {(problemCounts.errors > 0 || problemCounts.warnings > 0) && (
                         <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#FF647C] text-white' : 'bg-[#F5B94C] text-black'}`}>
                             {problemCounts.errors + problemCounts.warnings}
                         </span>
                     )}
                 </button>
-                {isOverlay && (
-                    <>
-                        <div className="flex-1" />
-                        <button
-                            onClick={onToggle}
-                            className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors"
-                            title={isOpen ? 'Collapse panel' : 'Expand panel'}
-                            aria-label={isOpen ? 'Collapse panel' : 'Expand panel'}
-                        >
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? '' : 'rotate-180'}`} />
-                        </button>
-                    </>
+                <div className="flex-1" />
+                {onToggleExpand && (
+                    <button
+                        onClick={onToggleExpand}
+                        className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                        title={isExpanded ? 'Collapse to half screen' : 'Expand to full screen'}
+                        aria-label={isExpanded ? 'Collapse to half screen' : 'Expand to full screen'}
+                    >
+                        {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                    </button>
+                )}
+                {isOverlay && onToggle && (
+                    <button
+                        onClick={onToggle}
+                        className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                        title={isOpen ? 'Collapse panel' : 'Expand panel'}
+                        aria-label={isOpen ? 'Collapse panel' : 'Expand panel'}
+                    >
+                        <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? '' : 'rotate-180'}`} />
+                    </button>
+                )}
+                {onClose && (
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors ml-0.5"
+                        title="Close panel"
+                        aria-label="Close panel"
+                    >
+                        <X size={14} />
+                    </button>
                 )}
             </div>
             <div className="flex-1 overflow-auto p-0 custom-scrollbar">

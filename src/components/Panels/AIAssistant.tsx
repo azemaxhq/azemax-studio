@@ -642,7 +642,7 @@ export const useAutoScroll = (active: boolean = true) => {
         return { containerRef, scrollToBottom, handleScroll, isStickyRef };
     };
 
-export const AIAssistant: React.FC<{ isVisible?: boolean }> = ({ isVisible = true }) => {
+export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }> = ({ isVisible = true, onClose }) => {
     const { settings } = useSettings();
     const dialog = useDialog();
     // Session State
@@ -2068,6 +2068,17 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         >
                             <Plus size={13} strokeWidth={1.75} />
                         </button>
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className="w-[28px] h-[28px] rounded-[7px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 shrink-0"
+                                style={{ color: 'var(--az-text-muted)', border: '1px solid transparent' }}
+                                title="Close AI"
+                                aria-label="Close AI"
+                            >
+                                <X size={14} strokeWidth={1.75} />
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -2378,7 +2389,14 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
                 {/* Composer — sticky, anchored, premium floating */}
                 {/* Composer — sticky premium command center, soft hairline separation */}
-                <div className="shrink-0 px-4 pb-3 pt-2.5 z-10" style={{ background: 'var(--az-surface)', borderTop: '1px solid var(--az-border)' }}>
+                <div
+                    className="shrink-0 px-3 sm:px-4 pt-2.5 z-10"
+                    style={{
+                        background: 'var(--az-surface)',
+                        borderTop: '1px solid var(--az-border)',
+                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+                    }}
+                >
                     <div className="mx-auto w-full max-w-[640px]">
                         <AIComposer
                             input={input}

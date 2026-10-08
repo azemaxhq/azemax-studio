@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { Settings, RotateCcw, ArrowRight, SearchX, ArrowLeft } from 'lucide-react';
+import { Settings, RotateCcw, ArrowRight, SearchX, ArrowLeft, X } from 'lucide-react';
 import { SETTINGS_CATEGORIES, getCategoryDefinition } from '../../settings/settingsSchema';
 import { resetAllSettings } from '../../settings/settingsStore';
 import type { CategoryDefinition, CategoryKey, SettingDef } from '../../settings/settingsTypes';
@@ -44,7 +44,7 @@ const SearchResultRow: React.FC<{ def: SettingDef; onOpen: () => void }> = ({ de
   </button>
 );
 
-export const SettingsPanel: React.FC = () => {
+export const SettingsPanel: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryKey | null>(null);
   const [focusedSetting, setFocusedSetting] = useState<string | null>(null);
@@ -98,7 +98,7 @@ export const SettingsPanel: React.FC = () => {
       {/* Header */}
       <div className="shrink-0 px-4 pt-3 pb-2">
         {activeCategory && !searching ? (
-          <div className="flex items-center gap-1.5 mb-2">
+          <div className="flex items-center justify-between gap-1.5 mb-2">
             <button
               type="button"
               onClick={goHome}
@@ -107,6 +107,17 @@ export const SettingsPanel: React.FC = () => {
               <ArrowLeft size={13} />
               <span>Settings</span>
             </button>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
+                aria-label="Close Settings"
+                title="Close Settings"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-between gap-2">
@@ -114,15 +125,28 @@ export const SettingsPanel: React.FC = () => {
               <Settings size={15} className="text-white/60 shrink-0" />
               <h1 className="text-[14px] font-semibold text-white/95">Settings</h1>
             </div>
-            <button
-              type="button"
-              onClick={() => setConfirmingResetAll(true)}
-              className="p-1.5 rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
-              title="Reset all settings to defaults"
-              aria-label="Reset all settings to defaults"
-            >
-              <RotateCcw size={12} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setConfirmingResetAll(true)}
+                className="p-1.5 rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
+                title="Reset all settings to defaults"
+                aria-label="Reset all settings to defaults"
+              >
+                <RotateCcw size={12} />
+              </button>
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
+                  aria-label="Close Settings"
+                  title="Close Settings"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         )}
 

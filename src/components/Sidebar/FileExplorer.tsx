@@ -351,6 +351,9 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
         } else {
             onSetActiveFile(node);
             onSetSelectedFolder(node.parentId ?? ROOT_NODE_ID);
+            if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                window.dispatchEvent(new CustomEvent('mobile-switch-to-editor'));
+            }
         }
     };
 
@@ -428,7 +431,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 aria-label={`${isFolder ? 'Folder' : 'File'} ${node.name}${isActive ? ' active' : ''}`}
                 tabIndex={isFocused ? 0 : -1}
                 className={cn(
-                    "flex items-center gap-1.5 py-0 pr-2 cursor-pointer transition-colors duration-100 text-[13px] leading-none select-none group relative rounded-[6px] mx-1.5 border min-h-[28px] h-[28px] antialiased outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)]",
+                    "flex items-center gap-1.5 py-0 pr-2 cursor-pointer transition-colors duration-100 text-[13px] leading-none select-none group relative rounded-[6px] mx-1.5 border min-h-[28px] max-md:min-h-[38px] max-md:h-[38px] md:h-[28px] antialiased outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)]",
                     isActive
                         ? "bg-[rgba(91,140,255,0.09)] text-[#E7ECF3] border-transparent font-[500] after:absolute after:left-0 after:top-[5px] after:bottom-[5px] after:w-[2px] after:rounded-full after:bg-[var(--az-accent)]"
                         : isFocused

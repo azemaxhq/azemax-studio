@@ -14,6 +14,7 @@ import type { DiagnosticResultEx } from '../../utils/diagnosticsTypes';
 import { AlertCircle, CheckCircle, Loader2, Minus, Plus, Map as MapIcon, WrapText, GitBranch, Play, Zap, AlignLeft, Save } from 'lucide-react';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { AICommentIndicator } from './AICommentIndicator';
+import { FileTabs } from './FileTabs';
 import { AIRequestStore } from '../../core/ai/aiRequestStore';
 import ReactDOM from 'react-dom';
 import { BRAND } from '../../core/branding';
@@ -2142,6 +2143,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi }) 
                     <AITopbarToggle isOpen={isAiOpen} onToggle={onToggleAi} />
                 </div>
             </div>
+
+            {/* Desktop File Tabs */}
+            <FileTabs className="hidden md:flex" />
 
             {/* Editor Area — uncontrolled to avoid wrapper's setValue() race with glitch-free executeEdits */}
             <div className="flex-1 min-h-0 relative overflow-hidden">
