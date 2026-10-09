@@ -39,8 +39,8 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
             style={{
                 background: 'var(--az-surface)',
                 borderColor: 'var(--az-border)',
-                height: isMobile ? '42px' : '34px',
-                minHeight: isMobile ? '42px' : '34px',
+                height: isMobile ? '40px' : '34px',
+                minHeight: isMobile ? '40px' : '34px',
             }}
         >
             {openFiles.map((file: FileNode) => {
@@ -65,7 +65,7 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
                             }
                         }}
                         className={`group relative flex items-center gap-2 border-r transition-colors duration-150 cursor-pointer shrink-0
-                            ${isMobile ? 'px-3 h-[42px] text-[13px]' : 'px-3 h-[34px] text-[12px]'}
+                            ${isMobile ? 'px-2.5 h-[40px] text-[13px]' : 'px-3 h-[34px] text-[12px]'}
                             ${isActive
                                 ? 'bg-[var(--az-surface-2)] text-[var(--az-text)] font-medium'
                                 : 'text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-white/[0.03]'
@@ -138,7 +138,7 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
                     aria-label="Open Explorer to create or browse files"
                     title="Open Explorer"
                     onClick={() => window.dispatchEvent(new CustomEvent('mobile-open-explorer'))}
-                    className="shrink-0 w-10 h-[42px] flex items-center justify-center text-[var(--az-text-muted)]"
+                    className="shrink-0 w-9 h-[40px] flex items-center justify-center text-[var(--az-text-muted)]"
                 >
                     <Plus size={15} />
                 </button>

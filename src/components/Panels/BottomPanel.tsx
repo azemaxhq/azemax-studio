@@ -445,12 +445,27 @@ export const BottomPanel: React.FC<{
      * Desktop order and content are unchanged.
      */
     isMobile?: boolean;
-}> = ({ isOverlay, isOpen, onToggle, onClose, isExpanded, onToggleExpand, isMobile = false }) => {
-    // Persist Active Tab
+    /**
+     * Fired when the user taps a sheet tab — lets the mobile host expand a
+     * collapsed sheet. No-op on desktop.
+     */
+    onTabSelect?: () => void;
+    /**
+     * Mobile collapsed strip: hides the redundant close button (the sheet is
+     * already collapsed; expand via the chevron, tabs, or handle).
+     */
+    isCollapsed?: boolean;
+}> = ({ isOverlay, isOpen, onToggle, onClose, isExpanded, onToggleExpand, isMobile = false, onTabSelect, isCollapsed = false }) => {
+    // Persist Active Tab (mobile sheets default to Terminal on first open)
     const [activeTab, setActiveTab] = useState<BottomTab>(() => {
         const saved = localStorage.getItem('bottomPanel_activeTab');
-        return isBottomTab(saved) ? saved : 'performance';
+        if (isBottomTab(saved)) return saved;
+        return isMobile ? 'terminal' : 'performance';
     });
+    const selectTab = (tab: BottomTab) => {
+        setActiveTab(tab);
+        onTabSelect?.();
+    };
 
     // The Output tab is a mobile-sheet tab. If a phone-persisted 'output'
     // value reaches a wider viewport (same browser, resized), fall back to
@@ -801,16 +816,20 @@ Apply the fix while preserving all other code exactly as-is.`;
     return (
         <div className={`h-full flex flex-col bg-transparent ${isOverlay && !isOpen ? 'overflow-hidden' : ''}`}>
             {/* Tab Bar — 32px stable. Desktop keeps its exact tab order;
-                mobile leads with Terminal / Problems / Output and scrolls. */}
+                mobile leads with Terminal / Problems / Output. When the
+                mobile sheet is collapsed, only those three show — Performance
+                and Ageing stay one tap away (tap any tab to half-open). */}
             <div className={`flex items-center gap-1 px-2 border-b shrink-0 h-8 min-h-8 ${isMobile ? 'overflow-x-auto no-scrollbar' : 'overflow-hidden'}`} style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
                 {(isMobile
-                    ? (['terminal', 'problems', 'output', 'performance', 'ageing'] as BottomTab[])
+                    ? (isCollapsed
+                        ? (['terminal', 'problems', 'output'] as BottomTab[])
+                        : (['terminal', 'problems', 'output', 'performance', 'ageing'] as BottomTab[]))
                     : (['performance', 'ageing', 'terminal', 'problems'] as BottomTab[])
                 ).map((tab) => (
                     <button
                         key={tab}
-                        className={`glass-tab shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${isMobile ? 'min-h-[44px]' : ''} ${activeTab === tab ? 'active' : ''}`}
-                        onClick={() => setActiveTab(tab)}
+                        className={`glass-tab shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${activeTab === tab ? 'active' : ''}`}
+                        onClick={() => selectTab(tab)}
                         aria-selected={activeTab === tab}
                         role="tab"
                     >
@@ -860,12 +879,12 @@ Apply the fix while preserving all other code exactly as-is.`;
                         <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? '' : 'rotate-180'}`} />
                     </button>
                 )}
-                {onClose && (
+                {onClose && !isCollapsed && (
                     <button
                         onClick={onClose}
                         className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors ml-0.5"
-                        title="Close panel"
-                        aria-label="Close panel"
+                        title="Collapse panel"
+                        aria-label="Collapse panel"
                     >
                         <X size={14} />
                     </button>
@@ -1095,7 +1114,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                     )}
                     {activeTab === 'terminal' && (
                         <Suspense fallback={<PanelFallback />}>
-                            <TerminalPanel />
+                            <TerminalPanel isMobile={isMobile} />
                         </Suspense>
                     )}
                     {activeTab === 'problems' && (

@@ -12,7 +12,6 @@ import { useSettingsSelector } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useMobileViewport } from '../../hooks/useMobileViewport';
 import { useProjectFile } from '../../context/ProjectContext';
-import { getCounts, subscribeDiagnostics } from '../../core/diagnostics/diagnosticStore';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav, type MobileTab } from './MobileBottomNav';
 import { MobileSearchModal } from '../UI/MobileSearchModal';
@@ -48,13 +47,18 @@ export const MainLayout: React.FC = () => {
     const [mobileTab, setMobileTab] = React.useState<MobileTab>('editor');
     const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
     const [mobileSearchTab, setMobileSearchTab] = React.useState<'files' | 'commands'>('files');
-    const [isMobileTerminalOpen, setIsMobileTerminalOpen] = React.useState(false);
-    const [isMobileTerminalExpanded, setIsMobileTerminalExpanded] = React.useState(false);
+    /**
+     * Terminal sheet state (mobile only), sized against the workspace:
+     * - collapsed: 44px compact strip (12px handle + 32px tab bar)
+     * - half: 45% of the workspace, editor stays visible above
+     * - expanded: 80% of the workspace (editor strip stays visible)
+     * The sheet stays mounted in all states so xterm.js is never remounted.
+     */
+    const [mobileSheet, setMobileSheet] = React.useState<'collapsed' | 'half' | 'expanded'>('collapsed');
 
     // Mobile IDE helpers (hooks only — consumed by the mobile branch below)
     const { activeFile: mobileActiveFile } = useProjectFile();
     const autoOpenTerminalOnRun = useSettingsSelector(s => s.terminal.autoOpenTerminal);
-    const [mobileProblemCount, setMobileProblemCount] = React.useState(0);
     const mobileSheetRef = React.useRef<HTMLDivElement>(null);
     const mobileSheetDragRef = React.useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -64,22 +68,10 @@ export const MainLayout: React.FC = () => {
         ? Math.max(0, window.innerHeight - viewportHeight)
         : 0;
 
-    // Mobile: live problem count for the terminal grabber badge.
-    React.useEffect(() => {
-        const update = () => {
-            const c = getCounts(mobileActiveFile?.id ?? null);
-            setMobileProblemCount(c.errors + c.warnings);
-        };
-        update();
-        const unsub = subscribeDiagnostics(update);
-        return unsub;
-    }, [mobileActiveFile?.id]);
-
-    // Mobile: pressing Run opens the bottom sheet (terminal tab) so output
-    // is visible — honouring the existing auto-open-terminal setting.
+    // Mobile: pressing Run raises the sheet to half height (never maximum)
+    // so output is visible — honouring the existing auto-open-terminal setting.
     // A specific sheet tab can be requested via `mobile-open-terminal`.
-    // The tab is persisted first so a freshly mounting BottomPanel
-    // (sheet was closed) initializes on the requested tab.
+    // The tab is persisted first so BottomPanel initializes on it.
     React.useEffect(() => {
         const persistTab = (tab: unknown) => {
             if (tab === 'terminal' || tab === 'problems' || tab === 'output') {
@@ -87,11 +79,11 @@ export const MainLayout: React.FC = () => {
             }
         };
         const onRun = () => {
-            if (autoOpenTerminalOnRun) setIsMobileTerminalOpen(true);
+            if (autoOpenTerminalOnRun) setMobileSheet(prev => (prev === 'collapsed' ? 'half' : prev));
         };
         const onOpenSheet = (e: Event) => {
             persistTab((e as CustomEvent).detail?.tab);
-            setIsMobileTerminalOpen(true);
+            setMobileSheet(prev => (prev === 'collapsed' ? 'half' : prev));
         };
         window.addEventListener('run-button-clicked', onRun);
         window.addEventListener('mobile-open-terminal', onOpenSheet);
@@ -115,8 +107,9 @@ export const MainLayout: React.FC = () => {
     }, [mobileActiveFile?.id, mobileTab]);
 
     // Mobile sheet drag: vertical drag on the grabber resizes live (direct
-    // DOM write, zero re-renders); release commits expanded/collapsed or
-    // dismisses the sheet on a long downward drag.
+    // DOM write, zero re-renders); release snaps to the nearest of the
+    // three states (collapsed / half / expanded). All measurements are
+    // relative to the workspace container (editor-root), never the viewport.
     const onMobileSheetDragStart = React.useCallback((e: React.PointerEvent) => {
         const el = mobileSheetRef.current;
         if (!el) return;
@@ -127,7 +120,8 @@ export const MainLayout: React.FC = () => {
         const drag = mobileSheetDragRef.current;
         const el = mobileSheetRef.current;
         if (!drag || !el) return;
-        const next = Math.min(window.innerHeight * 0.88, Math.max(window.innerHeight * 0.24, drag.startHeight + (drag.startY - e.clientY)));
+        const space = el.parentElement?.clientHeight ?? window.innerHeight;
+        const next = Math.min(space, Math.max(44, drag.startHeight + (drag.startY - e.clientY)));
         el.style.height = `${next}px`;
     }, []);
     const onMobileSheetDragEnd = React.useCallback((e: React.PointerEvent) => {
@@ -136,14 +130,15 @@ export const MainLayout: React.FC = () => {
         mobileSheetDragRef.current = null;
         if (!drag || !el) return;
         try { (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); } catch { /* ignore */ }
-        const dy = drag.startY - e.clientY;
+        const space = el.parentElement?.clientHeight ?? window.innerHeight;
+        const ratio = space > 0 ? el.offsetHeight / space : 0;
         el.style.height = '';
-        if (dy < -110) {
-            setIsMobileTerminalOpen(false);
-        } else {
-            const ratio = el.offsetHeight / window.innerHeight;
-            setIsMobileTerminalExpanded(ratio > 0.66);
-        }
+        // Snap: <25% → collapsed, <72% → half, else expanded.
+        setMobileSheet(ratio < 0.25 ? 'collapsed' : ratio < 0.72 ? 'half' : 'expanded');
+    }, []);
+    // Tap on the grabber cycles collapsed → half → expanded → half.
+    const onMobileSheetGrabberTap = React.useCallback(() => {
+        setMobileSheet(prev => (prev === 'collapsed' ? 'half' : prev === 'half' ? 'expanded' : 'half'));
     }, []);
 
     // Helper to load from storage or default
@@ -172,7 +167,6 @@ export const MainLayout: React.FC = () => {
         if (stored !== null) return stored === '1';
         return getSettings().general.sidebarDefault;
     });
-    const [isBottomOpen, setIsBottomOpen] = React.useState(true);
     const [leftSidebarView, setLeftSidebarView] = React.useState<'explorer' | 'explanation' | 'settings'>(() => {
         try {
             const v = localStorage.getItem('layout-left-sidebar-view');
@@ -237,15 +231,8 @@ export const MainLayout: React.FC = () => {
         setIsAiSidebarOpen(prev => {
             if (!prev && !isDesktop) {
                 setIsLeftSidebarOpen(false);
-                setIsBottomOpen(false);
+                setMobileSheet('collapsed');
             }
-            return !prev;
-        });
-    }, [isDesktop]);
-
-    const toggleBottomPanel = React.useCallback(() => {
-        setIsBottomOpen(prev => {
-            if (!prev && !isDesktop) setIsAiSidebarOpen(false);
             return !prev;
         });
     }, [isDesktop]);
@@ -254,7 +241,7 @@ export const MainLayout: React.FC = () => {
         if (!isLeftSidebarOpen) {
             if (!isDesktop) {
                 setIsAiSidebarOpen(false);
-                setIsBottomOpen(false);
+                setMobileSheet('collapsed');
             }
             setIsLeftSidebarOpen(true);
             setLeftSidebarView('explanation');
@@ -269,7 +256,7 @@ export const MainLayout: React.FC = () => {
         if (!isLeftSidebarOpen) {
             if (!isDesktop) {
                 setIsAiSidebarOpen(false);
-                setIsBottomOpen(false);
+                setMobileSheet('collapsed');
             }
             setIsLeftSidebarOpen(true);
             setLeftSidebarView('explorer');
@@ -284,7 +271,7 @@ export const MainLayout: React.FC = () => {
         if (!isLeftSidebarOpen) {
             if (!isDesktop) {
                 setIsAiSidebarOpen(false);
-                setIsBottomOpen(false);
+                setMobileSheet('collapsed');
             }
             setIsLeftSidebarOpen(true);
             setLeftSidebarView('settings');
@@ -455,8 +442,8 @@ export const MainLayout: React.FC = () => {
     }, []);
 
     // Dedicated Mobile IDE presentation (under 768px).
-    // Vertical budget: header 56px + tabs 42px + editor (flex) +
-    // terminal grabber 28px + bottom nav 64px. No duplicated Run.
+    // Vertical budget: header 56px + tabs 40px + editor strip 40px +
+    // workspace (flex: editor + sheet) + bottom nav 60px. No duplicated Run.
     if (isMobile) {
         return (
             <div
@@ -469,8 +456,8 @@ export const MainLayout: React.FC = () => {
                         setMobileSearchTab(tab ?? 'files');
                         setIsMobileSearchOpen(true);
                     }}
-                    onToggleTerminal={() => setIsMobileTerminalOpen(prev => !prev)}
-                    isTerminalOpen={isMobileTerminalOpen}
+                    onToggleTerminal={() => setMobileSheet(prev => (prev === 'collapsed' ? 'half' : 'collapsed'))}
+                    isTerminalOpen={mobileSheet !== 'collapsed'}
                     onOpenSettings={() => setMobileTab('settings')}
                 />
 
@@ -487,68 +474,55 @@ export const MainLayout: React.FC = () => {
                         />
                     </div>
 
-                    {/* Terminal / Problems / Output bottom sheet (real xterm,
-                        real diagnostics, real execution output) */}
-                    {isMobileTerminalOpen && (
+                    {/* Terminal / Problems / Output bottom sheet.
+                        Always mounted (xterm.js never remounts); three states
+                        sized against the workspace container (editor-root):
+                        collapsed 44px strip · half 45% · expanded 80%.
+                        Expanded fills exactly the editor area — header, tabs
+                        and bottom nav stay visible and the handle is never
+                        clipped. Collapsed shows only handle + tab selector. */}
+                    <div
+                        ref={mobileSheetRef}
+                        className="absolute left-0 right-0 z-40 flex flex-col shadow-2xl border-t rounded-t-xl overflow-hidden"
+                        style={{
+                            bottom: mobileKeyboardHeight,
+                            height: mobileSheet === 'collapsed' ? '44px' : mobileSheet === 'half' ? '45%' : '80%',
+                            // When lifted above the keyboard, cap height so the
+                            // handle is never clipped by the workspace bounds.
+                            maxHeight: mobileKeyboardHeight > 0 ? `calc(100% - ${mobileKeyboardHeight}px)` : '100%',
+                            background: 'var(--az-surface-2)',
+                            borderColor: 'var(--az-border-strong)',
+                        }}
+                    >
+                        {/* Slim drag handle — tap cycles states, drag snaps */}
                         <div
-                            ref={mobileSheetRef}
-                            className="absolute left-0 right-0 z-40 flex flex-col shadow-2xl border-t rounded-t-xl overflow-hidden"
-                            style={{
-                                bottom: mobileKeyboardHeight,
-                                height: isMobileTerminalExpanded ? '85dvh' : '48dvh',
-                                background: 'var(--az-surface-2)',
-                                borderColor: 'var(--az-border-strong)',
-                            }}
+                            className="shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none"
+                            style={{ height: '12px', touchAction: 'none' }}
+                            onPointerDown={onMobileSheetDragStart}
+                            onPointerMove={onMobileSheetDragMove}
+                            onPointerUp={onMobileSheetDragEnd}
+                            onPointerCancel={onMobileSheetDragEnd}
+                            onClick={onMobileSheetGrabberTap}
+                            role="separator"
+                            aria-label="Drag to resize terminal panel, tap to cycle size"
+                            title="Drag to resize · tap to cycle size"
                         >
-                            {/* Drag grabber — tap toggles expand, drag resizes */}
-                            <div
-                                className="shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none"
-                                style={{ height: '20px', touchAction: 'none' }}
-                                onPointerDown={onMobileSheetDragStart}
-                                onPointerMove={onMobileSheetDragMove}
-                                onPointerUp={onMobileSheetDragEnd}
-                                onPointerCancel={onMobileSheetDragEnd}
-                                onClick={() => setIsMobileTerminalExpanded(prev => !prev)}
-                                role="separator"
-                                aria-label="Drag to resize terminal panel, tap to expand"
-                                title="Drag to resize · tap to expand"
-                            >
-                                <div className="w-10 h-1 rounded-full bg-white/20" />
-                            </div>
-                            <div className="flex-1 min-h-0 flex flex-col">
+                            <div className="w-10 h-1 rounded-full bg-white/20" />
+                        </div>
+                        <div className="flex-1 min-h-0 flex flex-col">
                                 <BottomPanel
                                     isMobile={true}
                                     isOverlay={false}
                                     isOpen={true}
-                                    isExpanded={isMobileTerminalExpanded}
-                                    onToggleExpand={() => setIsMobileTerminalExpanded(prev => !prev)}
-                                    onClose={() => setIsMobileTerminalOpen(false)}
+                                    isExpanded={mobileSheet === 'expanded'}
+                                    onToggleExpand={() => setMobileSheet(prev => (prev === 'expanded' ? 'half' : 'expanded'))}
+                                    onClose={() => setMobileSheet('collapsed')}
+                                    onTabSelect={() => setMobileSheet(prev => (prev === 'collapsed' ? 'half' : prev))}
+                                    isCollapsed={mobileSheet === 'collapsed'}
                                 />
                             </div>
                         </div>
-                    )}
                 </div>
-
-                {/* Terminal grabber — one-tap Terminal/Problems/Output access
-                    when the sheet is closed (hidden with the nav on keyboard) */}
-                {!isMobileTerminalOpen && !isKeyboardOpen && (
-                    <button
-                        onClick={() => window.dispatchEvent(new CustomEvent('mobile-open-terminal', { detail: { tab: 'terminal' } }))}
-                        aria-label="Open terminal panel"
-                        className="shrink-0 flex items-center justify-center gap-2 border-t active:bg-white/[0.04]"
-                        style={{ height: '28px', background: 'var(--az-surface)', borderColor: 'var(--az-border)' }}
-                    >
-                        <span className="w-8 h-1 rounded-full bg-white/15" aria-hidden />
-                        <span className="text-[10px] font-medium tracking-wide" style={{ color: 'var(--az-text-muted)' }}>
-                            Terminal
-                        </span>
-                        {mobileProblemCount > 0 && (
-                            <span className="text-[9px] px-1.5 py-px rounded-full font-mono font-bold bg-[#F5B94C]/15 text-[#F5B94C] border border-[#F5B94C]/25">
-                                {mobileProblemCount} problem{mobileProblemCount === 1 ? '' : 's'}
-                            </span>
-                        )}
-                    </button>
-                )}
 
                 {/* Bottom navigation (hidden when the virtual keyboard is open) */}
                 {!isKeyboardOpen && (
@@ -557,6 +531,7 @@ export const MainLayout: React.FC = () => {
                         onTabChange={(tab) => {
                             setMobileTab(tab);
                         }}
+                        showActiveIndicator={mobileSheet !== 'collapsed'}
                     />
                 )}
 
@@ -669,15 +644,16 @@ export const MainLayout: React.FC = () => {
                 </button>
             </div>
 
-            {/* Overlay backdrop (only when side panels render as drawers below 1024px) */}
-            {!isDesktop && (isLeftSidebarOpen || isAiSidebarOpen || isBottomOpen) && (
+            {/* Overlay backdrop — only for the two true drawers (side panels).
+                The bottom panel is a docked sheet, not a modal drawer, so it
+                must not dim the editor behind it. */}
+            {!isDesktop && (isLeftSidebarOpen || isAiSidebarOpen) && (
                 <div
                     className="absolute inset-0 z-30 bg-black/50 backdrop-blur-[1px]"
                     style={{ willChange: 'opacity' }}
                     onClick={() => {
                         if (isLeftSidebarOpen) setIsLeftSidebarOpen(false);
                         if (isAiSidebarOpen) setIsAiSidebarOpen(false);
-                        if (isBottomOpen) setIsBottomOpen(false);
                     }}
                     aria-hidden="true"
                 />
@@ -808,15 +784,6 @@ export const MainLayout: React.FC = () => {
                         <AIAssistant isVisible={isAiSidebarOpen} />
                     </div>
                 </div>
-
-                {!isDesktop && (
-                    <div
-                        className="absolute left-[48px] right-0 bottom-0 z-40 overflow-hidden transition-all duration-200 ease-out"
-                        style={{ height: isBottomOpen ? `min(${bottomPanelHeight}px, 75dvh)` : '32px' }}
-                    >
-                        <BottomPanel isOverlay isOpen={isBottomOpen} onToggle={toggleBottomPanel} />
-                    </div>
-                )}
             </div>
             <PerformanceBudgetMonitor enabled={process.env.NODE_ENV === 'development' && developerDiagnostics} />
         </div>

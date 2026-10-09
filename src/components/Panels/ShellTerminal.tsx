@@ -507,7 +507,15 @@ export const ShellTerminal: React.FC<ShellTerminalProps> = ({ terminalId, visibl
         const handleResize = () => {
             const fit = fitAddonRef.current;
             const term = xtermRef.current;
-            if (fit) fit.fit();
+            const el = containerRef.current;
+            // A collapsed mobile sheet clips this container to zero height.
+            // Fitting there yields bogus ~1-row geometry, which would push a
+            // junk resize into the live PTY and reflow the scrollback. Skip
+            // until there is real measurable area — the ResizeObserver
+            // refires the moment the sheet expands, so the terminal refits
+            // correctly with no remount and no lost state.
+            if (!fit || !el || el.clientWidth < 2 || el.clientHeight < 2) return;
+            fit.fit();
             const session = sessionRef.current;
             if (term && session && session.isActive) {
                 session.resize(term.cols, term.rows);

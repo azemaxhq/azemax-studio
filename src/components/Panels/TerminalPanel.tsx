@@ -8,7 +8,7 @@ import { ContextMenu } from '../UI/ContextMenu';
 import { languageFromExtension } from '../../core/terminal/terminalProfiles';
 import { isInside } from '../../utils/keyboardGuards';
 
-export const TerminalPanel: React.FC = () => {
+export const TerminalPanel: React.FC<{ isMobile?: boolean }> = ({ isMobile = false }) => {
     // Root ref for focus-gated global shortcuts (H8).
     const panelRef = React.useRef<HTMLDivElement | null>(null);
     const { selectedFolder, activeFileMeta } = useProjectUI();
@@ -114,7 +114,8 @@ export const TerminalPanel: React.FC = () => {
                             key={term.id}
                             onClick={() => setActiveTerminalId(term.id)}
                             className={`
-                                relative group/tab flex items-center gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-[6px] cursor-pointer select-none transition-colors duration-150 border min-w-[96px] sm:min-w-[120px] max-w-[200px] text-[12px]
+                                relative group/tab flex items-center gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-[6px] cursor-pointer select-none transition-colors duration-150 border max-w-[200px] text-[12px]
+                                ${isMobile ? 'min-w-[72px]' : 'min-w-[96px] sm:min-w-[120px]'}
                                 ${activeTerminalId === term.id
                                     ? 'bg-[rgba(255,255,255,.04)] text-[#E7ECF3] border-[var(--az-border)]'
                                     : 'text-[#778291] border-transparent hover:text-[var(--az-icon-hover)] hover:bg-[rgba(255,255,255,0.035)]'}
@@ -129,22 +130,31 @@ export const TerminalPanel: React.FC = () => {
 
                             <span className="text-[11px] font-medium truncate flex-1">{term.title}</span>
 
-                            {/* Close Button */}
+                            {/* Close Button — hover-revealed on desktop (unchanged),
+                                always visible with a real touch target on mobile */}
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     removeTerminal(term.id);
                                 }}
+                                aria-label={`Close ${term.title}`}
                                 className={`
-                                    p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-white/20 transition-all
-                                    ${activeTerminalId === term.id ? 'opacity-0 group-hover/tab:opacity-100' : ''}
+                                    rounded hover:bg-white/20 transition-all flex items-center justify-center shrink-0
+                                    ${isMobile
+                                        ? 'w-7 h-7 opacity-60'
+                                        : `p-0.5 opacity-0 group-hover/tab:opacity-100 ${activeTerminalId === term.id ? 'opacity-0 group-hover/tab:opacity-100' : ''}`}
                                 `}
                             >
-                                <X size={10} />
+                                <X size={isMobile ? 12 : 10} />
                             </button>
 
-                            {/* Active Indicator — compact 2px Azemax blue */}
-                            {activeTerminalId === term.id && (
+                            {/* Active session indicator — desktop only. On mobile
+                                the panel tab above already carries the single
+                                blue active mark (.glass-tab.active::after);
+                                a second blue bar here reads as a duplicate.
+                                The active session stays distinguishable via
+                                its highlighted background + bright label. */}
+                            {!isMobile && activeTerminalId === term.id && (
                                 <motion.div
                                     layoutId="activeTabIndicator"
                                     className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[2px] w-4 rounded-full" style={{ background: "var(--az-accent)"}}
@@ -155,10 +165,11 @@ export const TerminalPanel: React.FC = () => {
 
                     <button
                         onClick={() => createTerminal(selectedFolder || 'root')}
-                        className="p-1 rounded-[6px] transition-colors duration-150 ml-1 hover:bg-[rgba(255,255,255,0.06)]" style={{ color: "var(--az-icon)"}}
+                        aria-label="New terminal"
+                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1 ml-1'}`} style={{ color: "var(--az-icon)"}}
                         title="New Terminal"
                     >
-                        <Plus size={14} />
+                        <Plus size={isMobile ? 16 : 14} />
                     </button>
                 </div>
 
@@ -168,24 +179,31 @@ export const TerminalPanel: React.FC = () => {
                     {/* Clear */}
                     <button
                         onClick={() => activeTerminalId && clearTerminal(activeTerminalId)}
-                        className="p-1.5 rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)]" style={{ color: "var(--az-icon)"}}
+                        aria-label="Clear terminal output"
+                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1.5'}`} style={{ color: "var(--az-icon)"}}
                         title="Clear Output"
                     >
-                        <Eraser size={14} />
+                        <Eraser size={isMobile ? 16 : 14} />
                     </button>
 
                     {/* Stdin Toggle */}
                     <button
                         onClick={() => setShowStdin(!showStdin)}
-                        className={`p-1.5 rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] ${showStdin ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border-strong)]' : ''}`} style={showStdin ? {} : { color: 'var(--az-icon)'}}
+                        aria-label="Toggle standard input"
+                        aria-pressed={showStdin}
+                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1.5'} ${showStdin ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border-strong)]' : ''}`} style={showStdin ? {} : { color: 'var(--az-icon)'}}
                         title="Provide Input (stdin)"
                     >
-                        <Keyboard size={14} />
+                        <Keyboard size={isMobile ? 16 : 14} />
                     </button>
 
+                    {/* Run/Stop + its leading divider — desktop only. On mobile
+                        the header owns the single Run/Stop action, so both the
+                        duplicate button and its now-dangling divider are parked. */}
+                    {!isMobile && (
+                    <>
                     <div className="w-px h-4" style={{ background: "var(--az-border)"}} />
 
-                    {/* Run/Stop Button */}
                     <button
                         onClick={isRunning ? () => activeTerminalId && stopProcess(activeTerminalId) : handleRun}
                         disabled={!isRunning && !activeFileMeta}
@@ -200,6 +218,8 @@ export const TerminalPanel: React.FC = () => {
                         {isRunning ? <Square size={10} fill="currentColor" /> : <Play size={10} fill="currentColor" />}
                         <span className="hidden sm:inline">{isRunning ? 'Stop Running' : 'Run Context'}</span>
                     </button>
+                    </>
+                    )}
                 </div>
             </div>
 

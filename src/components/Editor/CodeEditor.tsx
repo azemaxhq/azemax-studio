@@ -2182,20 +2182,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
 
             {/* Mobile slim action strip — icon-only [Check][Format][Wrap][Map].
                 No Run (single action lives in the mobile header), no AI toggle
-                (bottom nav owns it), no font stepper. 36px tall. */}
+                (bottom nav owns it), no font stepper. 40px tall with full
+                40px touch targets. */}
             {isMobile && (
             <div
                 role="toolbar"
                 aria-label="Editor actions"
-                className="flex items-center gap-0.5 px-2 shrink-0 overflow-x-auto no-scrollbar"
-                style={{ height: '36px', minHeight: '36px', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}
+                className="flex items-center gap-0.5 px-1.5 shrink-0 overflow-x-auto no-scrollbar"
+                style={{ height: '40px', minHeight: '40px', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}
             >
                 <button
                     onClick={settings.code.diagnostics ? runDiagnostics : undefined}
                     disabled={!settings.code.diagnostics || isFormatting}
                     aria-label={hasErrors ? 'Has errors — tap to re-check' : 'Check code'}
                     title={diagnosticSummary || 'Check code'}
-                    className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
+                    className={`w-10 h-10 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
                         ${!settings.code.diagnostics
                             ? 'text-[var(--az-text-disabled)] border-transparent opacity-50'
                             : hasErrors
@@ -2212,7 +2213,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                     disabled={isFormatting}
                     aria-label="Format document"
                     title="Format document"
-                    className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center text-[var(--az-icon)] border border-transparent transition-colors active:scale-95"
+                    className="w-10 h-10 shrink-0 rounded-md flex items-center justify-center text-[var(--az-icon)] border border-transparent transition-colors active:scale-95"
                 >
                     {isFormatting ? <Loader2 size={15} className="animate-spin" /> : <AlignLeft size={15} />}
                 </button>
@@ -2221,7 +2222,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                     aria-label="Toggle word wrap"
                     aria-pressed={settings.editor.wordWrap}
                     title="Toggle word wrap"
-                    className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
+                    className={`w-10 h-10 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
                         ${settings.editor.wordWrap
                             ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border-[var(--az-border-strong)]'
                             : 'text-[var(--az-icon)] border-transparent'}`}
@@ -2233,7 +2234,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                     aria-label="Toggle minimap"
                     aria-pressed={settings.editor.showMinimap}
                     title="Toggle minimap (applies on tablet/desktop widths)"
-                    className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
+                    className={`w-10 h-10 shrink-0 rounded-md flex items-center justify-center transition-colors active:scale-95 border
                         ${settings.editor.showMinimap
                             ? 'text-[var(--az-text)] bg-[var(--az-surface-3)] border-[var(--az-border-strong)]'
                             : 'text-[var(--az-icon)] border-transparent'}`}

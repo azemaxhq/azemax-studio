@@ -89,19 +89,23 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                 height: '56px',
             }}
         >
-            <div className="h-14 px-2 flex items-center gap-1.5 w-full">
-                {/* LEFT: Azemax logo only */}
-                <div className="flex items-center shrink-0 w-10 h-10 justify-center" title="Azemax">
-                    <AzemaxLogo size={20} />
+            <div className="h-14 px-1 flex items-center gap-0.5 w-full max-w-full">
+                {/* LEFT: Azemax logo only (non-interactive, compact,
+                    same 36px box as the action controls for exact
+                    vertical centering) */}
+                <div className="flex items-center shrink-0 w-7 h-9 justify-center" title="Azemax">
+                    <AzemaxLogo size={18} />
                 </div>
 
-                {/* CENTER: current file / project context */}
+                {/* CENTER: current file / project context. Borderless and
+                    surface-transparent so it reads as IDE chrome, not a form
+                    input — still a full-width tap target that truncates. */}
                 <button
                     onClick={() => onOpenSearch('files')}
-                    className="flex items-center gap-1.5 px-2 h-9 rounded-md text-[12px] font-mono truncate flex-1 min-w-0 transition-colors border text-left"
+                    className="flex items-center gap-1 px-1.5 h-9 rounded-md text-[12px] font-mono truncate flex-1 min-w-0 transition-colors border border-transparent text-left active:bg-white/[0.05]"
                     style={{
-                        background: 'var(--az-surface-2)',
-                        borderColor: 'var(--az-border)',
+                        background: 'transparent',
+                        borderColor: 'transparent',
                         color: activeFile ? 'var(--az-text)' : 'var(--az-text-muted)',
                     }}
                     title={activeFile ? `Current file: ${activeFile.name} (tap to switch)` : 'Select or search files'}
@@ -119,13 +123,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     )}
                 </button>
 
-                {/* RIGHT: single Run/Stop · Search · More */}
+                {/* RIGHT: single Run/Stop · Search · More (never pushed off-screen) */}
                 <div className="flex items-center gap-0.5 shrink-0">
                     <button
                         onClick={handleRunOrStop}
                         disabled={!isRunning && !activeFile}
                         aria-label={isRunning ? 'Stop execution' : 'Run code'}
-                        className={`h-9 min-w-9 px-2.5 rounded-md font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all active:scale-95 border
+                        className={`h-9 min-w-9 px-2 rounded-md font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all active:scale-95 border
                             ${isRunning
                                 ? 'bg-red-500/15 text-red-300 border-red-500/30'
                                 : !activeFile
@@ -137,12 +141,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                         {isRunning ? (
                             <>
                                 <Square size={12} className="fill-current shrink-0" />
-                                <span>Stop</span>
+                                {/* Icon-only below 360px so actions never overflow */}
+                                <span className="hidden min-[360px]:inline">Stop</span>
                             </>
                         ) : (
                             <>
                                 <Play size={12} className="fill-current shrink-0" />
-                                <span>Run</span>
+                                <span className="hidden min-[360px]:inline">Run</span>
                             </>
                         )}
                     </button>
@@ -150,9 +155,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     <button
                         onClick={() => onOpenSearch('files')}
                         aria-label="Search files"
-                        className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--az-icon)] active:scale-95 border border-transparent"
+                        className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--az-icon)] active:scale-95 border border-transparent"
                     >
-                        <Search size={17} />
+                        <Search size={16} />
                     </button>
 
                     <div className="relative" ref={menuRef}>
@@ -160,9 +165,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                             onClick={() => setShowMenu(prev => !prev)}
                             aria-label="More actions"
                             aria-expanded={showMenu}
-                            className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--az-icon)] active:scale-95 border border-transparent"
+                            className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--az-icon)] active:scale-95 border border-transparent"
                         >
-                            <MoreVertical size={17} />
+                            <MoreVertical size={16} />
                         </button>
 
                         {showMenu && (

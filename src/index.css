@@ -1427,6 +1427,13 @@ button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
   .monaco-editor .line-numbers {
     font-size: 12px !important;
   }
+  /* Selected panel tab (Terminal / Problems / Output) carries exactly ONE
+     active underline: a single centered 30x3px rounded bar. Desktop keeps
+     the 16x2px treatment from the base .glass-tab rule above. */
+  .glass-tab.active::after {
+    width: 30px;
+    height: 3px;
+  }
 }
 
 
