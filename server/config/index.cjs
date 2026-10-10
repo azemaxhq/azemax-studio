@@ -12,6 +12,7 @@ module.exports = {
     CORS_ORIGIN: env.CORS_ORIGIN,
     ALLOW_LOCAL_EXECUTION: env.ALLOW_LOCAL_EXECUTION,
     // Re-exported for new code (auth, limits, storage).
+    DISABLE_AUTH: env.DISABLE_AUTH,
     AUTH_SECRET: env.AUTH_SECRET,
     CORS_LIST: env.CORS_LIST,
     ALLOW_SHELL: env.ALLOW_SHELL,

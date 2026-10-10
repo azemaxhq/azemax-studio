@@ -8,7 +8,8 @@
  * Authorization is ALWAYS derived server-side from the verified session.
  * Never trust userId / owner / email from body, query, or client storage.
  */
-const { verifySession, isAdminEmail } = require('../services/auth/authService.cjs');
+const { verifySession, isAdminEmail, ensureDevUser } = require('../services/auth/authService.cjs');
+const { DISABLE_AUTH } = require('../config/index.cjs');
 
 const SESSION_COOKIE = 'azemax_session';
 
@@ -40,6 +41,21 @@ function tokenFromRequest(req) {
  * and other public endpoints can share the middleware safely.
  */
 function authenticateRequest(req, _res, next) {
+    // Reversible login bypass: DISABLE_AUTH=true injects the fixed local dev
+    // user so every request is authenticated. Real sessions still resolve
+    // first when present; the dev user is only the fallback.
+    if (DISABLE_AUTH) {
+        try {
+            const token = tokenFromRequest(req);
+            req.sessionToken = token;
+            req.user = token ? verifySession(token) : null;
+            if (!req.user) req.user = ensureDevUser();
+        } catch {
+            try { req.user = ensureDevUser(); } catch { req.user = null; }
+        }
+        next();
+        return;
+    }
     try {
         const token = tokenFromRequest(req);
         req.sessionToken = token;
@@ -52,6 +68,15 @@ function authenticateRequest(req, _res, next) {
 
 /** Reject unauthenticated requests with 401 (no information leak). */
 function requireAuth(req, res, next) {
+    if (DISABLE_AUTH) {
+        // Ensure req.user is populated even if authenticateRequest was skipped
+        // (e.g. mounted routers/tests). Never 401 in bypass mode.
+        if (!req.user) {
+            try { req.user = ensureDevUser(); } catch { /* ignore */ }
+        }
+        next();
+        return;
+    }
     if (!req.user) {
         return res.status(401).json({ error: 'Authentication required' });
     }
@@ -60,6 +85,9 @@ function requireAuth(req, res, next) {
 
 /** Reject non-admin users with 403. Admins: ADMIN_EMAILS env allowlist. */
 function requireAdmin(req, res, next) {
+    if (DISABLE_AUTH && !req.user) {
+        try { req.user = ensureDevUser(); } catch { /* ignore */ }
+    }
     if (!req.user) {
         return res.status(401).json({ error: 'Authentication required' });
     }

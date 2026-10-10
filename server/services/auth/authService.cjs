@@ -205,7 +205,44 @@ function isAdminEmail(email) {
     return allow.includes(String(email || '').toLowerCase());
 }
 
+// ---- Auth-bypass dev user (DISABLE_AUTH=true only) ---------------------------
+// Fixed, deterministic identity so frontend + backend + WS all agree on the
+// same owner id, and SQLite FK constraints (projects.owner_id, usage_daily)
+// stay satisfied. The row is created lazily on first use; real users and
+// their data are untouched, so unsetting DISABLE_AUTH restores login cleanly.
+const DEV_USER_ID = 'local-dev';
+const DEV_USER_EMAIL = 'local-dev@azemax.local';
+
+function ensureDevUser() {
+    const db = getDb();
+    let row = null;
+    try {
+        row = db.prepare('SELECT * FROM users WHERE id = ?').get(DEV_USER_ID);
+    } catch { row = null; }
+    if (!row) {
+        const now = nowIso();
+        try {
+            db.prepare(
+                'INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+            ).run(DEV_USER_ID, DEV_USER_EMAIL, 'disabled:DISABLE_AUTH', 'Local Dev', now, now);
+            row = db.prepare('SELECT * FROM users WHERE id = ?').get(DEV_USER_ID);
+        } catch (err) {
+            // Another worker may have inserted concurrently, or email taken by
+            // a legacy row — fall back to whatever exists for the email.
+            try {
+                row = db.prepare('SELECT * FROM users WHERE email = ?').get(DEV_USER_EMAIL)
+                    || db.prepare('SELECT * FROM users WHERE id = ?').get(DEV_USER_ID);
+            } catch { row = null; }
+            if (!row) throw err;
+        }
+    }
+    return publicUser(row);
+}
+
 module.exports = {
+    DEV_USER_ID,
+    DEV_USER_EMAIL,
+    ensureDevUser,
     MIN_PASSWORD_LEN,
     normalizeEmail,
     validateCredentials,

@@ -49,6 +49,19 @@ const DATABASE_PATH = process.env.DATABASE_PATH
     ? path.resolve(process.env.DATABASE_PATH)
     : path.join(DATA_DIR, 'azemax.db');
 
+// ---- Auth bypass (local-dev convenience, reversible) -------------------------
+// DISABLE_AUTH=true skips the login gate by injecting a fixed local user
+// (local-dev@azemax.local). Auth code, tables, and hashes are left intact —
+// unset the flag to restore login with zero migrations.
+// Fail-closed: never allowed in production.
+const DISABLE_AUTH = process.env.DISABLE_AUTH === 'true';
+if (isProd && DISABLE_AUTH) {
+    fail('DISABLE_AUTH=true is forbidden in production: it would expose all workspaces/AI/execution without authentication. Keep it unset or "false".');
+}
+if (DISABLE_AUTH) {
+    warn('DISABLE_AUTH=true — login is bypassed with a fixed local user. Auth code is intact; unset to restore login. Never enable in production.');
+}
+
 // ---- Auth secret -----------------------------------------------------------
 const AUTH_SECRET = process.env.AUTH_SECRET || '';
 if (isProd && AUTH_SECRET.length < 32) {
@@ -206,6 +219,7 @@ function publicSummary() {
         providersConfigured: configuredProviders,
         allowLocalExecution: ALLOW_LOCAL_EXECUTION,
         allowShell: ALLOW_SHELL,
+        authDisabled: DISABLE_AUTH,
         corsOrigins: CORS_LIST.map(() => '[set]'),
     };
 }
@@ -213,6 +227,7 @@ function publicSummary() {
 module.exports = {
     isProd,
     isTest,
+    DISABLE_AUTH,
     PORT,
     DATA_DIR,
     WORKSPACES_DIR,

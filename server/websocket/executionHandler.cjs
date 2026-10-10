@@ -1,6 +1,6 @@
 const { TerminalManager, STATES, getDefaultShell, getDefaultShellArgs } = require('../services/terminal/terminalManager.cjs');
-const { verifySession } = require('../services/auth/authService.cjs');
-const { CORS_LIST, LIMITS, ALLOW_SHELL } = require('../config/index.cjs');
+const { verifySession, ensureDevUser } = require('../services/auth/authService.cjs');
+const { CORS_LIST, LIMITS, ALLOW_SHELL, DISABLE_AUTH } = require('../config/index.cjs');
 const { recordUsage } = require('../services/auth/authService.cjs');
 const logger = require('../lib/logger.cjs');
 
@@ -105,7 +105,12 @@ function attachExecutionWebSocket(wss) {
             try { ws.close(4403, 'Forbidden origin'); } catch { /* ignore */ }
             return;
         }
-        const user = verifySession(tokenFromUpgrade(req));
+        // Reversible login bypass: DISABLE_AUTH=true (local dev only, never
+        // prod — see config/env.cjs) accepts the socket as the fixed dev user.
+        let user = verifySession(tokenFromUpgrade(req));
+        if (!user && DISABLE_AUTH) {
+            try { user = ensureDevUser(); } catch { user = null; }
+        }
         if (!user) {
             try { ws.close(4401, 'Authentication required'); } catch { /* ignore */ }
             return;
