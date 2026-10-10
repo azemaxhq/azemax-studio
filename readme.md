@@ -110,6 +110,22 @@ Express API (Render: node server/index.cjs)
    - `ALLOW_LOCAL_EXECUTION=false`, `ALLOW_SHELL=false`
 4. Deploy. Render proxies HTTPS → your `0.0.0.0:10000` and WSS → same.
 
+## Public Beta Without Login
+
+To remove the login page completely for public beta testing (reversible):
+
+1. **Render (backend) dashboard → Environment**, set **both** and redeploy:
+   - `DISABLE_AUTH=true`
+   - `ALLOW_PUBLIC_BYPASS=true` (explicit acknowledgement — without it the server refuses to boot in production)
+2. **Vercel (frontend) → Environment Variables**, set and redeploy:
+   - `VITE_DISABLE_AUTH=true` (build-time flag — requires redeploy)
+   - `VITE_API_URL=https://YOUR-BACKEND.onrender.com/api` (must point at the live backend, or AI/execution fail)
+3. Open `/app` — the workspace loads immediately with no login UI.
+
+> **Warning:** every visitor shares ONE identity (`local-dev`). All projects, AI quota, and execution are shared; anyone can read, overwrite, or delete anything. Free-tier disks also wipe on redeploy. Use only for a throwaway beta.
+>
+> **Restore login:** unset `DISABLE_AUTH` + `ALLOW_PUBLIC_BYPASS` on Render and `VITE_DISABLE_AUTH` on Vercel, redeploy both. Real accounts in `data/azemax.db` and auth code are untouched.
+
 ## WebSocket Configuration
 
 - Dev: `ws://localhost:3001` (Vite proxies `/api`, direct WS to backend)

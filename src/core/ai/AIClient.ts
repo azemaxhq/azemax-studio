@@ -1,4 +1,5 @@
 import { API_BASE } from '../../utils/apiClient';
+import { authHeaders } from '../../utils/sessionToken';
 import { isAbortError } from './AIAbortController';
 import { streamFromBackend, streamFromOpenAI } from './AIStream';
 import type { AIStreamEvent } from './types';
@@ -174,7 +175,9 @@ async function postBackend(
     return fetch(`${API_BASE}/ai/chat`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        // Bearer fallback for cross-site beta (cookie blocked); server also
+        // accepts the request outright when auth is disabled server-side.
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         signal: options.signal,
         body: buildBackendBody(messages, options, context, stream),
     });

@@ -13,6 +13,7 @@ module.exports = {
     ALLOW_LOCAL_EXECUTION: env.ALLOW_LOCAL_EXECUTION,
     // Re-exported for new code (auth, limits, storage).
     DISABLE_AUTH: env.DISABLE_AUTH,
+    ALLOW_PUBLIC_BYPASS: env.ALLOW_PUBLIC_BYPASS,
     AUTH_SECRET: env.AUTH_SECRET,
     CORS_LIST: env.CORS_LIST,
     ALLOW_SHELL: env.ALLOW_SHELL,

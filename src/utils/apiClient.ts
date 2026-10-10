@@ -1,7 +1,7 @@
 // Defensive reads: Vite always provides import.meta.env, but server-side runs
 // (tests, SSR tooling) may not — never crash on a missing env bag.
 // In production VITE_API_URL should be an absolute URL like https://api.example.com/api
-import { authHeaders } from './sessionToken';
+import { authHeaders, AUTH_DISABLED } from './sessionToken';
 
 export const API_BASE = (import.meta.env?.VITE_API_URL || '/api').replace(/\/$/, '');
 
@@ -38,9 +38,10 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
         },
     });
 
-    if (response.status === 401) {
+    if (response.status === 401 && !AUTH_DISABLED) {
         // Session expired/revoked mid-use: bounce back to the login gate.
-        // Guarded so background polling cannot loop the event.
+        // Guarded so background polling cannot loop the event. Suppressed
+        // when the gate is disabled (no login screen to return to).
         window.dispatchEvent(new CustomEvent('azemax:unauthorized'));
     }
 

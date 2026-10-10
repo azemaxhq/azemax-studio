@@ -1,6 +1,7 @@
 // Local execution API endpoint (replaces Piston)
 // Handled by server/index.cjs local execution
 import { API_BASE } from './apiClient';
+import { authHeaders } from './sessionToken';
 
 const EXECUTION_API_URL = API_BASE;
 
@@ -62,7 +63,10 @@ export const getLanguageFromExtension = (filename: string): string => {
 // Get available runtimes
 export const getRuntimes = async (): Promise<Language[]> => {
     try {
-        const response = await fetch(`${EXECUTION_API_URL}/runtimes`, { credentials: 'include' });
+        const response = await fetch(`${EXECUTION_API_URL}/runtimes`, {
+            credentials: 'include',
+            headers: { ...authHeaders() },
+        });
         if (!response.ok) {
             throw new Error(`Failed to fetch runtimes: ${response.statusText}`);
         }
@@ -122,6 +126,7 @@ export const executeCode = async (
             credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
+                ...authHeaders(),
             },
             body: JSON.stringify({
                 language: runtime.language,

@@ -49,17 +49,26 @@ const DATABASE_PATH = process.env.DATABASE_PATH
     ? path.resolve(process.env.DATABASE_PATH)
     : path.join(DATA_DIR, 'azemax.db');
 
-// ---- Auth bypass (local-dev convenience, reversible) -------------------------
+// ---- Auth bypass (reversible, login gate removal) ----------------------------
 // DISABLE_AUTH=true skips the login gate by injecting a fixed local user
 // (local-dev@azemax.local). Auth code, tables, and hashes are left intact —
 // unset the flag to restore login with zero migrations.
-// Fail-closed: never allowed in production.
+//
+// Fail-closed: in production DISABLE_AUTH=true additionally requires the
+// explicit acknowledgement ALLOW_PUBLIC_BYPASS=true, otherwise the server
+// refuses to boot. The acknowledgement exists because a public bypass means
+// EVERY visitor shares ONE identity: all projects, AI quota, and execution
+// are shared, and anyone can read/overwrite/delete anything. Acceptable for
+// a throwaway public beta; never for real user data.
 const DISABLE_AUTH = process.env.DISABLE_AUTH === 'true';
-if (isProd && DISABLE_AUTH) {
-    fail('DISABLE_AUTH=true is forbidden in production: it would expose all workspaces/AI/execution without authentication. Keep it unset or "false".');
+const ALLOW_PUBLIC_BYPASS = process.env.ALLOW_PUBLIC_BYPASS === 'true';
+if (isProd && DISABLE_AUTH && !ALLOW_PUBLIC_BYPASS) {
+    fail('DISABLE_AUTH=true in production requires explicit acknowledgement: set ALLOW_PUBLIC_BYPASS=true. Without it the server refuses to boot, because every visitor would share one identity (all projects/AI quota/execution shared, anyone can read or delete anything). Only acknowledge for a throwaway public beta.');
 }
-if (DISABLE_AUTH) {
-    warn('DISABLE_AUTH=true — login is bypassed with a fixed local user. Auth code is intact; unset to restore login. Never enable in production.');
+if (DISABLE_AUTH && isProd) {
+    warn('PUBLIC AUTH BYPASS ACTIVE — every visitor shares the local-dev identity. Shared projects, shared AI/execution quotas, no privacy. Unset DISABLE_AUTH (or ALLOW_PUBLIC_BYPASS) and redeploy to restore login.');
+} else if (DISABLE_AUTH) {
+    warn('DISABLE_AUTH=true — login is bypassed with a fixed local user. Auth code is intact; unset to restore login. Never expose this process to untrusted users without ALSO understanding the shared-identity consequences.');
 }
 
 // ---- Auth secret -----------------------------------------------------------
@@ -228,6 +237,7 @@ module.exports = {
     isProd,
     isTest,
     DISABLE_AUTH,
+    ALLOW_PUBLIC_BYPASS,
     PORT,
     DATA_DIR,
     WORKSPACES_DIR,

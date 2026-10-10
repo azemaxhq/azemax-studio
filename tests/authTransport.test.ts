@@ -14,7 +14,13 @@ import {
     authHeaders,
     withSessionToken,
     authFailureMessage,
+    AUTH_DISABLED,
 } from '../src/utils/sessionToken';
+
+// --- Gate flag defaults to login-ON (removal is explicit opt-in) ---
+{
+    check('AUTH_DISABLED defaults to false without VITE_DISABLE_AUTH', AUTH_DISABLED === false);
+}
 
 // --- Token storage (node has no localStorage: memory fallback path) ---
 {

@@ -2,14 +2,23 @@ import React, { useState, type ReactNode, type FormEvent } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { BRAND } from '../../core/branding';
+import { AUTH_DISABLED } from '../../utils/sessionToken';
 
 /**
  * Authentication gate for the /app workspace.
  * Renders children only for authenticated users; otherwise a branded
  * sign-in / sign-up form. Session itself is an httpOnly cookie — the client
  * never sees token material.
+ *
+ * When VITE_DISABLE_AUTH=true (public beta), the gate is removed entirely
+ * and children render immediately with no login UI.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
+    if (AUTH_DISABLED) return <>{children}</>;
+    return <GatedAuthGate>{children}</GatedAuthGate>;
+}
+
+function GatedAuthGate({ children }: { children: ReactNode }) {
     const { user, loading, error, login, signup, clearError } = useAuth();
     const [mode, setMode] = useState<'login' | 'signup'>('login');
     const [email, setEmail] = useState('');

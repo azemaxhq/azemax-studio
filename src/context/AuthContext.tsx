@@ -1,7 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, memo, type ReactNode } from 'react';
 import { API_BASE, ApiError } from '../utils/apiClient';
 import { setCurrentUserId } from '../utils/userStorage';
-import { authHeaders, setSessionToken, clearSessionToken, authFailureMessage } from '../utils/sessionToken';
+import { authHeaders, setSessionToken, clearSessionToken, authFailureMessage, AUTH_DISABLED } from '../utils/sessionToken';
+
+/**
+ * Fixed identity used when the login gate is disabled
+ * (VITE_DISABLE_AUTH=true). Mirrors the server's ensureDevUser() row so
+ * frontend storage namespacing and backend ownership agree on one id.
+ */
+const BYPASS_USER: AuthUser = {
+    id: 'local-dev',
+    email: 'local-dev@azemax.local',
+    displayName: 'Local Dev',
+    createdAt: '1970-01-01T00:00:00.000Z',
+};
 
 export interface AuthUser {
     id: string;
@@ -63,8 +75,10 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
-    const [user, setUser] = useState<AuthUser | null>(null);
-    const [loading, setLoading] = useState(true);
+    // Gate-disabled mode: start already signed in as the shared local user —
+    // no /auth/me round-trip, no login form ever renders.
+    const [user, setUser] = useState<AuthUser | null>(() => (AUTH_DISABLED ? BYPASS_USER : null));
+    const [loading, setLoading] = useState(() => !AUTH_DISABLED);
     const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
@@ -90,6 +104,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
     }, []);
 
     useEffect(() => {
+        if (AUTH_DISABLED) {
+            // Shared-identity beta mode: pin storage namespacing to the
+            // bypass user and never touch the network for auth.
+            setCurrentUserId(BYPASS_USER.id);
+            return;
+        }
         void refresh();
         // Mid-session expiry (401 from any apiFetch) drops back to login.
         const onUnauthorized = () => {
@@ -108,6 +128,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
     }, [refresh]);
 
     const login = useCallback(async (email: string, password: string) => {
+        if (AUTH_DISABLED) return true;
         setError(null);
         try {
             const data = await request<{ user: AuthUser; token?: string }>('/auth/login', { email, password });
@@ -137,6 +158,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
     }, []);
 
     const signup = useCallback(async (email: string, password: string, displayName?: string) => {
+        if (AUTH_DISABLED) return true;
         setError(null);
         try {
             const data = await request<{ user: AuthUser; token?: string }>('/auth/signup', { email, password, displayName });
@@ -161,6 +183,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
     }, []);
 
     const logout = useCallback(async () => {
+        // Gate-disabled mode has no session to end; stay signed in as the
+        // shared user (there is no login screen to return to).
+        if (AUTH_DISABLED) return;
         try {
             // Bearer header revokes the fallback session server-side even
             // when the cookie was never stored (third-party cookies blocked).

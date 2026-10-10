@@ -17,6 +17,22 @@
 
 const STORAGE_KEY = 'azemax:session_token';
 
+/**
+ * Build-time switch that removes the login gate entirely (public beta).
+ * Set VITE_DISABLE_AUTH=true in the frontend environment and REDEPLOY —
+ * Vite bakes it into the bundle at build time. Pair with server-side
+ * DISABLE_AUTH=true (plus ALLOW_PUBLIC_BYPASS=true in production).
+ * Defaults to false, so normal login is unaffected unless explicitly set.
+ */
+export const AUTH_DISABLED: boolean = (() => {
+    try {
+        const env = (import.meta as unknown as { env?: Record<string, string | undefined> })?.env;
+        return env?.VITE_DISABLE_AUTH === 'true';
+    } catch {
+        return false;
+    }
+})();
+
 // In-memory copy so the module works where localStorage is unavailable
 // (SSR/tests/private-mode throws) and stays testable under node.
 let memoryToken: string | null = null;

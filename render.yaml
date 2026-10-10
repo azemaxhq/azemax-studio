@@ -36,3 +36,14 @@ services:
         value: false
       - key: ALLOW_SHELL
         value: false
+      # --- Public-beta login removal (OPTIONAL, off by default) ---
+      # To remove the login page on the public beta, set BOTH in the Render
+      # dashboard (NOT in this file — this file is committed) and redeploy:
+      #   DISABLE_AUTH=true + ALLOW_PUBLIC_BYPASS=true
+      # WARNING: every visitor then shares ONE identity (shared projects, AI
+      # quota, execution). Anyone can read/overwrite/delete anything. Only
+      # for a throwaway beta; unset both to restore login.
+      - key: DISABLE_AUTH
+        sync: false
+      - key: ALLOW_PUBLIC_BYPASS
+        sync: false
