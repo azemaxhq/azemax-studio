@@ -1,6 +1,8 @@
 // Defensive reads: Vite always provides import.meta.env, but server-side runs
 // (tests, SSR tooling) may not — never crash on a missing env bag.
 // In production VITE_API_URL should be an absolute URL like https://api.example.com/api
+import { authHeaders } from './sessionToken';
+
 export const API_BASE = (import.meta.env?.VITE_API_URL || '/api').replace(/\/$/, '');
 
 export class ApiError extends Error {
@@ -16,11 +18,22 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+    // Bearer fallback: harmless when the httpOnly cookie is present (the
+    // server accepts either credential); required when third-party cookies
+    // are blocked on cross-site beta deploys. Never overrides an explicit
+    // caller-provided Authorization header.
+    let bearer: Record<string, string> = {};
+    try {
+        bearer = authHeaders();
+    } catch {
+        bearer = {};
+    }
     const response = await fetch(`${API_BASE}${path}`, {
         credentials: 'include',
         ...options,
         headers: {
             'Content-Type': 'application/json',
+            ...bearer,
             ...(options.headers || {}),
         },
     });

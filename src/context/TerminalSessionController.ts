@@ -1,4 +1,5 @@
 import { getWebSocketUrl } from '../utils/apiClient';
+import { withSessionToken } from '../utils/sessionToken';
 
 /**
  * Frontend TerminalSessionController
@@ -131,7 +132,10 @@ export class TerminalSessionController {
         const generation = ++this.generation;
         let ws: WebSocket;
         try {
-            ws = new WebSocket(getWebSocketUrl());
+            // Bearer fallback as ?token=: the WS handshake carries cookies,
+            // but cross-site third-party-cookie blocking drops them — the
+            // server accepts the same session token as a query param.
+            ws = new WebSocket(withSessionToken(getWebSocketUrl()));
         } catch (err) {
             this.setState('FAILED');
             this.listeners.onError(`Failed to open WebSocket: ${(err as Error).message}`);

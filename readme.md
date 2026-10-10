@@ -153,6 +153,10 @@ Be honest with testers:
 
 | Symptom | Fix |
 |---------|-----|
+| Login/signup stuck or `Login failed` on Vercel beta | Checklist: 1) Render backend deployed & awake (free tier cold-starts ~60s — open `<backend>/api/health`, expect `{"status":"ok"}`). 2) Vercel env `VITE_API_URL=https://YOUR-BACKEND.onrender.com/api` set **at build time** (redeploy after changing — Vite bakes it in). The app now says `API misconfigured` outright when the API returns a page instead of JSON. |
+| `Cannot reach the API server` on login | Backend asleep, wrong `VITE_API_URL`, or CORS blocked. Set Render `CORS_ORIGIN=https://YOUR-FRONTEND.vercel.app` (exact origin, no trailing `/`). |
+| Logged out after every reload (Safari/Brave) | Third-party-cookie blocking drops the session cookie. The app now falls back to a Bearer token automatically (stored in `localStorage`, revocable via logout). If it persists, allow cookies for the backend host or use Chrome/Edge. |
+| `Invalid email or password` right after a Render redeploy | Expected on free tier: `data/azemax.db` lives on the instance disk and is wiped on redeploy/restart. Recreate the account via `Create an account`. Browser `localStorage` caches are per-user and survive. |
 | `VITE_ provider keys detected in production … ignoring` | Remove `VITE_*` keys from Render env; set `GROQ_API_KEY` etc. |
 | CORS error `Access-Control-Allow-Origin` | Ensure `CORS_ORIGIN` exactly matches your Vercel URL (no trailing `/`), comma-no-space. |
 | `ws` fails in production | Check `VITE_API_URL` is `https://.../api` (not `http`) and backend `HOST=0.0.0.0 PORT=10000`. |

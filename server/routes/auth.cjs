@@ -6,6 +6,15 @@
  * generic messages to avoid user-enumeration via timing or text — but note
  * signup DOES reveal whether an email is taken (409); that is standard and
  * required for usability, and enumeration is blunted by the rate limit.
+ *
+ * Session transport (beta): the httpOnly cookie is the primary credential,
+ * but signup/login ALSO return the opaque session token in the JSON body.
+ * The beta frontend (Vercel) and API (Render) are cross-site, and browsers
+ * that block third-party cookies would otherwise drop the Set-Cookie and
+ * strand the user at the login gate with no error. The client keeps the
+ * token as a fallback and sends it as `Authorization: Bearer` (HTTP) or
+ * `?token=` (WebSocket) — both verified server-side via verifySession.
+ * Logout revokes whichever token the request carried.
  */
 const express = require('express');
 const { asyncHandler } = require('../lib/asyncHandler.cjs');
@@ -60,7 +69,7 @@ router.post('/signup', asyncHandler(async (req, res) => {
     const user = await createUser(email, password, displayName);
     const { token, expiresAt } = createSession(user.id, clientIp(req));
     setSessionCookie(res, token, expiresAt);
-    res.status(201).json({ user });
+    res.status(201).json({ user, token, expiresAt });
 }));
 
 router.post('/login', asyncHandler(async (req, res) => {
@@ -75,7 +84,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     const user = publicUser(row);
     const { token, expiresAt } = createSession(user.id, clientIp(req));
     setSessionCookie(res, token, expiresAt);
-    res.json({ user });
+    res.json({ user, token, expiresAt });
 }));
 
 router.post('/logout', (req, res) => {
