@@ -13,6 +13,7 @@ import { composeProviders } from './core/composeProviders';
 import { AzemaxLogo } from './components/UI/AzemaxLogo';
 import { BRAND } from './core/branding';
 import { LandingPage } from './components/Landing/LandingPage';
+import { wakeBackend } from './utils/backendHealth';
 
 const MainLayout = lazy(() => import('./components/Layout/MainLayout').then(m => ({ default: m.MainLayout })));
 
@@ -54,6 +55,14 @@ const AppProviders = composeProviders(
 // the signed-in user changes. No cross-user state leakage by construction.
 function WorkspaceShell() {
   const { user } = useAuth();
+  // Background warm-up for a cold (Render free-tier) backend: one lightweight
+  // GET to /api/health, fired as soon as the editor initializes — before the
+  // lazy MainLayout chunk even loads. Fire-and-forget and non-blocking; the
+  // singleton in backendHealth dedupes StrictMode / remount calls and never
+  // retries, polls, or touches AI providers.
+  useEffect(() => {
+    wakeBackend();
+  }, []);
   return (
     <AuthGate>
       <AppProviders key={user ? user.id : 'anon'}>

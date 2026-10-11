@@ -18,6 +18,7 @@ import { MobileSearchModal } from '../UI/MobileSearchModal';
 import { FileTabs } from '../Editor/FileTabs';
 
 import { AzemaxLogo } from '../UI/AzemaxLogo';
+import { BackendStatusIndicator } from '../UI/BackendStatusIndicator';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -474,6 +475,11 @@ export const MainLayout: React.FC = () => {
                         />
                     </div>
 
+                    {/* Backend warm-up status: subtle overlay, never blocks input. */}
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                        <BackendStatusIndicator />
+                    </div>
+
                     {/* Terminal / Problems / Output bottom sheet.
                         Always mounted (xterm.js never remounts); three states
                         sized against the workspace container (editor-root):
@@ -734,6 +740,10 @@ export const MainLayout: React.FC = () => {
                                 isAiOpen={isAiSidebarOpen}
                                 onToggleAi={toggleAiSidebar}
                             />
+                        </div>
+                        {/* Backend warm-up status: subtle overlay, never blocks input. */}
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                            <BackendStatusIndicator />
                         </div>
                     </div>
 
