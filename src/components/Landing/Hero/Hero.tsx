@@ -32,7 +32,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
   );
 
   return (
-    <section className="relative min-h-[100svh] w-full flex flex-col pt-24 sm:pt-32 pb-10 sm:pb-12 px-4 sm:px-6 md:px-12 lg:px-16 overflow-hidden bg-[#000204]">
+    <section className="relative min-h-[100svh] w-full flex flex-col pt-24 sm:pt-28 md:pt-32 pb-10 sm:pb-12 px-4 sm:px-6 md:px-12 lg:px-16 overflow-hidden bg-[#000204]">
       {/* 1. Cinematic Multi-Layer Planetary Horizon Canvas (environment, not subject) */}
       <PlanetCanvas className="az-hero-planet" />
 
@@ -43,22 +43,22 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
       />
 
       {/* 2. Centered Hero Composition */}
-      <div className="max-w-4xl mx-auto w-full flex flex-col items-center text-center relative z-20">
+      <div className="max-w-4xl mx-auto w-full flex flex-col items-center text-center relative z-20 flex-1 justify-center">
 
         {/* Eyebrow — cinematic chapter marker */}
-        <div className="az-hero-eyebrow flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-2 text-center mb-5 sm:mb-7">
+        <div className="az-hero-eyebrow flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-2 text-center mb-5 sm:mb-6">
           <span className="w-6 h-[1px] bg-[var(--az-blue-electric)] opacity-60" />
-          <span className="az-mono-badge text-[10px] font-mono tracking-[0.25em] text-[#8FB4FF] uppercase font-medium">
-            BEYOND THE EDITOR
-          </span>
           <span className="rounded-full border border-[#4F8CFF]/40 bg-[#4F8CFF]/10 px-2 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#8FB4FF]">
-            Beta
+            azemax beta
           </span>
           <span className="w-6 h-[1px] bg-[var(--az-blue-electric)] opacity-60" />
         </div>
 
-        {/* Main Campaign Headline */}
-        <h1 className="az-hero-headline text-[2.25rem] min-[380px]:text-[2.75rem] leading-[1.02] sm:text-7xl md:text-8xl lg:text-[96px] tracking-[-0.03em] sm:leading-[0.98] text-white font-normal mb-5 sm:mb-6 text-balance select-none">
+        {/* Main Campaign Headline — fluid typography via clamp() */}
+        <h1
+          className="az-hero-headline text-white font-normal mb-5 sm:mb-6 text-balance select-none"
+          style={{ fontSize: 'var(--az-heading-hero)', lineHeight: 1.02, letterSpacing: '-0.03em' }}
+        >
           <span className="az-display-serif block">Build</span>
           <span className="az-display-serif-italic az-text-blue block mt-1">
             beyond limits.
@@ -66,7 +66,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
         </h1>
 
         {/* Positioning statement + supporting copy */}
-        <div className="az-hero-positioning mb-7 sm:mb-9 px-1">
+        <div className="az-hero-positioning mb-7 sm:mb-8 px-1">
           <p className="az-display-serif-italic text-lg sm:text-2xl text-white/90 leading-snug mb-3 text-balance">
             The space between thought and code.
           </p>
@@ -102,7 +102,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
         {/* 3. Discovery control — the core loop as navigation into the live demos */}
         <nav
           aria-label="Explore the Azemax loop"
-          className="az-hero-metadata mt-6 sm:mt-9 grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-center gap-1 sm:gap-x-3 sm:gap-y-2 pt-5 sm:pt-6 border-t border-[rgba(255,255,255,0.06)] w-full max-w-md sm:max-w-none"
+          className="az-hero-metadata mt-6 sm:mt-8 grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-center gap-1 sm:gap-x-3 sm:gap-y-2 pt-5 sm:pt-6 border-t border-[rgba(255,255,255,0.06)] w-full max-w-md sm:max-w-none"
         >
           {DISCOVERY.map((item) => (
             <a

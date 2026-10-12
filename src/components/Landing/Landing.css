@@ -35,6 +35,22 @@
   --az-font-serif: 'Newsreader', 'Playfair Display', Georgia, serif;
   --az-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --az-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Fluid type scale */
+  --az-heading-hero: clamp(2.25rem, 5vw + 1rem, 6rem);
+  --az-heading-section: clamp(1.75rem, 3vw + 0.75rem, 3.5rem);
+  --az-heading-card: clamp(1.125rem, 1.5vw + 0.5rem, 1.5rem);
+  --az-body: clamp(0.875rem, 0.5vw + 0.75rem, 1.125rem);
+
+  /* Spacing scale */
+  --az-section-py: clamp(4rem, 6vw, 8rem);
+  --az-section-px: clamp(1rem, 3vw, 4rem);
+
+  /* Transition tokens */
+  --az-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --az-duration-fast: 150ms;
+  --az-duration-base: 200ms;
+  --az-duration-slow: 300ms;
 }
 
 html {
@@ -84,7 +100,7 @@ html.az-landing-active #root {
   transform: translateZ(0) translateY(0);
   -webkit-transform: translateZ(0) translateY(0);
   contain: layout paint;
-  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--az-duration-slow) var(--az-ease-out);
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
 }
@@ -135,12 +151,15 @@ html.az-landing-active #root {
   background: rgba(255,255,255,0.06);
   color: rgba(255,255,255,0.85);
   transition: background-color 220ms ease, border-color 220ms ease,
-              color 220ms ease, transform 200ms ease, opacity 200ms ease;
+              color 220ms ease, transform var(--az-duration-base) ease, opacity var(--az-duration-base) ease;
 }
 .az-nav-enter-btn:hover {
-  border-color: rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.10);
   color: #fff;
+}
+.az-nav-enter-btn:active {
+  transform: scale(0.98);
 }
 .az-nav-scrolled .az-nav-enter-btn {
   border-color: rgba(255,255,255,0.9);
@@ -149,6 +168,9 @@ html.az-landing-active #root {
 }
 .az-nav-scrolled .az-nav-enter-btn:hover {
   opacity: 0.95;
+}
+.az-nav-scrolled .az-nav-enter-btn:active {
+  transform: scale(0.97);
 }
 /* Arrow tint — blue at top, dark when on white button */
 .az-nav-arrow { color: #8FB4FF; }
@@ -239,9 +261,9 @@ html.az-landing-active #root {
   border: 1px solid var(--az-line);
   /* Explicit properties only — `transition:all` covers layout props
      (width, padding) and triggers layout recalc on every frame. */
-  transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.25s var(--az-ease-out),
+              border-color 0.25s var(--az-ease-out),
+              box-shadow 0.25s var(--az-ease-out);
 }
 
 .az-glass-surface-interactive:hover {
@@ -287,7 +309,7 @@ html.az-landing-active #root {
     inset 0 0 0 1px rgba(79, 140, 255, 0.2);
   position: relative;
   overflow: hidden;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+  transition: transform 0.4s var(--az-ease-out),
               box-shadow 0.4s ease;
 }
 
@@ -321,24 +343,33 @@ html.az-landing-active #root {
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.01em;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.2);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              background-color 0.2s ease,
-              color 0.2s ease;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  transition: transform var(--az-duration-base) var(--az-ease-out),
+              box-shadow var(--az-duration-base) var(--az-ease-out),
+              background-color var(--az-duration-base) ease,
+              color var(--az-duration-base) ease;
   cursor: pointer;
   text-decoration: none;
 }
 .az-btn-primary:hover {
   background: #FFFFFF;
   transform: translateY(-1px);
-  box-shadow: 0 6px 28px rgba(79, 140, 255, 0.35), 0 0 0 1px rgba(79, 140, 255, 0.5);
+  box-shadow: 0 6px 28px rgba(79, 140, 255, 0.3), 0 0 0 1px rgba(79, 140, 255, 0.45);
   color: #000000;
 }
 .az-btn-primary:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.98);
+}
+.az-btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--az-void), 0 0 0 4px var(--az-blue-electric);
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(0.99);
+}
+.az-btn-primary:focus-visible:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .az-btn-secondary {
@@ -351,15 +382,14 @@ html.az-landing-active #root {
   font-size: 13px;
   font-weight: 400;
   letter-spacing: -0.01em;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid rgba(79, 140, 255, 0.22);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              background-color 0.2s ease,
-              border-color 0.2s ease,
-              color 0.2s ease;
+  /* Removed backdrop-filter — unnecessary for secondary button, saves GPU fill */
+  transition: transform var(--az-duration-base) var(--az-ease-out),
+              box-shadow var(--az-duration-base) var(--az-ease-out),
+              background-color var(--az-duration-base) ease,
+              border-color var(--az-duration-base) ease,
+              color var(--az-duration-base) ease;
   cursor: pointer;
   text-decoration: none;
 }
@@ -368,9 +398,17 @@ html.az-landing-active #root {
   border-color: rgba(79, 140, 255, 0.45);
   color: #FFFFFF;
   transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(79, 140, 255, 0.15);
+  box-shadow: 0 4px 20px rgba(79, 140, 255, 0.12);
 }
-
+.az-btn-secondary:active {
+  transform: translateY(0) scale(0.98);
+}
+.az-btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--az-void), 0 0 0 4px var(--az-blue-electric);
+  background: rgba(11, 23, 40, 0.8);
+  transform: scale(0.99);
+}
 /* ============================================================
    CODE EDITOR STYLING (inside mockups)
    ============================================================ */
@@ -430,9 +468,9 @@ html.az-landing-active #root {
 /* Base reveal states — will-change released on .az-visible */
 .az-reveal {
   opacity: 0;
-  transform: translateY(28px);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(24px);
+  transition: opacity 0.7s var(--az-ease-out),
+              transform 0.7s var(--az-ease-out);
   will-change: opacity, transform;
 }
 .az-reveal.az-visible {
@@ -442,9 +480,9 @@ html.az-landing-active #root {
 
 .az-reveal-left {
   opacity: 0;
-  transform: translateX(-36px);
-  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateX(-28px);
+  transition: opacity 0.65s var(--az-ease-out),
+              transform 0.65s var(--az-ease-out);
   will-change: opacity, transform;
 }
 .az-reveal-left.az-visible {
@@ -454,9 +492,9 @@ html.az-landing-active #root {
 
 .az-reveal-scale {
   opacity: 0;
-  transform: scale(0.96) translateY(16px);
-  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(0.97) translateY(12px);
+  transition: opacity 0.55s var(--az-ease-out),
+              transform 0.55s var(--az-ease-out);
   will-change: opacity, transform;
 }
 .az-reveal-scale.az-visible {
@@ -484,11 +522,11 @@ html.az-landing-active #root {
    forces full software repaint on large serif type every frame.
    ============================================================ */
 @keyframes az-hero-fadeUp {
-  0%   { opacity: 0; transform: translateY(28px); }
+  0%   { opacity: 0; transform: translateY(24px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 @keyframes az-hero-scaleIn {
-  0%   { opacity: 0; transform: scale(0.92) translateY(24px); }
+  0%   { opacity: 0; transform: scale(0.94) translateY(20px); }
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 @keyframes az-hero-lineGrow {
@@ -497,19 +535,19 @@ html.az-landing-active #root {
   100% { transform: scaleX(1); opacity: 0.6; }
 }
 
-.az-hero-planet    { animation: az-planet-establish 1.4s ease-out backwards; }
+.az-hero-planet    { animation: az-planet-establish 1.2s ease-out backwards; }
 @keyframes az-planet-establish {
   0%   { opacity: 0; }
   100% { opacity: 1; }
 }
 
-.az-hero-eyebrow   { animation: az-hero-fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.35s backwards; }
-.az-hero-headline  { animation: az-hero-fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) 0.55s backwards; }
-.az-hero-positioning { animation: az-hero-fadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1s backwards; }
-.az-hero-subtitle  { animation: az-hero-fadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1s backwards; }
-.az-hero-cta       { animation: az-hero-fadeUp 0.85s cubic-bezier(0.16, 1, 0.3, 1) 1.2s backwards; }
-.az-hero-metadata  { animation: az-hero-fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.6s backwards; }
-.az-hero-product   { animation: az-hero-scaleIn 1s cubic-bezier(0.16, 1, 0.3, 1) 1.35s backwards; }
+.az-hero-eyebrow   { animation: az-hero-fadeUp 0.65s var(--az-ease-out) 0.3s backwards; }
+.az-hero-headline  { animation: az-hero-fadeUp 0.9s var(--az-ease-out) 0.5s backwards; }
+.az-hero-positioning { animation: az-hero-fadeUp 0.8s var(--az-ease-out) 0.9s backwards; }
+.az-hero-subtitle  { animation: az-hero-fadeUp 0.8s var(--az-ease-out) 0.9s backwards; }
+.az-hero-cta       { animation: az-hero-fadeUp 0.75s var(--az-ease-out) 1.1s backwards; }
+.az-hero-metadata  { animation: az-hero-fadeUp 0.7s var(--az-ease-out) 1.4s backwards; }
+.az-hero-product   { animation: az-hero-scaleIn 0.9s var(--az-ease-out) 1.2s backwards; }
 
 .az-discovery-item:hover  { transform: translateY(-1px); }
 .az-discovery-item:active { transform: translateY(0); }
@@ -554,14 +592,14 @@ html.az-landing-active #root {
   100% { transform: translateX(100%); }
 }
 
-/* Premium card hover lift */
+/* Premium card hover lift — refined for subtlety */
 .az-card-lift {
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--az-duration-slow) var(--az-ease-out),
+              box-shadow var(--az-duration-slow) var(--az-ease-out);
 }
 .az-card-lift:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 24px rgba(79, 140, 255, 0.12);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(79, 140, 255, 0.1);
 }
 
 /* ============================================================
@@ -582,7 +620,7 @@ html.az-landing-active #root {
   color: transparent;
 }
 
-/* Animate only on non-touch screens ≤1280px where text is smaller */
+/* Animate only on fine-pointer screens ≤1280px where text is smaller */
 @media (pointer: fine) and (max-width: 1280px) {
   @keyframes az-shimmer {
     0%   { background-position: -200% 0; }
@@ -590,6 +628,15 @@ html.az-landing-active #root {
   }
   .az-text-shimmer {
     animation: az-shimmer 8s linear infinite;
+  }
+}
+
+/* On coarse-pointer (touch) screens and above 1280px, the static gradient
+   is used exclusively — no per-frame paint triggered by animation. */
+@media (pointer: coarse), (min-width: 1281px) {
+  .az-text-shimmer {
+    animation: none !important;
+    background-size: 200% 100%;
   }
 }
 
@@ -619,7 +666,7 @@ html.az-landing-active #root {
 .az-progress-track {
   transform-origin: left center;
   transform: scaleX(var(--az-progress, 0.25));
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.5s var(--az-ease-out);
   will-change: transform;
 }
 .az-progress-track.az-visible {
@@ -635,10 +682,10 @@ html.az-landing-active #root {
 }
 .az-tab-panel-active {
   display: block;
-  animation: az-panel-fadein 200ms ease both;
+  animation: az-panel-fadein var(--az-duration-base) ease both;
 }
 .az-tab-panel-enter {
-  animation: az-panel-fadein 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: az-panel-fadein 200ms var(--az-ease-out) both;
 }
 @keyframes az-panel-fadein {
   from {
@@ -721,7 +768,7 @@ html.az-landing-active #root {
   .az-hero-metadata,
   .az-hero-positioning,
   .az-hero-product {
-    animation-duration: 0.6s;
+    animation-duration: 0.5s;
   }
 }
 
@@ -801,4 +848,12 @@ html.az-landing-active #root {
     transform: none !important;
     transition: none !important;
   }
+}
+
+/* ============================================================
+   FOCUS VISIBLE RING — unified accessible focus indicator
+   ============================================================ */
+.az-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--az-void), 0 0 0 4px var(--az-blue-electric);
 }

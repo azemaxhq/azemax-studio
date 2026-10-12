@@ -40,8 +40,6 @@ const MODE_FILES: Record<ModeType, string> = {
 };
 
 // --- Memoized panels: only the active mode subscribes to its state. ---
-// Before, every keystroke of state (runLogs tick, selectedLine, ghost toggle)
-// re-rendered the entire showcase including all four hidden modes.
 
 const WritePanel = memo(function WritePanel({
   acceptedGhost,
@@ -99,7 +97,7 @@ const WritePanel = memo(function WritePanel({
 
       {/* Ghost Tooltip */}
       {!acceptedGhost && (
-        <div className="mt-6 p-3 bg-[rgba(11,23,40,0.85)] border border-[rgba(79,140,255,0.25)] rounded-md flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between max-w-lg">
+        <div className="mt-6 p-3 bg-[rgba(11,23,40,0.85)] border border-[rgba(79,140,255,0.25)] rounded-lg flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between max-w-lg">
           <div className="flex items-center gap-2 text-xs text-white/90">
             <Sparkles size={14} className="text-[#4F8CFF]" />
             <span>Ghost suggestion ready: <strong>bfloat16 tensor mask</strong></span>
@@ -152,7 +150,7 @@ const RunPanel = memo(function RunPanel({
       </div>
 
       {/* Live xterm Terminal */}
-      <div className="lg:col-span-6 flex flex-col min-h-[240px] sm:h-[280px] bg-[#02050B] rounded-lg border border-[rgba(79,140,255,0.15)] p-3">
+      <div className="lg:col-span-6 flex flex-col min-h-[240px] sm:h-[280px] bg-[#02050B] rounded-lg border border-[rgba(79,140,255,0.12)] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--az-muted)] pb-2 border-b border-white/5 mb-2">
           <span className="flex items-center gap-1.5 text-[#8FB4FF]">
             <Terminal size={12} /> xterm.js PTY session
@@ -174,7 +172,7 @@ const RunPanel = memo(function RunPanel({
             <span>Status: SUCCESS</span>
             <button
               onClick={onClear}
-              className="flex items-center gap-1 hover:text-white"
+              className="flex items-center gap-1 hover:text-white transition-colors duration-150"
             >
               <RotateCcw size={10} /> Clear
             </button>
@@ -205,10 +203,13 @@ const UnderstandLine = memo(function UnderstandLine({
   return (
     <div
       onClick={handleClick}
-      className={`cursor-pointer p-1.5 rounded transition-[background-color,border-color,box-shadow] ${indented ? 'pl-6' : ''} ${
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(); } }}
+      className={`cursor-pointer p-1.5 rounded-md transition-[background-color,border-color,box-shadow] duration-150 ${indented ? 'pl-6' : ''} ${
         selected
-          ? 'bg-[#13233D] border border-[#4F8CFF]/50 text-white shadow-[0_0_12px_rgba(79,140,255,0.2)]'
-          : 'hover:bg-[#0A1220] text-white/80'
+          ? 'bg-[#13233D] border border-[#4F8CFF]/40 text-white shadow-[0_0_10px_rgba(79,140,255,0.15)]'
+          : 'border border-transparent hover:bg-[#0A1220] text-white/80'
       }`}
     >
       <span className="select-none text-[#8FB4FF] mr-4">{String(line).padStart(2, '0')}</span>
@@ -272,7 +273,7 @@ const UnderstandPanel = memo(function UnderstandPanel({
       </div>
 
       {/* Explanation Sidebar */}
-      <div className="lg:col-span-5 bg-[#08101E] border border-[rgba(79,140,255,0.2)] rounded-lg p-4 sm:p-5 flex flex-col justify-between gap-4">
+      <div className="lg:col-span-5 bg-[#08101E] border border-[rgba(79,140,255,0.15)] rounded-lg p-4 sm:p-5 flex flex-col justify-between gap-4">
         <div>
           <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4">
             <span className="text-[10px] uppercase font-mono text-[#8FB4FF] tracking-wider">
@@ -323,7 +324,7 @@ const ImprovePanel = memo(function ImprovePanel({
       </div>
 
       {improveTab === 'before' ? (
-        <div className="bg-[#100808] border border-red-500/20 rounded-md p-3 sm:p-4 space-y-1 text-red-200/90 overflow-x-auto text-[11px] sm:text-xs">
+        <div className="bg-[#100808] border border-red-500/20 rounded-lg p-3 sm:p-4 space-y-1 text-red-200/90 overflow-x-auto text-[11px] sm:text-xs">
           <div className="text-red-400/70 text-[11px] mb-2 font-mono">// Original unoptimized implementation (O(N^2))</div>
           <div><span className="text-red-400">-</span> export function filterDuplicates&lt;T&gt;(items: T[]): T[] {'{'}</div>
           <div className="pl-4"><span className="text-red-400">-</span>   return items.filter((item, index) =&gt; {'{'}</div>
@@ -333,7 +334,7 @@ const ImprovePanel = memo(function ImprovePanel({
           <div><span className="text-red-400">-</span> {'}'}</div>
         </div>
       ) : (
-        <div className="bg-[#06150E] border border-emerald-500/20 rounded-md p-3 sm:p-4 space-y-1 text-emerald-200/90 overflow-x-auto text-[11px] sm:text-xs">
+        <div className="bg-[#06150E] border border-emerald-500/20 rounded-lg p-3 sm:p-4 space-y-1 text-emerald-200/90 overflow-x-auto text-[11px] sm:text-xs">
           <div className="text-emerald-400/70 text-[11px] mb-2 font-mono">// Azemax suggested refactor (O(N) single-pass)</div>
           <div><span className="text-emerald-400">+</span> export function filterDuplicates&lt;T&gt;(items: readonly T[]): T[] {'{'}</div>
           <div className="pl-4"><span className="text-emerald-400">+</span>   // Constant-time lookup set eliminates quadratic traversal</div>
@@ -375,10 +376,10 @@ const ModeTab = memo(function ModeTab({
       aria-controls={`panel-${mode.id}`}
       tabIndex={isSelected ? 0 : -1}
       onClick={handleClick}
-      className={`flex items-center justify-center gap-1.5 sm:gap-2 py-3 sm:py-2.5 px-2 sm:px-3 min-h-[44px] rounded-md font-mono text-[11px] sm:text-xs transition-[background-color,border-color,color,box-shadow] duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF] ${
+      className={`flex items-center justify-center gap-1.5 sm:gap-2 py-3 sm:py-2.5 px-2 sm:px-3 min-h-[44px] rounded-md font-mono text-[11px] sm:text-xs transition-[background-color,border-color,color,box-shadow] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4F8CFF]/60 ${
         isSelected
-          ? 'bg-[#0E1A2E] text-white border border-[#4F8CFF]/40 shadow-[0_0_16px_rgba(79,140,255,0.2)]'
-          : 'text-[var(--az-muted)] hover:text-white/80 hover:bg-[#0A101C]'
+          ? 'bg-[#0E1A2E] text-white border border-[#4F8CFF]/35 shadow-[0_0_12px_rgba(79,140,255,0.15)]'
+          : 'text-[var(--az-muted)] hover:text-white/80 hover:bg-[#0A101C] border border-transparent'
       }`}
     >
       <Icon size={14} className={isSelected ? 'text-[#8FB4FF]' : 'opacity-70'} />
@@ -489,7 +490,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
   const activeFile = useMemo(() => MODE_FILES[activeMode], [activeMode]);
 
   return (
-    <div ref={sectionTarget} className="relative py-16 sm:py-20 md:py-28 px-4 sm:px-6 md:px-12 lg:px-16 bg-[#020409] border-t border-[rgba(79,140,255,0.08)] overflow-hidden">
+    <div ref={sectionTarget} className="relative px-4 sm:px-6 md:px-12 lg:px-16 bg-[#020409] border-t border-[rgba(79,140,255,0.08)] overflow-hidden" style={{ paddingTop: 'var(--az-section-py)', paddingBottom: 'var(--az-section-py)' }}>
 
       {/* Atmosphere wash — compositor-only */}
       <div
@@ -501,7 +502,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
 
         {/* Section Header */}
         <div
-          className={`flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 mb-8 sm:mb-12 az-reveal-left ${isVisible ? 'az-visible' : ''}`}
+          className={`flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 mb-8 sm:mb-10 az-reveal-left ${isVisible ? 'az-visible' : ''}`}
         >
           <div>
             <div className="flex items-center gap-2 mb-4">
@@ -510,7 +511,10 @@ export const WorkspaceShowcase: React.FC = memo(() => {
                 03 / EXPERIENCE
               </span>
             </div>
-            <h2 className="text-[1.75rem] sm:text-4xl md:text-5xl tracking-tight text-white leading-[1.15] text-balance">
+            <h2
+              className="tracking-tight text-white leading-[1.12] text-balance"
+              style={{ fontSize: 'var(--az-heading-section)' }}
+            >
               <span className="az-display-serif block">One environment.</span>
               <span className="az-display-serif-italic az-text-blue block">Four modes.</span>
             </h2>
@@ -525,7 +529,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
         <div
           role="tablist"
           aria-label="Workspace Modes"
-          className={`grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2 p-1.5 bg-[#060A12] border border-[rgba(79,140,255,0.15)] rounded-lg mb-6 sm:mb-8 max-w-xl az-reveal az-delay-1 ${isVisible ? 'az-visible' : ''}`}
+          className={`grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2 p-1.5 bg-[#060A12] border border-[rgba(79,140,255,0.12)] rounded-lg mb-6 sm:mb-8 max-w-xl az-reveal az-delay-1 ${isVisible ? 'az-visible' : ''}`}
         >
           {MODES.map((mode) => (
             <ModeTab key={mode.id} mode={mode} isSelected={activeMode === mode.id} onSelect={handleSelectMode} />
@@ -534,13 +538,10 @@ export const WorkspaceShowcase: React.FC = memo(() => {
 
         {/* Persistent Unified Workspace Frame */}
         <div
-          id={`panel-${activeMode}`}
-          role="tabpanel"
-          aria-labelledby={`tab-${activeMode}`}
-          className={`az-glass-surface rounded-xl border border-[rgba(79,140,255,0.2)] overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] az-reveal-scale az-delay-2 ${isVisible ? 'az-visible' : ''}`}
+          className={`az-glass-surface rounded-xl border border-[rgba(79,140,255,0.15)] overflow-hidden shadow-[0_16px_48px_rgba(0,0,0,0.7)] az-reveal-scale az-delay-2 ${isVisible ? 'az-visible' : ''}`}
         >
           {/* Workstation Frame Header */}
-          <div className="min-h-[2.5rem] bg-[#070D18] border-b border-[rgba(79,140,255,0.12)] px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="min-h-[2.5rem] bg-[#070D18] border-b border-[rgba(79,140,255,0.10)] px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56]/70" />
@@ -558,7 +559,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
               {activeMode === 'write' && (
                 <button
                   onClick={handleToggleGhost}
-                  className="flex items-center gap-1.5 text-xs text-[#8FB4FF] bg-[#0E1A2E] hover:bg-[#142642] px-2.5 py-1 rounded border border-[#4F8CFF]/30 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-[#8FB4FF] bg-[#0E1A2E] hover:bg-[#142642] px-2.5 py-1 rounded-md border border-[#4F8CFF]/25 transition-colors duration-150"
                 >
                   <Sparkles size={12} />
                   <span>{acceptedGhost ? 'Reset Ghost State' : 'Simulate Tab Accept'}</span>
@@ -569,7 +570,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
                 <button
                   onClick={handleRunExecution}
                   disabled={isRunning}
-                  className="flex items-center gap-1.5 text-xs text-white bg-[#1A4580] hover:bg-[#20559E] px-3 py-1 rounded transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-xs text-white bg-[#1A4580] hover:bg-[#20559E] px-3 py-1 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Play size={12} className={isRunning ? 'animate-spin' : ''} />
                   <span>{isRunning ? 'Running...' : 'Execute Script'}</span>
@@ -577,19 +578,19 @@ export const WorkspaceShowcase: React.FC = memo(() => {
               )}
 
               {activeMode === 'improve' && (
-                <div className="flex items-center bg-[#070D18] border border-[rgba(79,140,255,0.2)] rounded p-0.5">
+                <div className="flex items-center bg-[#070D18] border border-[rgba(79,140,255,0.15)] rounded-md p-0.5">
                   <button
                     onClick={handleSelectBefore}
-                    className={`px-2.5 py-0.5 rounded text-[11px] transition-colors ${
-                      improveTab === 'before' ? 'bg-[#2A1515] text-[#FF8585]' : 'text-[var(--az-muted)]'
+                    className={`px-2.5 py-0.5 rounded text-[11px] transition-colors duration-150 ${
+                      improveTab === 'before' ? 'bg-[#2A1515] text-[#FF8585]' : 'text-[var(--az-muted)] hover:text-white/70'
                     }`}
                   >
                     Original
                   </button>
                   <button
                     onClick={handleSelectAfter}
-                    className={`px-2.5 py-0.5 rounded text-[11px] transition-colors ${
-                      improveTab === 'after' ? 'bg-[#0E281C] text-[#55EB9B]' : 'text-[var(--az-muted)]'
+                    className={`px-2.5 py-0.5 rounded text-[11px] transition-colors duration-150 ${
+                      improveTab === 'after' ? 'bg-[#0E281C] text-[#55EB9B]' : 'text-[var(--az-muted)] hover:text-white/70'
                     }`}
                   >
                     Azemax AI (Optimized)
@@ -599,21 +600,33 @@ export const WorkspaceShowcase: React.FC = memo(() => {
             </div>
           </div>
 
-          {/* Workstation Frame Body — only the active panel mounts,
-              key forces a remount so .az-tab-panel-enter triggers each switch */}
-          <div key={activeMode} className="p-3 sm:p-6 bg-[#040810] min-h-[380px] font-mono text-[11px] sm:text-xs overflow-x-hidden az-tab-panel-enter">
-            {activeMode === 'write' && <WritePanel acceptedGhost={acceptedGhost} />}
-            {activeMode === 'run' && (
-              <RunPanel isRunning={isRunning} runLogs={runLogs} hasRun={hasRun} onClear={handleClearRun} />
-            )}
-            {activeMode === 'understand' && (
-              <UnderstandPanel selectedLine={selectedLine} onSelectLine={handleSelectLine} />
-            )}
-            {activeMode === 'improve' && <ImprovePanel improveTab={improveTab} />}
-          </div>
+          {/* Workstation Frame Body — all panels rendered, only active is visible.
+              This avoids remounting expensive panels on mode switch (no key={activeMode}). */}
+          {MODES.map((mode) => (
+            <div
+              key={mode.id}
+              id={`panel-${mode.id}`}
+              role="tabpanel"
+              aria-labelledby={`tab-${mode.id}`}
+              hidden={activeMode !== mode.id}
+              className={`p-3 sm:p-6 bg-[#040810] font-mono text-[11px] sm:text-xs overflow-x-hidden ${
+                activeMode === mode.id ? 'az-tab-panel-enter' : ''
+              }`}
+              style={{ minHeight: activeMode === mode.id ? '380px' : undefined }}
+            >
+              {mode.id === 'write' && <WritePanel acceptedGhost={acceptedGhost} />}
+              {mode.id === 'run' && (
+                <RunPanel isRunning={isRunning} runLogs={runLogs} hasRun={hasRun} onClear={handleClearRun} />
+              )}
+              {mode.id === 'understand' && (
+                <UnderstandPanel selectedLine={selectedLine} onSelectLine={handleSelectLine} />
+              )}
+              {mode.id === 'improve' && <ImprovePanel improveTab={improveTab} />}
+            </div>
+          ))}
 
           {/* Workstation Frame Footer */}
-          <div className="min-h-7 bg-[#060B14] border-t border-[rgba(79,140,255,0.12)] px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] font-mono text-[var(--az-muted)]">
+          <div className="min-h-7 bg-[#060B14] border-t border-[rgba(79,140,255,0.10)] px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] font-mono text-[var(--az-muted)]">
             <span className="text-[#8FB4FF]">Azemax Core Engine Active</span>
             <span>Zero Remote Leakage</span>
           </div>

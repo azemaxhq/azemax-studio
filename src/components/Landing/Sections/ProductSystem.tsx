@@ -162,11 +162,11 @@ const ZONE_TILE_BODIES: Record<EngineZone, React.ReactNode> = {
 };
 
 const ZONE_TILE_SPANS: Record<EngineZone, string> = {
-  explorer: 'col-span-1 sm:col-span-4 lg:col-span-3',
-  editor: 'col-span-1 sm:col-span-8 lg:col-span-6',
-  ai: 'col-span-1 sm:col-span-12 lg:col-span-3',
-  terminal: 'col-span-1 sm:col-span-7 lg:col-span-7',
-  diagnostics: 'col-span-1 sm:col-span-5 lg:col-span-5',
+  explorer: 'col-span-1 md:col-span-2 lg:col-span-3',
+  editor: 'col-span-1 md:col-span-4 lg:col-span-6',
+  ai: 'col-span-1 md:col-span-2 lg:col-span-3',
+  terminal: 'col-span-1 md:col-span-4 lg:col-span-7',
+  diagnostics: 'col-span-1 md:col-span-2 lg:col-span-5',
 };
 
 const ZoneTile = memo(function ZoneTile({
@@ -296,7 +296,7 @@ export const ProductSystem: React.FC = memo(() => {
             </span>
           </div>
 
-          <h2 className="text-[1.75rem] sm:text-5xl md:text-6xl tracking-tight text-white mb-4 sm:mb-6 leading-[1.12] sm:leading-[1.08] text-balance">
+          <h2 className="tracking-tight text-white mb-4 sm:mb-6 leading-[1.12] sm:leading-[1.08] text-balance" style={{ fontSize: 'var(--az-heading-section)' }}>
             <span className="az-display-serif block">The machine</span>
             <span className="az-display-serif-italic az-text-blue block">behind the file.</span>
           </h2>
@@ -317,7 +317,7 @@ export const ProductSystem: React.FC = memo(() => {
         </div>
 
         {/* Interactive Integrated Workspace Blueprint Visual */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-8 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 sm:gap-8 items-stretch">
 
           {/* Main Blueprint Viewport */}
           <div
