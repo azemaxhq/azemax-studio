@@ -1,0 +1,411 @@
+/**
+ * Onboarding (first-run) visual layer — scoped `az-onboard-*` classes.
+ *
+ * All color/surface/border/radius/motion values come from the global Azemax
+ * tokens in index.css; nothing here hardcodes palette or timing. Responsive
+ * breakpoints are pure CSS (no JS media subscriptions, no extra re-renders).
+ */
+
+.az-onboard {
+    min-height: 100%;
+    overflow-y: auto;
+    background: var(--az-bg);
+    color: var(--az-text);
+}
+
+.az-onboard-inner {
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 920px;
+    min-height: 100%;
+    padding: 40px 20px 48px;
+}
+
+@media (min-width: 640px) {
+    .az-onboard-inner {
+        padding: 56px 32px 64px;
+    }
+}
+
+/* ---- Welcome header: logo + eyebrow + heading form one group ---- */
+
+.az-onboard-hero {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.az-onboard-hero-text {
+    min-width: 0;
+}
+
+.az-onboard-eyebrow {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--az-text-faint);
+    line-height: 1.4;
+}
+
+.az-onboard-title {
+    margin: 2px 0 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    color: var(--az-text);
+}
+
+@media (min-width: 640px) {
+    .az-onboard-title {
+        font-size: 24px;
+    }
+}
+
+.az-onboard-sub {
+    margin: 10px 0 0;
+    max-width: 60ch;
+    font-size: 13.5px;
+    line-height: var(--az-lh-relaxed);
+    color: var(--az-text-secondary);
+}
+
+/* ---- Primary actions: two aligned cards ---- */
+
+.az-onboard-actions {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+@media (min-width: 640px) {
+    .az-onboard-actions {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.az-onboard-action {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--az-border);
+    border-radius: var(--az-r-xl);
+    background: var(--az-surface);
+    padding: 18px;
+    transition:
+        border-color var(--az-dur-fast) var(--az-ease),
+        background-color var(--az-dur-fast) var(--az-ease);
+}
+
+.az-onboard-action:hover {
+    border-color: var(--az-border-strong);
+    background: var(--az-surface-2);
+}
+
+.az-onboard-action-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.az-onboard-icon-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--az-r-md);
+    border: 1px solid var(--az-border);
+    transition:
+        color var(--az-dur-fast) var(--az-ease),
+        border-color var(--az-dur-fast) var(--az-ease),
+        background-color var(--az-dur-fast) var(--az-ease);
+}
+
+.az-onboard-icon-box--accent {
+    background: var(--az-accent-soft);
+    border-color: var(--az-accent-border);
+    color: var(--az-accent);
+}
+
+.az-onboard-icon-box--neutral {
+    background: var(--az-surface-3);
+    color: var(--az-text-secondary);
+}
+
+.az-onboard-action:hover .az-onboard-icon-box--neutral {
+    color: var(--az-text);
+    border-color: var(--az-border-strong);
+}
+
+.az-onboard-action-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+}
+
+.az-onboard-action-desc {
+    margin: 8px 0 0;
+    flex: 1;
+    font-size: 12.5px;
+    line-height: var(--az-lh-relaxed);
+    color: var(--az-text-secondary);
+}
+
+.az-onboard-btn {
+    margin-top: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 16px;
+    border-radius: var(--az-r-md);
+    border: 1px solid transparent;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background-color var(--az-dur-fast) var(--az-ease),
+        border-color var(--az-dur-fast) var(--az-ease),
+        color var(--az-dur-fast) var(--az-ease);
+}
+
+.az-onboard-btn:focus-visible,
+.az-onboard-card:focus-visible,
+.az-onboard-action:focus-visible {
+    outline: none;
+    box-shadow: var(--az-focus-ring);
+}
+
+.az-onboard-btn--primary {
+    background: var(--az-accent);
+    border-color: var(--az-accent);
+    color: #fff;
+}
+
+.az-onboard-btn--primary:hover {
+    background: var(--az-accent-hover);
+    border-color: var(--az-accent-hover);
+}
+
+.az-onboard-btn--neutral {
+    background: var(--az-surface-3);
+    border-color: var(--az-border);
+    color: var(--az-text);
+}
+
+.az-onboard-btn--neutral:hover {
+    background: var(--az-surface-hover);
+    border-color: var(--az-border-strong);
+}
+
+/* ---- Starter templates: selectable card grid ---- */
+
+.az-onboard-section {
+    margin-top: 28px;
+}
+
+.az-onboard-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.az-onboard-section-title {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--az-text-faint);
+}
+
+.az-onboard-section-hint {
+    margin: 0;
+    flex-shrink: 0;
+    font-size: 11.5px;
+    color: var(--az-text-faint);
+}
+
+.az-onboard-grid {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+@media (min-width: 640px) {
+    .az-onboard-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .az-onboard-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.az-onboard-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid var(--az-border);
+    border-radius: var(--az-r-lg);
+    background: var(--az-surface-2);
+    padding: 14px 14px 12px;
+    color: var(--az-text);
+    transition:
+        border-color var(--az-dur-fast) var(--az-ease),
+        background-color var(--az-dur-fast) var(--az-ease);
+}
+
+.az-onboard-card:hover {
+    border-color: var(--az-accent-border);
+    background: var(--az-surface-3);
+}
+
+.az-onboard-card[data-selected="true"] {
+    border-color: var(--az-accent-border);
+    background: var(--az-accent-soft-subtle);
+}
+
+.az-onboard-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.az-onboard-card .az-onboard-icon-box {
+    width: 30px;
+    height: 30px;
+    background: var(--az-surface-3);
+    color: var(--az-text-secondary);
+}
+
+.az-onboard-card:hover .az-onboard-icon-box,
+.az-onboard-card[data-selected="true"] .az-onboard-icon-box {
+    color: var(--az-accent);
+    border-color: var(--az-accent-border);
+}
+
+.az-onboard-card-check {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--az-r-full);
+    border: 1px solid var(--az-border-strong);
+}
+
+.az-onboard-card[data-selected="true"] .az-onboard-card-check {
+    border-color: var(--az-accent);
+    background: var(--az-accent);
+    box-shadow: inset 0 0 0 3px var(--az-surface-2);
+}
+
+.az-onboard-card-title {
+    margin: 10px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.az-onboard-card-desc {
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: var(--az-lh-base);
+    color: var(--az-text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.az-onboard-card-meta {
+    margin: 8px 0 0;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--az-text-faint);
+}
+
+.az-onboard-note {
+    margin: 10px 0 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11.5px;
+    line-height: var(--az-lh-relaxed);
+    color: var(--az-text-faint);
+}
+
+.az-onboard-note svg {
+    margin-top: 1px;
+    flex-shrink: 0;
+}
+
+/* ---- Recent projects: compact native list ---- */
+
+.az-onboard-recents {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.az-onboard-empty {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 4px 0 0;
+}
+
+.az-onboard-empty-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--az-r-md);
+    border: 1px solid var(--az-border);
+    background: var(--az-surface-2);
+    color: var(--az-text-faint);
+}
+
+.az-onboard-empty-title {
+    margin: 0;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--az-text-secondary);
+}
+
+.az-onboard-empty-sub {
+    margin: 2px 0 0;
+    font-size: 11.5px;
+    color: var(--az-text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .az-onboard *,
+    .az-onboard *::before,
+    .az-onboard *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

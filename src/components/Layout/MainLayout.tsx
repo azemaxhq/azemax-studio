@@ -12,6 +12,7 @@ import { useSettingsSelector } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useMobileViewport } from '../../hooks/useMobileViewport';
 import { useProjectFile } from '../../context/ProjectContext';
+import { useWorkspaceState } from '../../context/ProjectContext';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav, type MobileTab } from './MobileBottomNav';
 import { MobileSearchModal } from '../UI/MobileSearchModal';
@@ -19,6 +20,7 @@ import { FileTabs } from '../Editor/FileTabs';
 
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { BackendStatusIndicator } from '../UI/BackendStatusIndicator';
+import { OnboardingScreen } from '../OnboardingScreen';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -34,6 +36,12 @@ const SidebarFallback = () => (
 );
 
 export const MainLayout: React.FC = () => {
+    // Workspace state drives onboarding vs. IDE. The hook itself is
+    // unconditional; the early return lives AFTER every hook call (just below)
+    // so hook order is identical on every render.
+    const { state } = useWorkspaceState();
+    const hasProject = state !== 'no-project';
+
     // Developer diagnostics overlay (gated by the Advanced setting)
     const developerDiagnostics = useSettingsSelector((s) => s.advanced.developerDiagnostics);
 
@@ -441,6 +449,12 @@ export const MainLayout: React.FC = () => {
         document.addEventListener('contextmenu', handleContextMenu);
         return () => document.removeEventListener('contextmenu', handleContextMenu);
     }, []);
+
+    // No project yet → dedicated welcome experience instead of an empty IDE.
+    // Placed after ALL hooks so hook order never changes between renders.
+    if (!hasProject) {
+        return <OnboardingScreen />;
+    }
 
     // Dedicated Mobile IDE presentation (under 768px).
     // Vertical budget: header 56px + tabs 40px + editor strip 40px +

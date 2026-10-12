@@ -11,6 +11,7 @@ import { useProjectFile, useProjectUI, useProjectActions } from '../../context/P
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { ErrorBoundary } from '../UI/ErrorBoundary';
 import { countTree } from '../../utils/safeTree';
+import { ROOT_NODE_ID } from '../../utils/mockFileSystem';
 import { loadSortState, saveSortState, type ExplorerSortState, type SortBy } from '../../utils/explorerSort';
 
 // The file tree is sanitized at its entry point (ProjectContext.loadFileTree),
@@ -159,7 +160,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     }, [showOverflow, showSortMenu]);
 
     const { files, folders } = useMemo(() => countTree(fileTree), [fileTree]);
-    const folderCount = Math.max(0, folders - 1);
+    // The canonical root is a container, not a project folder — exclude it
+    // from the count only when it is actually present (rootless workspaces
+    // created from the empty state have no root node at all).
+    const folderCount = Math.max(0, folders - (fileTree.some((n) => n.id === ROOT_NODE_ID) ? 1 : 0));
     const anyFolderOpenFlag = expandedFolderIds.size > 1;
 
     const handleCreateFile = useCallback(() => {

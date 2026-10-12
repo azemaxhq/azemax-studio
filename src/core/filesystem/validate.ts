@@ -35,7 +35,8 @@ export interface ValidationResult {
  *
  * Invariants enforced:
  *   - the tree is an array
- *   - exactly one canonical root (id === ROOT_NODE_ID) exists at the top level
+ *   - AT MOST one canonical root (id === ROOT_NODE_ID) exists at the top level
+ *     (an empty array is the explicit no-workspace state and is valid)
  *   - every node has a non-empty string id/name and a valid type
  *   - a node id appears exactly once
  *   - no node object appears more than once (no shared references, no cycles)
@@ -159,8 +160,8 @@ export function validateFileTree(nodes: unknown): ValidationResult {
         }
     }
 
-    if (rootCount !== 1) {
-        issues.push({ message: `Expected exactly one canonical root, found ${rootCount}` });
+    if (rootCount > 1) {
+        issues.push({ message: `Expected at most one canonical root, found ${rootCount}` });
     }
 
     return { valid: issues.length === 0, issues, nodeCount };
@@ -186,35 +187,55 @@ export interface RepairResult {
     repaired: boolean;
 }
 
-const freshRoot = (name: string): FileNode => ({
-    id: ROOT_NODE_ID,
-    name: name || 'deep-context-ide',
-    type: 'folder',
-    parentId: undefined,
-    children: [],
-});
-
 const isString = (v: unknown): v is string => typeof v === 'string';
+
+/**
+ * The default project name historically materialized by the empty-storage
+ * fallback (`initialFileTree`) and by repair recovery paths. A persisted tree
+ * that contains NOTHING but a bare root with this exact name is positively
+ * identified as that generated placeholder — never user content — and repair
+ * collapses it to the explicit no-workspace state (`[]`). Any tree carrying
+ * real content (siblings, children, files) is preserved untouched, whatever
+ * it is named.
+ */
+const PLACEHOLDER_ROOT_NAME = 'deep-context-ide';
+
+function isBarePlaceholderRoot(tree: FileNode[]): boolean {
+    if (tree.length !== 1) return false;
+    const only = tree[0];
+    return (
+        only.id === ROOT_NODE_ID &&
+        only.name === PLACEHOLDER_ROOT_NAME &&
+        (only.children ?? []).length === 0 &&
+        (only.content ?? '') === ''
+    );
+}
 
 /**
  * Deterministically repair untrusted tree data into a valid runtime tree.
  *
  *   1. Coerce to an array; recover legacy `isOpen` flags into an expansion set.
+ *      Non-array input and an empty array both repair to the explicit
+ *      no-workspace state (`[]`) — repair NEVER invents a placeholder project.
  *   2. Walk iteratively with a WeakSet (cycles/shared refs are broken) and a
  *      depth cap so pathological input terminates.
  *   3. Normalize each node (id/name/type/content), strip UI-only `isOpen`,
  *      and make every id globally unique.
- *   4. Guarantee exactly one canonical root at the top level; rebuild every
- *      node's parentId from its actual location.
- *   5. Re-validate; on failure recover to a fresh safe project root.
+ *   4. Preserve the canonical shape (at most one root at the top level;
+ *      top-level items stay siblings of the root) and rebuild every node's
+ *      parentId from its actual location. Rootless trees are kept rootless —
+ *      no folder is ever promoted and no root is ever fabricated.
+ *   5. Collapse a bare default-named root (the known generated placeholder)
+ *      to `[]`. Re-validate; on failure recover to `[]` rather than a
+ *      fabricated project.
  *
  * The input is never mutated.
  */
-export function repairFileTree(input: unknown, rootName = 'deep-context-ide'): RepairResult {
+export function repairFileTree(input: unknown): RepairResult {
     let repaired = false;
     const expansion = new Set<string>();
     if (!Array.isArray(input)) {
-        return { tree: [freshRoot(rootName)], expansion, repaired: true };
+        return { tree: [], expansion, repaired: true };
     }
 
     // ---- Pass 1: iterative, cycle-safe normalization ----
@@ -271,10 +292,15 @@ export function repairFileTree(input: unknown, rootName = 'deep-context-ide'): R
     normalizeList(input, 0, rawRoots);
 
     if (rawRoots.length === 0) {
-        return { tree: [freshRoot(rootName)], expansion, repaired: true };
+        // Already the explicit no-workspace state — nothing to change.
+        return { tree: [], expansion, repaired: false };
     }
 
     // ---- Pass 2: canonical root resolution ----
+    // At most one root survives at the top level; everything else stays a
+    // sibling. A rootless tree is legitimate (it is how a workspace created
+    // from the empty state looks) and is preserved as-is — nothing is
+    // promoted and no root container is fabricated.
     let rootNode: FileNode | null = null;
     const others: FileNode[] = [];
     for (const node of rawRoots) {
@@ -289,25 +315,10 @@ export function repairFileTree(input: unknown, rootName = 'deep-context-ide'): R
         }
     }
 
-    if (rootNode === null) {
-        const candidate = others.find((n) => n.type === 'folder');
-        if (candidate) {
-            rootNode = { ...candidate };
-            rootNode.id = ROOT_NODE_ID;
-            rootNode.name = rootNode.name || rootName;
-            // The promoted candidate must leave the sibling list or its subtree
-            // would be duplicated (once under the root, once as a sibling).
-            others.splice(others.indexOf(candidate), 1);
-        } else {
-            rootNode = freshRoot(rootName);
-        }
-        repaired = true;
-    }
-
     // Normalize the canonical model: top-level items are SIBLINGS of the root
     // node (matching the runtime creation convention). Legacy data that placed
     // items inside root.children is flattened to the top level.
-    if (Array.isArray(rootNode.children) && rootNode.children.length > 0) {
+    if (rootNode && Array.isArray(rootNode.children) && rootNode.children.length > 0) {
         for (const child of rootNode.children) {
             if (isObject(child)) others.push(child as FileNode);
         }
@@ -315,9 +326,11 @@ export function repairFileTree(input: unknown, rootName = 'deep-context-ide'): R
         repaired = true;
     }
 
-    rootNode.id = ROOT_NODE_ID;
-    rootNode.parentId = undefined;
-    rootNode.isOpen = undefined;
+    if (rootNode) {
+        rootNode.id = ROOT_NODE_ID;
+        rootNode.parentId = undefined;
+        rootNode.isOpen = undefined;
+    }
 
     // ---- Pass 3: rebuild ids + parentId, dedupe globally ----
     // Valid, globally-unique ids (opaque uuids OR legacy path ids) are
@@ -373,18 +386,26 @@ export function repairFileTree(input: unknown, rootName = 'deep-context-ide'): R
         }
     };
 
-    reId(rootNode, ROOT_NODE_ID, 0, true);
-    const top: FileNode[] = [rootNode];
+    if (rootNode) {
+        reId(rootNode, ROOT_NODE_ID, 0, true);
+    }
+    const top: FileNode[] = rootNode ? [rootNode] : [];
     for (const other of others) {
         reId(other, ROOT_NODE_ID, 1, false);
         top.push(other);
     }
 
-    // ---- Pass 4: validate; recover to a safe root on failure ----
+    // ---- Pass 4: collapse the known placeholder; validate; recover ----
+    // A bare default-named root is the generated placeholder — collapse it to
+    // the explicit no-workspace state. Anything carrying real content is
+    // preserved untouched, whatever it is named.
+    if (isBarePlaceholderRoot(top)) {
+        return { tree: [], expansion, repaired: true };
+    }
     const result = validateFileTree(top);
     if (!result.valid) {
-        console.warn(`[FileTree] Repair produced an invalid tree; recovering to a safe project root.`);
-        return { tree: [freshRoot(rootName)], expansion, repaired: true };
+        console.warn(`[FileTree] Repair produced an invalid tree; recovering to the explicit no-workspace state.`);
+        return { tree: [], expansion, repaired: true };
     }
 
     // Expansion ids recovered from legacy `isOpen` flags may reference ids that

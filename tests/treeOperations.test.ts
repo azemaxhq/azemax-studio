@@ -476,7 +476,7 @@ function pathToId(tree: FileNode[], p: string): string {
     check('O: shared-ref repair valid', validateFileTree(sharedTree.tree).valid);
 
     const garbage = repairFileTree({ not: 'an array' } as unknown);
-    check('O: garbage recovers to a fresh canonical root', validateFileTree(garbage.tree).valid && garbage.tree[0]?.id === ROOT);
+    check('O: garbage recovers to the explicit no-workspace state', validateFileTree(garbage.tree).valid && garbage.tree.length === 0 && garbage.repaired);
 
     let deep: { id: string; name: string; type: 'folder'; children: unknown[] } = { id: 'd', name: 'd', type: 'folder', children: [] };
     for (let i = 0; i < 5000; i++) {
@@ -484,6 +484,60 @@ function pathToId(tree: FileNode[], p: string): string {
     }
     const deepResult = repairFileTree([deep]);
     check('O: 5000-deep input terminates + valid', validateFileTree(deepResult.tree).valid);
+}
+
+// ============================================================================
+// O2. No-workspace state — repair never invents a placeholder project
+// ============================================================================
+{
+    // 1) Empty input is already the explicit no-workspace state (not a repair).
+    const empty = repairFileTree([]);
+    check('O2: empty array repairs to empty array', empty.tree.length === 0 && validateFileTree(empty.tree).valid);
+    check('O2: empty array is NOT flagged as a repair', empty.repaired === false);
+
+    // 2) The known generated placeholder (bare default-named root, no content)
+    // collapses to the no-workspace state.
+    const placeholder = repairFileTree([
+        { id: ROOT, name: 'deep-context-ide', type: 'folder', parentId: undefined, children: [] },
+    ]);
+    check('O2: bare placeholder root collapses to no-workspace', placeholder.tree.length === 0 && placeholder.repaired);
+    check('O2: collapsed placeholder validates', validateFileTree(placeholder.tree).valid);
+
+    // 3) A bare root with a NON-default name is preserved — it may be a
+    // legitimate empty project from an older version, and repair must not
+    // delete anything that could be user data.
+    const named = repairFileTree([
+        { id: ROOT, name: 'My Project', type: 'folder', parentId: undefined, children: [] },
+    ]);
+    check('O2: bare non-default root is preserved', named.tree.length === 1 && named.tree[0]?.id === ROOT);
+    check('O2: preserved root keeps its name', (named.tree[0] as FileNode)?.name === 'My Project');
+    assertValidFileTree(named.tree);
+
+    // 4) A rootless tree is legitimate and is preserved as-is: no folder is
+    // ever promoted to the canonical root id (identity churn would break
+    // active-file/bookmark persistence).
+    const rootlessInput = [{ id: 'proj-1', name: 'my-app', type: 'folder', parentId: ROOT, children: [] }];
+    const rootless = repairFileTree(JSON.parse(JSON.stringify(rootlessInput)));
+    check('O2: rootless tree stays rootless', rootless.tree.every(n => n.id !== ROOT) && rootless.tree.length === 1);
+    check('O2: rootless node keeps its id (no promotion)', rootless.tree[0]?.id === 'proj-1');
+    assertValidFileTree(rootless.tree);
+
+    // 5) A default-named root WITH real content is user data — preserved.
+    const withContent = repairFileTree([
+        { id: ROOT, name: 'deep-context-ide', type: 'folder', parentId: undefined, children: [] },
+        { id: 'hello-1', name: 'hello', type: 'folder', parentId: ROOT, children: [] },
+    ]);
+    check('O2: placeholder root with content is preserved, not wiped', withContent.tree.length === 2);
+    check('O2: user folder inside survives repair', withContent.tree.some(n => n.name === 'hello'));
+    assertValidFileTree(withContent.tree);
+
+    // 6) Filesystem operations work directly on the empty state — creating
+    // the first node needs no pre-existing root container.
+    const firstFolder = createFolder([], { name: 'my-app' });
+    check('O2: createFolder works on empty tree', firstFolder.changed && validateFileTree(firstFolder.tree).valid);
+    const firstFile = createFile([], { name: 'readme.md', content: 'x' });
+    check('O2: createFile works on empty tree', firstFile.changed && validateFileTree(firstFile.tree).valid);
+    check('O2: empty tree itself validates (no-workspace is valid)', validateFileTree([]).valid);
 }
 
 // ============================================================================

@@ -24,6 +24,9 @@ export type TreeErrorCode =
     | 'root-immutable'
     | 'invalid-input';
 
+/** Distinguishes between "no project exists" and "a project is loaded". */
+export type WorkspaceState = 'no-project' | 'project-loaded' | 'project-creating' | 'project-importing' | 'project-loading' | 'project-failed';
+
 export interface TreeError {
     code: TreeErrorCode;
     message: string;

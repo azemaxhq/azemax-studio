@@ -29,13 +29,10 @@ export function generateNodeId(): string {
     return `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export const initialFileTree: FileNode[] = [
-    {
-        id: ROOT_NODE_ID,
-        name: 'deep-context-ide',
-        type: 'folder',
-        isOpen: true,
-        parentId: undefined,
-        children: []
-    }
-];
+/**
+ * The explicit no-workspace initial state: an empty tree. No project root,
+ * no placeholder folders, no files. The onboarding experience renders from
+ * this state, and the first created or imported node transitions the
+ * workspace into existence. Nothing is persisted until the user acts.
+ */
+export const initialFileTree: FileNode[] = [];

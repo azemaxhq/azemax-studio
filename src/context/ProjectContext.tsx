@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, memo, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, memo, type ReactNode } from 'react';
 import { initialFileTree, type FileNode } from '../utils/mockFileSystem';
 import { ROOT_NODE_ID } from '../utils/mockFileSystem';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
@@ -60,6 +60,11 @@ function sanitizeCorruptTree(tree: FileNode[]): { tree: FileNode[]; hadCorruptio
 //   raw stored data → repair → validate → sanitize error sentinels → runtime tree
 // Corruption is repaired deterministically ONCE at this boundary; a repaired
 // tree is immediately persisted so the bad copy never re-enters the runtime.
+//
+// Absent storage is NOT a fallback project: it yields the explicit
+// no-workspace state (empty tree) and persists nothing. A workspace comes
+// into existence only through an explicit create/import action or through
+// restoring previously persisted user content.
 const loadFileTree = (): RepairResult => {
     try {
         const saved = nsGetItem(STORAGE_KEY, [LEGACY_STORAGE_KEY]);
@@ -75,9 +80,7 @@ const loadFileTree = (): RepairResult => {
     } catch (e) {
         console.warn('Failed to load file tree from localStorage:', e);
     }
-    const base = repairFileTree(initialFileTree);
-    const sanitized = sanitizeCorruptTree(base.tree);
-    return sanitized.hadCorruption ? { ...base, tree: sanitized.tree, repaired: true } : base;
+    return { tree: [...initialFileTree], expansion: new Set<string>(), repaired: false };
 };
 
 // Save file tree to localStorage (coalesced writes to avoid main-thread
@@ -279,6 +282,13 @@ const ProjectFileContext = createContext<ProjectFileState | undefined>(undefined
 const ProjectUIContext = createContext<ProjectUIState | undefined>(undefined);
 const ProjectActionsContext = createContext<ProjectActions | undefined>(undefined);
 
+// Workspace state context — tracks the current workspace lifecycle phase.
+const WorkspaceStateContext = createContext<{
+    state: 'no-project' | 'project-loaded' | 'project-creating' | 'project-importing' | 'project-loading' | 'project-failed';
+    projectName: string | null;
+    projectType: string | null;
+} | undefined>(undefined);
+
 // The initial load is computed once and shared across the (possibly twice-run)
 // StrictMode initializers, so the repair + immediate-persist boundary is hit
 // exactly once per app boot.
@@ -376,6 +386,62 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     useEffect(() => {
         stateRef.current = { fileTree, activeFile, selectedFolder, selectedNodeId, creationState, clipboard, expandedFolderIds };
     });
+
+    // Detect workspace state: "no-project" when the tree holds only the
+    // canonical root (a brand-new user or a cleared workspace). The canonical
+    // model stores real content as TOP-LEVEL SIBLINGS of the root node
+    // (root.children is always empty at runtime), so siblings are the signal.
+    // Depends on `fileTree` state (not the mutable ref) so the value
+    // recomputes on every committed mutation — creating the first file or
+    // folder flips the workspace into 'project-loaded' on the same render.
+    const topLevelNodes = useMemo(
+        () => fileTree.filter((n) => n.id !== ROOT_NODE_ID),
+        [fileTree],
+    );
+    const hasProject = topLevelNodes.length > 0;
+
+    // Human-readable project name: the single top-level entry's name. With
+    // several top-level roots there is no single project name — report null.
+    const projectName = useMemo(() => {
+        if (topLevelNodes.length !== 1) return null;
+        return topLevelNodes[0].name || null;
+    }, [topLevelNodes]);
+
+    // Project-type hint from file-extension distribution across the whole tree.
+    const projectType = useMemo(() => {
+        if (!hasProject) return null;
+        const extCounts = new Map<string, number>();
+        const collectExts = (nodes: FileNode[]): void => {
+            for (const n of nodes) {
+                if (n.type === 'file' && n.name) {
+                    const ext = n.name.split('.').pop()?.toLowerCase() ?? '';
+                    if (ext) extCounts.set(ext, (extCounts.get(ext) ?? 0) + 1);
+                }
+                if (n.children) collectExts(n.children);
+            }
+        };
+        collectExts(topLevelNodes);
+        if (extCounts.size === 0) return null;
+        const extToType: Record<string, string> = {
+            'tsx': 'React + TypeScript', 'ts': 'React + TypeScript', 'jsx': 'React + TypeScript',
+            'js': 'JavaScript', 'py': 'Python', 'java': 'Java', 'cpp': 'C++', 'c': 'C',
+            'go': 'Go', 'rs': 'Rust', 'rb': 'Ruby', 'php': 'PHP',
+        };
+        const typeCounts: Record<string, number> = {};
+        for (const [ext, count] of extCounts) {
+            const type = extToType[ext];
+            if (type) typeCounts[type] = (typeCounts[type] ?? 0) + count;
+        }
+        if (Object.keys(typeCounts).length === 0) return null;
+        return Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0][0];
+    }, [hasProject, topLevelNodes]);
+
+    const workspaceState: 'no-project' | 'project-loaded' | 'project-creating' | 'project-importing' | 'project-loading' | 'project-failed' =
+        hasProject ? 'project-loaded' : 'no-project';
+    const workspaceValue = useMemo(
+        () => ({ state: workspaceState, projectName, projectType }),
+        [workspaceState, projectName, projectType],
+    );
 
     const applyTreeMutation = useTreeMutation(latestTreeRef, setFileTree);
 
@@ -943,7 +1009,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         <ProjectActionsContext.Provider value={actionsValue}>
             <ProjectUIContext.Provider value={uiValue}>
                 <ProjectFileContext.Provider value={fileValue}>
-                    {children}
+                    <WorkspaceStateContext.Provider value={workspaceValue}>
+                        {children}
+                    </WorkspaceStateContext.Provider>
                 </ProjectFileContext.Provider>
             </ProjectUIContext.Provider>
         </ProjectActionsContext.Provider>
@@ -986,3 +1054,12 @@ export const useProjectActions = () => {
 
 // Export for diagnostics / dev tools.
 export const getProjectTreeValidation = (tree: FileNode[]) => validateFileTree(tree);
+
+// Hook to access workspace state.
+export const useWorkspaceState = () => {
+    const ctx = useContext(WorkspaceStateContext);
+    if (ctx === undefined) {
+        throw new Error('useWorkspaceState must be used within a ProjectProvider');
+    }
+    return ctx;
+};
