@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, mem
 import { API_BASE, ApiError } from '../utils/apiClient';
 import { setCurrentUserId } from '../utils/userStorage';
 import { authHeaders, setSessionToken, clearSessionToken, authFailureMessage, AUTH_DISABLED } from '../utils/sessionToken';
+import { PUBLIC_BETA, ANON_USER_ID } from '../utils/betaAccess';
 
 /**
  * Fixed identity used when the login gate is disabled
@@ -26,6 +27,8 @@ interface AuthContextValue {
     user: AuthUser | null;
     loading: boolean;
     error: string | null;
+    /** True when the visitor is using the workspace without signing in. */
+    isAnonymous: boolean;
     login: (email: string, password: string) => Promise<boolean>;
     signup: (email: string, password: string, displayName?: string) => Promise<boolean>;
     logout: () => Promise<void>;
@@ -77,9 +80,27 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
     // Gate-disabled mode: start already signed in as the shared local user —
     // no /auth/me round-trip, no login form ever renders.
-    const [user, setUser] = useState<AuthUser | null>(() => (AUTH_DISABLED ? BYPASS_USER : null));
+    const [user, setUser] = useState<AuthUser | null>(() => {
+        if (AUTH_DISABLED) {
+            setCurrentUserId(BYPASS_USER.id);
+            return BYPASS_USER;
+        }
+        // Public beta: pin anonymous storage BEFORE children (ProjectProvider)
+        // load their initial tree, so first paint already uses the anon
+        // namespace. refresh() below upgrades to a real account when a
+        // session cookie/token exists (returning signed-in users keep data).
+        if (PUBLIC_BETA) setCurrentUserId(ANON_USER_ID);
+        return null;
+    });
     const [loading, setLoading] = useState(() => !AUTH_DISABLED);
     const [error, setError] = useState<string | null>(null);
+
+    const applySignedOut = useCallback(() => {
+        setUser(null);
+        // Anonymous beta visitors keep a stable local namespace; the hard
+        // login wall keeps global (un-namespaced) storage as before.
+        setCurrentUserId(PUBLIC_BETA ? ANON_USER_ID : null);
+    }, []);
 
     const refresh = useCallback(async () => {
         try {
@@ -88,20 +109,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
                 headers: { ...authHeaders() },
             });
             if (!res.ok) {
-                setUser(null);
-                setCurrentUserId(null);
+                // No session (or backend unreachable / warming up): anonymous
+                // beta visitors continue as guests — never stuck loading, never
+                // bounced to login. The workspace renders regardless.
+                applySignedOut();
                 return;
             }
             const data = await res.json().catch(() => ({}));
-            setUser(data.user ?? null);
-            setCurrentUserId(data.user ? data.user.id : null);
+            if (data.user) {
+                setUser(data.user);
+                setCurrentUserId(data.user.id);
+            } else {
+                applySignedOut();
+            }
         } catch {
-            setUser(null);
-            setCurrentUserId(null);
+            // Network failure (backend asleep, offline): same guest fallback.
+            applySignedOut();
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [applySignedOut]);
 
     useEffect(() => {
         if (AUTH_DISABLED) {
@@ -111,10 +138,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
             return;
         }
         void refresh();
-        // Mid-session expiry (401 from any apiFetch) drops back to login.
+        // Mid-session expiry (401 from any apiFetch) drops to the anonymous
+        // workspace in public beta (stays usable), or back to login behind
+        // the hard wall. The dead fallback token is always dropped.
         const onUnauthorized = () => {
-            setUser(null);
-            setCurrentUserId(null);
+            applySignedOut();
             // Drop the fallback token too: it is dead (rotated DB, expiry,
             // explicit revoke) and would only re-trigger 401s.
             try {
@@ -125,7 +153,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
         };
         window.addEventListener('azemax:unauthorized', onUnauthorized);
         return () => window.removeEventListener('azemax:unauthorized', onUnauthorized);
-    }, [refresh]);
+    }, [refresh, applySignedOut]);
 
     const login = useCallback(async (email: string, password: string) => {
         if (AUTH_DISABLED) return true;
@@ -198,13 +226,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
         } catch {
             /* storage unavailable */
         }
-        setUser(null);
-        setCurrentUserId(null);
-    }, []);
+        // Public beta: sign-out returns to the anonymous workspace (still
+        // usable), never to a login wall.
+        applySignedOut();
+    }, [applySignedOut]);
 
     const clearError = useCallback(() => setError(null), []);
 
-    const value: AuthContextValue = { user, loading, error, login, signup, logout, refresh, clearError };
+    // Anonymous = public beta open mode with no signed-in account. Behind the
+    // hard wall (or legacy bypass) this is always false.
+    const isAnonymous = PUBLIC_BETA && !AUTH_DISABLED && user === null;
+
+    const value: AuthContextValue = { user, loading, error, isAnonymous, login, signup, logout, refresh, clearError };
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 });
 

@@ -14,6 +14,7 @@ module.exports = {
     // Re-exported for new code (auth, limits, storage).
     DISABLE_AUTH: env.DISABLE_AUTH,
     ALLOW_PUBLIC_BYPASS: env.ALLOW_PUBLIC_BYPASS,
+    PUBLIC_BETA: env.PUBLIC_BETA,
     AUTH_SECRET: env.AUTH_SECRET,
     CORS_LIST: env.CORS_LIST,
     ALLOW_SHELL: env.ALLOW_SHELL,

@@ -14,6 +14,7 @@ import { AzemaxLogo } from './components/UI/AzemaxLogo';
 import { BRAND } from './core/branding';
 import { LandingPage } from './components/Landing/LandingPage';
 import { wakeBackend } from './utils/backendHealth';
+import { ANON_USER_ID, isAppRoutePath } from './utils/betaAccess';
 
 const MainLayout = lazy(() => import('./components/Layout/MainLayout').then(m => ({ default: m.MainLayout })));
 
@@ -50,9 +51,12 @@ const AppProviders = composeProviders(
   SettingsProvider,
 );
 
-// Workspace shell: gated on authentication, and keyed by user id so ALL
-// provider state (file tree, terminals, chat, settings caches) resets when
-// the signed-in user changes. No cross-user state leakage by construction.
+// Workspace shell: open to everyone in public beta (AuthGate no longer blocks
+// anonymous visitors), and keyed by user id so ALL provider state (file tree,
+// terminals, chat, settings caches) resets when the signed-in user changes.
+// Anonymous visitors share the STABLE 'beta-anon' key: local workspace data
+// persists across refreshes and direct /app navigation, isolated from every
+// real account by construction. No cross-user state leakage.
 function WorkspaceShell() {
   const { user } = useAuth();
   // Background warm-up for a cold (Render free-tier) backend: one lightweight
@@ -65,7 +69,7 @@ function WorkspaceShell() {
   }, []);
   return (
     <AuthGate>
-      <AppProviders key={user ? user.id : 'anon'}>
+      <AppProviders key={user ? user.id : ANON_USER_ID}>
         <AppContent />
       </AppProviders>
     </AuthGate>
@@ -116,7 +120,9 @@ export default function App() {
   // Isolate Landing Page from IDE Workspace:
   // Route /app (and /app/*) mounts the IDE workspace with all context providers.
   // Route / (and any other marketing route) renders the Azemax Landing Page.
-  const isAppRoute = currentPath.startsWith('/app');
+  // Direct navigation to /app always reaches the workspace — public beta has
+  // no login redirect (see isAppRoutePath, unit-tested).
+  const isAppRoute = isAppRoutePath(currentPath);
 
   if (!isAppRoute) {
     return (

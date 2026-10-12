@@ -1,6 +1,6 @@
 const express = require('express');
 const { asyncHandler } = require('../lib/asyncHandler.cjs');
-const { requireAuth } = require('../middleware/auth.cjs');
+const { requireAuthOrPublicBeta, isAnonymousRequest } = require('../middleware/auth.cjs');
 const { sendChat, streamChat, proxyOpenRouter, listModels } = require('../services/ai/chatService.cjs');
 const { inferProvider } = require('../services/ai/aiClient.cjs');
 const {
@@ -12,10 +12,16 @@ const { LIMITS } = require('../config/index.cjs');
 
 const router = express.Router();
 
-// All AI endpoints require an authenticated user (server keys are spent here).
-router.use(requireAuth);
+// AI spends server provider keys — authenticated users pass through; anonymous
+// public-beta visitors are accepted under a tighter IP-attributed daily quota
+// (see requireAuthOrPublicBeta). Input validation + model policy below apply
+// identically to both, so there is no unrestricted anonymous proxy.
+//
+// NOTE: the gate is applied PER-ROUTE (never `router.use`) so a future
+// prefix-less mount can never mint anonymous identities for other routers.
+const betaGate = requireAuthOrPublicBeta;
 
-router.get('/models', (_req, res) => {
+router.get('/models', betaGate, (_req, res) => {
     res.json({ models: listModels() });
 });
 
@@ -38,11 +44,15 @@ function validateMessages(messages) {
     return null;
 }
 
-/** Daily per-user quota gate (denial-of-wallet backstop). */
-function checkDailyQuota(userId) {
+/** Daily per-user quota gate (denial-of-wallet backstop). Anonymous beta traffic
+ *  gets a tighter cap than authenticated users. */
+function checkDailyQuota(userId, isAnonymous) {
     const usage = getTodayUsage(userId);
-    if (usage.ai_requests >= LIMITS.AI_REQUESTS_PER_DAY) {
-        const err = new Error(`Daily AI request limit reached (${LIMITS.AI_REQUESTS_PER_DAY}). Try again tomorrow.`);
+    const cap = isAnonymous ? LIMITS.AI_ANON_REQUESTS_PER_DAY : LIMITS.AI_REQUESTS_PER_DAY;
+    if (usage.ai_requests >= cap) {
+        const err = new Error(isAnonymous
+            ? `Daily guest AI limit reached (${cap}). Sign in for a higher limit, or try again tomorrow.`
+            : `Daily AI request limit reached (${cap}). Try again tomorrow.`);
         err.status = 429;
         throw err;
     }
@@ -65,14 +75,14 @@ function applyPolicy({ messages, model, maxTokens }) {
     return { serverMessages: buildServerMessages(messages), model, maxTokens: cappedTokens };
 }
 
-router.post('/chat', asyncHandler(async (req, res) => {
+router.post('/chat', betaGate, asyncHandler(async (req, res) => {
     const { messages, model, temperature, maxTokens, responseLength, stream, task, allowFallback } = req.body;
 
     const validationError = validateMessages(messages);
     if (validationError) {
         return res.status(400).json({ error: validationError });
     }
-    checkDailyQuota(req.user.id);
+    checkDailyQuota(req.user.id, isAnonymousRequest(req));
     const policy = applyPolicy({ messages, model, maxTokens });
 
     if (stream) {
@@ -116,13 +126,13 @@ router.post('/chat', asyncHandler(async (req, res) => {
 }));
 
 /** Legacy OpenRouter-compatible endpoint (same auth/policy as /chat). */
-router.post('/chat/legacy', asyncHandler(async (req, res) => {
+router.post('/chat/legacy', betaGate, asyncHandler(async (req, res) => {
     const { messages, model } = req.body;
     const legacyError = validateMessages(messages);
     if (legacyError) {
         return res.status(400).json({ error: legacyError });
     }
-    checkDailyQuota(req.user.id);
+    checkDailyQuota(req.user.id, isAnonymousRequest(req));
     const policy = applyPolicy({ messages, model });
     const data = await proxyOpenRouter({ messages: policy.serverMessages, model: policy.model, userId: req.user.id });
     recordUsage(req.user.id, { aiRequests: 1, aiTokens: Number(data && data.usage && data.usage.total_tokens) || 0 });

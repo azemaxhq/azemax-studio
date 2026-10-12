@@ -71,6 +71,21 @@ if (DISABLE_AUTH && isProd) {
     warn('DISABLE_AUTH=true — login is bypassed with a fixed local user. Auth code is intact; unset to restore login. Never expose this process to untrusted users without ALSO understanding the shared-identity consequences.');
 }
 
+// ---- Public beta (anonymous workspace) --------------------------------------
+// PUBLIC_BETA=true lets unauthenticated visitors use the editor immediately:
+// workspace files persist in the browser (localStorage), while server AI and
+// code-execution endpoints accept anonymous requests attributed to the client
+// IP (never a client-supplied user id) under strict validation + rate limits.
+// Server projects (/api/projects) and admin endpoints STAY login-required, so
+// anonymous users can never read other users' private data.
+// Default ON (unset or anything but "false" enables it); set PUBLIC_BETA=false
+// to restore a hard login wall. Unlike DISABLE_AUTH this creates NO shared
+// server identity and refuses nothing at boot.
+const PUBLIC_BETA = process.env.PUBLIC_BETA !== 'false';
+if (PUBLIC_BETA) {
+    warn('PUBLIC_BETA enabled — anonymous visitors can use AI/execution under IP-based quotas; /api/projects stays login-required and anonymous workspaces persist locally in the browser. Set PUBLIC_BETA=false to restore a hard login wall.');
+}
+
 // ---- Auth secret -----------------------------------------------------------
 const AUTH_SECRET = process.env.AUTH_SECRET || '';
 if (isProd && AUTH_SECRET.length < 32) {
@@ -193,6 +208,11 @@ const LIMITS = {
     AI_MAX_TOKENS_ABSOLUTE: num('AI_MAX_TOKENS_ABSOLUTE', 8192, { min: 256, max: 32768 }),
     AI_REQUESTS_PER_MINUTE: num('AI_REQUESTS_PER_MINUTE', 20, { min: 1, max: 1000 }),
     AI_REQUESTS_PER_DAY: num('AI_REQUESTS_PER_DAY', 200, { min: 1, max: 100000 }),
+    // Anonymous (public-beta, IP-attributed) daily quotas are deliberately
+    // tighter than authenticated quotas — denial-of-wallet backstop for the
+    // unauthenticated AI/execution surface. Per-minute limits are shared.
+    AI_ANON_REQUESTS_PER_DAY: num('AI_ANON_REQUESTS_PER_DAY', 50, { min: 1, max: 100000 }),
+    EXEC_ANON_REQUESTS_PER_DAY: num('EXEC_ANON_REQUESTS_PER_DAY', 60, { min: 1, max: 100000 }),
     EXEC_REQUESTS_PER_MINUTE: num('EXEC_REQUESTS_PER_MINUTE', 30, { min: 1, max: 1000 }),
     EXEC_REQUESTS_PER_DAY: num('EXEC_REQUESTS_PER_DAY', 300, { min: 1, max: 100000 }),
     // Projects / storage quotas (per user)
@@ -229,6 +249,7 @@ function publicSummary() {
         allowLocalExecution: ALLOW_LOCAL_EXECUTION,
         allowShell: ALLOW_SHELL,
         authDisabled: DISABLE_AUTH,
+        publicBeta: PUBLIC_BETA,
         corsOrigins: CORS_LIST.map(() => '[set]'),
     };
 }
@@ -238,6 +259,7 @@ module.exports = {
     isTest,
     DISABLE_AUTH,
     ALLOW_PUBLIC_BYPASS,
+    PUBLIC_BETA,
     PORT,
     DATA_DIR,
     WORKSPACES_DIR,

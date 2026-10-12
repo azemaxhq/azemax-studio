@@ -1,6 +1,7 @@
 const { TerminalManager, STATES, getDefaultShell, getDefaultShellArgs } = require('../services/terminal/terminalManager.cjs');
 const { verifySession, ensureDevUser } = require('../services/auth/authService.cjs');
-const { CORS_LIST, LIMITS, ALLOW_SHELL, DISABLE_AUTH } = require('../config/index.cjs');
+const { CORS_LIST, LIMITS, ALLOW_SHELL, DISABLE_AUTH, PUBLIC_BETA } = require('../config/index.cjs');
+const { buildAnonymousUser } = require('../middleware/auth.cjs');
 const { recordUsage } = require('../services/auth/authService.cjs');
 const logger = require('../lib/logger.cjs');
 
@@ -49,8 +50,10 @@ function clientIp(req) {
  * WebSocket transport layer for terminal sessions.
  *
  * Security model:
- *  - Authentication is mandatory: the upgrade request must carry a valid
- *    session (cookie or ?token=). Unauthenticated sockets are closed (4401).
+ *  - Authentication is mandatory, with ONE exception: public beta
+ *    (PUBLIC_BETA, default on) accepts unauthenticated sockets as IP-bound
+ *    guest identities for sandboxed `code` sessions only; `shell` sessions
+ *    are always rejected for guests. Set PUBLIC_BETA=false for a hard wall.
  *  - When an Origin header is present it must be allowlisted (4403).
  *  - Every session records its owner's user id; ALL session operations verify
  *    ownership before touching the session (cross-user access impossible).
@@ -108,14 +111,25 @@ function attachExecutionWebSocket(wss) {
         // Reversible login bypass: DISABLE_AUTH=true (local dev only, never
         // prod — see config/env.cjs) accepts the socket as the fixed dev user.
         let user = verifySession(tokenFromUpgrade(req));
+        let isAnonymous = false;
         if (!user && DISABLE_AUTH) {
             try { user = ensureDevUser(); } catch { user = null; }
+        }
+        // Public beta: unauthenticated sockets are accepted as IP-bound guest
+        // identities for sandboxed CODE execution only (Run). Interactive
+        // shells stay forbidden for guests (see session.create below).
+        if (!user && PUBLIC_BETA) {
+            try {
+                user = buildAnonymousUser({ ip: clientIp(req), socket: req.socket });
+                isAnonymous = true;
+            } catch { user = null; }
         }
         if (!user) {
             try { ws.close(4401, 'Authentication required'); } catch { /* ignore */ }
             return;
         }
         ws.user = user;
+        ws.isAnonymous = isAnonymous;
         const ip = clientIp(req);
 
         // Session ID bound to this socket for legacy execute actions.
@@ -201,7 +215,16 @@ function attachExecutionWebSocket(wss) {
                     sendRaw({ sessionId: session.id, type: 'terminal.ready', state: session.state });
 
                     if (kind === 'shell') {
-                        // Interactive shell is disabled in production by default (fail-closed).
+                        // Interactive shells are disabled in production by
+                        // default (fail-closed) AND always forbidden for
+                        // anonymous beta guests (host shells cannot be safely
+                        // isolated for unauthenticated users).
+                        if (ws.isAnonymous) {
+                            sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Interactive shell requires sign-in. Code execution (Run) works as a guest via sandboxed execution.\r\n' });
+                            sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
+                            manager.dispose(session.id);
+                            return;
+                        }
                         if (!ALLOW_SHELL) {
                             sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Interactive shell is unavailable in this environment. Code execution (Run) still works via sandboxed execution.\r\n' });
                             sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });

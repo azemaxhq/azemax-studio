@@ -20,6 +20,27 @@ server/
 
 ## API Endpoints
 
+### Public beta access (no login required)
+
+Landing page → **Enter Azemax** → `/app` workspace immediately. Anonymous
+visitors get a local-only guest workspace (files persist in browser
+localStorage under the `beta-anon` namespace — clearing site data or
+switching devices loses it). Sign-in/sign-up stay OPTIONAL (higher quotas).
+
+| Surface | Anonymous | Authenticated |
+|---------|-----------|---------------|
+| Workspace (edit files, preview) | ✅ local browser | ✅ local browser |
+| `POST /api/ai/chat`, `/api/ai/chat/legacy`, `GET /api/ai/models` | ✅ guest quota (`AI_ANON_REQUESTS_PER_DAY`, default 50/day) + per-minute + input/model policy | ✅ full quota (`AI_REQUESTS_PER_DAY`) |
+| `POST /api/execute`, `GET /api/runtimes`, WS `code` sessions | ✅ guest quota (`EXEC_ANON_REQUESTS_PER_DAY`, default 60/day) + size/timeout caps | ✅ full quota |
+| WS `shell` sessions | ❌ sign-in required | ✅ where `ALLOW_SHELL` |
+| `/api/projects/*` (server workspaces) | ❌ 401 (stays login-required) | ✅ own data only |
+| `/api/auth/*`, admin | unchanged | unchanged |
+
+Guest identities are server-minted `anon:<ip>` ids (never client-supplied) —
+they cannot collide with real user ids, so anonymous traffic is isolated from
+private data by construction. Set `PUBLIC_BETA=false` (server) +
+`VITE_PUBLIC_BETA=false` (frontend, redeploy) to restore a hard login wall.
+
 ### Health — `GET /api/health`
 
 Returns service status and which AI providers are configured.
