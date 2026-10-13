@@ -12,7 +12,6 @@ import {
     Globe,
     Loader2,
     PackageOpen,
-    PlugZap,
     Server,
     Terminal,
     TriangleAlert,
@@ -34,6 +33,7 @@ interface TemplateDef {
     label: string;
     description: string;
     detail: string;
+    icon: LucideIcon;
 }
 
 const TEMPLATES: TemplateDef[] = [
@@ -42,40 +42,37 @@ const TEMPLATES: TemplateDef[] = [
         label: 'Empty project',
         description: 'Start with a clean workspace.',
         detail: 'No starter files',
+        icon: PackageOpen,
     },
     {
         key: 'web',
         label: 'HTML, CSS & JS',
         description: 'Build a website from the ground up.',
         detail: '3 starter files',
+        icon: Globe,
     },
     {
         key: 'react-app',
         label: 'React + TypeScript',
         description: 'Build component-based interfaces.',
         detail: '7 starter files',
+        icon: Atom,
     },
     {
         key: 'node-api',
         label: 'Node.js API',
         description: 'Start with a server-side project structure.',
         detail: '5 starter files',
+        icon: Server,
     },
     {
         key: 'python-app',
         label: 'Python',
         description: 'Start with a structured Python workspace.',
         detail: '5 starter files',
+        icon: Terminal,
     },
 ];
-
-const TEMPLATE_ICONS: Record<TemplateKey, LucideIcon> = {
-    'empty': PackageOpen,
-    'web': Globe,
-    'react-app': Atom,
-    'node-api': Server,
-    'python-app': Terminal,
-};
 
 const WEB_STARTER: Array<{ name: string; content: string }> = [
     {
@@ -174,7 +171,7 @@ export const OnboardingScreen: React.FC = () => {
     const { createFile, createFolder, createNestedFolders, createProjectTemplate, deleteNode, noteWorkspaceOrigin, setWorkspaceBusy } = useProjectActions();
 
     const [dialog, setDialog] = useState<'create' | 'import' | null>(null);
-    const [templateKey, setTemplateKey] = useState<TemplateKey>('web');
+    const [templateKey, setTemplateKey] = useState<TemplateKey>('empty');
     const [projectName, setProjectName] = useState('');
     const [formError, setFormError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -192,8 +189,8 @@ export const OnboardingScreen: React.FC = () => {
         setDialog(which);
     }, []);
 
-    // Template cards pre-select a template and continue the existing
-    // creation flow (the dialog's radio list stays the source of truth).
+    // Template card selects a template and opens the create dialog,
+    // keeping the radio list in the dialog as the source of truth.
     const handleTemplateCard = useCallback((key: TemplateKey) => {
         setTemplateKey(key);
         previouslyFocused.current = document.activeElement as HTMLElement | null;
@@ -313,11 +310,6 @@ export const OnboardingScreen: React.FC = () => {
                     await new Promise((r) => setTimeout(r, 0));
                 }
                 if (entry.dir) continue;
-                // Defense in depth: skip anything with a parent-directory
-                // segment in the RAW stored name (some archives preserve `..`;
-                // JSZip normalizes others away). Everything that survives is
-                // additionally namespaced under the import root folder, so a
-                // hostile archive can never escape into the wider workspace.
                 const rawSegments = rawPath.split('/');
                 if (rawSegments.some((s) => s === '..')) {
                     skipped += 1;
@@ -413,8 +405,6 @@ export const OnboardingScreen: React.FC = () => {
         let skipped = 0;
         try {
             for (const f of list) {
-                // Basename only: the picker gives no directory structure, and
-                // path separators in names must never create folders by accident.
                 const base = (f.name.split(/[\\/]/).pop() ?? '').trim();
                 if (!isSafeSegment(base)) {
                     skipped += 1;
@@ -451,23 +441,22 @@ export const OnboardingScreen: React.FC = () => {
     return (
         <div className="az-onboard">
             <div className="az-onboard-inner">
+                {/* ---- Welcome header ---- */}
                 <header className="az-onboard-hero">
-                    <AzemaxLogo size={40} />
+                    <AzemaxLogo size={36} />
                     <div className="az-onboard-hero-text">
-                        <p className="az-onboard-eyebrow">{BRAND_NAME} Studio</p>
+                        <p className="az-onboard-eyebrow">AZEMAX STUDIO</p>
                         <h1 className="az-onboard-title">Welcome to Azemax Studio</h1>
+                        <p className="az-onboard-sub">Build, explore, and understand your code.</p>
                     </div>
                 </header>
 
-                <p className="az-onboard-sub">
-                    Your workspace for building, running, and understanding code.
-                </p>
-
+                {/* ---- Primary actions ---- */}
                 <main className="az-onboard-actions">
                     <section aria-labelledby="onboard-create-title" className="az-onboard-action">
                         <div className="az-onboard-action-head">
                             <span className="az-onboard-icon-box az-onboard-icon-box--accent">
-                                <FolderPlus size={16} strokeWidth={1.75} />
+                                <FolderPlus size={14} strokeWidth={1.75} />
                             </span>
                             <h2 id="onboard-create-title" className="az-onboard-action-title">Create a project</h2>
                         </div>
@@ -479,7 +468,7 @@ export const OnboardingScreen: React.FC = () => {
                             onClick={() => openDialog('create')}
                             className="az-onboard-btn az-onboard-btn--primary"
                         >
-                            <FilePlus2 size={15} strokeWidth={1.75} />
+                            <FilePlus2 size={13} strokeWidth={1.75} />
                             New project
                         </button>
                     </section>
@@ -487,7 +476,7 @@ export const OnboardingScreen: React.FC = () => {
                     <section aria-labelledby="onboard-import-title" className="az-onboard-action">
                         <div className="az-onboard-action-head">
                             <span className="az-onboard-icon-box az-onboard-icon-box--neutral">
-                                <Archive size={16} strokeWidth={1.75} />
+                                <Archive size={14} strokeWidth={1.75} />
                             </span>
                             <h2 id="onboard-import-title" className="az-onboard-action-title">Open or import project</h2>
                         </div>
@@ -499,22 +488,22 @@ export const OnboardingScreen: React.FC = () => {
                             onClick={() => openDialog('import')}
                             className="az-onboard-btn az-onboard-btn--neutral"
                         >
-                            <FolderGit2 size={15} strokeWidth={1.75} />
+                            <FolderGit2 size={13} strokeWidth={1.75} />
                             Import code
                         </button>
                     </section>
                 </main>
 
+                {/* ---- Starter templates ---- */}
                 <section aria-labelledby="onboard-templates-title" className="az-onboard-section">
                     <div className="az-onboard-section-head">
                         <h2 id="onboard-templates-title" className="az-onboard-section-title">
-                            Starter templates
+                            Start with a template
                         </h2>
-                        <p className="az-onboard-section-hint">Select a template to begin</p>
+                        <p className="az-onboard-section-hint">Choose a starting point</p>
                     </div>
                     <ul className="az-onboard-grid">
                         {TEMPLATES.map((t) => {
-                            const Icon = TEMPLATE_ICONS[t.key];
                             const selected = templateKey === t.key;
                             return (
                                 <li key={t.key}>
@@ -522,39 +511,32 @@ export const OnboardingScreen: React.FC = () => {
                                         type="button"
                                         onClick={() => handleTemplateCard(t.key)}
                                         aria-haspopup="dialog"
+                                        aria-pressed={selected}
                                         data-selected={selected}
                                         aria-label={`${t.label} — ${t.description} ${t.detail}. Create a project with this template.`}
-                                        title={`${t.label} — create a project`}
+                                        title={`${t.label} — ${t.description}`}
                                         className="az-onboard-card"
                                     >
-                                        <span className="az-onboard-card-top">
-                                            <span className="az-onboard-icon-box">
-                                                <Icon size={15} strokeWidth={1.75} />
-                                            </span>
-                                            <span aria-hidden="true" className="az-onboard-card-check" />
+                                        <span className="az-onboard-icon-box">
+                                            <t.icon size={14} strokeWidth={1.75} />
                                         </span>
                                         <span className="az-onboard-card-title">{t.label}</span>
-                                        <span className="az-onboard-card-desc">{t.description}</span>
                                         <span className="az-onboard-card-meta">{t.detail}</span>
                                     </button>
                                 </li>
                             );
                         })}
                     </ul>
-                    <p className="az-onboard-note">
-                        <PlugZap size={12} />
-                        Templates scaffold editable files. Running Node, React, or Python code uses the
-                        terminal runtimes available in this environment.
-                    </p>
                 </section>
 
-                <section aria-labelledby="onboard-recents-title" className="az-onboard-section">
-                    <h2 id="onboard-recents-title" className="az-onboard-section-title">
+                {/* ---- Recent projects ---- */}
+                <section aria-labelledby="onboard-recents-title" className="az-onboard-section az-onboard-section--divided az-onboard-recent">
+                    <h2 id="onboard-recents-title" className="az-onboard-recent-title">
                         Recent projects
                     </h2>
-                    <div className="az-onboard-empty">
+                    <div className="az-onboard-empty" id="onboard-recents-empty">
                         <span aria-hidden="true" className="az-onboard-empty-icon">
-                            <FileCode2 size={14} strokeWidth={1.75} />
+                            <FileCode2 size={12} strokeWidth={1.75} />
                         </span>
                         <div>
                             <p className="az-onboard-empty-title">No recent projects</p>
@@ -564,7 +546,11 @@ export const OnboardingScreen: React.FC = () => {
                 </section>
 
                 {dialog && (
-                    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="presentation" onClick={closeDialog}>
+                    <div
+                        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+                        role="presentation"
+                        onClick={closeDialog}
+                    >
                         <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
                         <div
                             ref={dialogRef}
@@ -573,7 +559,7 @@ export const OnboardingScreen: React.FC = () => {
                             aria-labelledby={titleId}
                             aria-describedby={descId}
                             onClick={(e) => e.stopPropagation()}
-                            className="relative w-full max-w-[480px] rounded-xl border p-6 shadow-2xl"
+                            className="relative w-full max-w-[560px] rounded-xl border p-5 sm:p-6 az-onboard-dialog-scroll"
                             style={{ background: 'var(--az-overlay)', borderColor: 'var(--az-border)' }}
                         >
                             <button
@@ -581,19 +567,19 @@ export const OnboardingScreen: React.FC = () => {
                                 onClick={closeDialog}
                                 disabled={busy}
                                 aria-label="Close dialog"
-                                className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/[0.07] disabled:opacity-40"
+                                className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-white/[0.07] disabled:opacity-40"
                                 style={{ color: 'var(--az-text-muted)' }}
                             >
-                                <X size={15} strokeWidth={1.75} />
+                                <X size={13} strokeWidth={1.75} />
                             </button>
 
                             {dialog === 'create' ? (
                                 <>
-                                    <h2 id={titleId} className="pr-8 text-[15px] font-semibold">Create a project</h2>
+                                    <h2 id={titleId} className="text-[14px] font-semibold pr-6 tracking-[-0.01em]">Create a project</h2>
                                     <p id={descId} className="mt-1 text-[12.5px]" style={{ color: 'var(--az-text-secondary)' }}>
                                         Name your project and pick a starter template.
                                     </p>
-                                    <label htmlFor="onboard-project-name" className="mt-4 block text-[12px] font-medium">
+                                    <label htmlFor="onboard-project-name" className="az-onboard-field-label mt-4">
                                         Project name
                                     </label>
                                     <input
@@ -614,10 +600,9 @@ export const OnboardingScreen: React.FC = () => {
                                         spellCheck={false}
                                         disabled={busy}
                                         aria-invalid={!!formError}
-                                        className="mt-1.5 h-9 w-full rounded-lg border bg-transparent px-3 text-[13px] outline-none transition-colors placeholder:text-white/25 focus:border-[var(--az-accent-border)] disabled:opacity-60"
-                                        style={{ borderColor: formError ? 'var(--az-error-border)' : 'var(--az-border)' }}
+                                        className="az-onboard-input mt-1.5"
                                     />
-                                    <div className="mt-4 grid gap-2" role="radiogroup" aria-label="Project template">
+                                    <div className="mt-3 grid gap-1.5" role="radiogroup" aria-label="Project template">
                                         {TEMPLATES.map((t) => {
                                             const selected = templateKey === t.key;
                                             return (
@@ -627,74 +612,67 @@ export const OnboardingScreen: React.FC = () => {
                                                     role="radio"
                                                     aria-checked={selected}
                                                     disabled={busy}
+                                                    data-selected={selected}
+                                                    aria-label={`${t.label} — ${t.description} ${t.detail}`}
                                                     onClick={() => setTemplateKey(t.key)}
-                                                    className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-60"
-                                                    style={{
-                                                        borderColor: selected ? 'var(--az-accent-border)' : 'var(--az-border)',
-                                                        background: selected ? 'var(--az-accent-soft)' : 'transparent',
-                                                    }}
+                                                    className="az-onboard-tpl-row disabled:opacity-60"
                                                 >
-                                                    <span
-                                                        aria-hidden="true"
-                                                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border"
-                                                        style={{ borderColor: selected ? 'var(--az-accent)' : 'var(--az-border-strong)' }}
-                                                    >
-                                                        {selected && <span className="h-2 w-2 rounded-full" style={{ background: 'var(--az-accent)' }} />}
+                                                    <span className="az-onboard-icon-box" aria-hidden="true" style={{ width: 28, height: 28 }}>
+                                                        <t.icon size={14} strokeWidth={1.75} />
                                                     </span>
                                                     <span className="min-w-0 flex-1">
-                                                        <span className="block text-[13px] font-medium">{t.label}</span>
-                                                        <span className="block truncate text-[11.5px]" style={{ color: 'var(--az-text-secondary)' }}>{t.description}</span>
+                                                        <span className="az-onboard-tpl-name">{t.label}</span>
+                                                        <span className="az-onboard-tpl-desc">{t.description}</span>
                                                     </span>
-                                                    <span className="shrink-0 text-[10.5px] tabular-nums" style={{ color: 'var(--az-text-faint)' }}>{t.detail}</span>
+                                                    <span aria-hidden="true" className="az-onboard-tpl-dot" />
+                                                    <span className="az-onboard-tpl-count">{t.detail}</span>
                                                 </button>
                                             );
                                         })}
                                     </div>
                                     {formError && (
-                                        <p role="alert" className="mt-3 flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: 'var(--az-error)' }}>
-                                            <TriangleAlert size={13} className="mt-[1px] shrink-0" />
+                                        <p role="alert" className="mt-2 flex items-start gap-1 text-[11px] leading-snug" style={{ color: 'var(--az-error)' }}>
+                                            <TriangleAlert size={12} className="mt-[1px] shrink-0" />
                                             {formError}
                                         </p>
                                     )}
-                                    <div className="mt-5 flex justify-end gap-2">
+                                    <div className="mt-4 flex justify-end gap-2 border-t pt-4" style={{ borderColor: 'var(--az-border-subtle)' }}>
                                         <button
                                             type="button"
                                             onClick={closeDialog}
                                             disabled={busy}
-                                            className="h-9 rounded-lg border px-4 text-[13px] font-medium transition-colors hover:bg-white/[0.05] disabled:opacity-60"
-                                            style={{ borderColor: 'var(--az-border)', color: 'var(--az-text-secondary)' }}
+                                            className="az-onboard-btn az-onboard-btn--neutral !mt-0"
                                         >
                                             Cancel
                                         </button>
                                         <button
                                             type="button"
                                             onClick={handleCreate}
-                                            disabled={busy}
-                                            className="inline-flex h-9 items-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition-colors disabled:opacity-60"
-                                            style={{ background: 'var(--az-accent)', borderColor: 'var(--az-accent)', color: '#fff' }}
+                                            disabled={busy || !projectName.trim()}
+                                            className="az-onboard-btn az-onboard-btn--primary !mt-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            {busy && <Loader2 size={14} className="animate-spin" />}
+                                            {busy && <Loader2 size={13} className="animate-spin" />}
                                             {busy ? 'Creating…' : 'Create project'}
                                         </button>
                                     </div>
                                 </>
                             ) : (
                                 <>
-                                    <h2 id={titleId} className="pr-8 text-[15px] font-semibold">Import code</h2>
-                                    <p id={descId} className="mt-1 text-[12.5px] leading-relaxed" style={{ color: 'var(--az-text-secondary)' }}>
+                                    <h2 id={titleId} className="text-[13px] font-semibold pr-6">Import code</h2>
+                                    <p id={descId} className="mt-1 text-[12px] leading-relaxed" style={{ color: 'var(--az-text-secondary)' }}>
                                         Import a <strong>ZIP archive</strong> (folder structure preserved) or pick{' '}
                                         <strong>individual text files</strong>. Imports land in their own folder;
                                         a failed import is removed automatically.
                                     </p>
-                                    <div className="mt-4 grid gap-2">
+                                    <div className="mt-3 grid gap-1.5">
                                         <label
-                                            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors hover:bg-white/[0.03] focus-within:ring-2 ${busy ? 'pointer-events-none opacity-60' : ''}`}
+                                            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2.5 transition-colors hover:bg-white/[0.03] focus-within:ring-2 ${busy ? 'pointer-events-none opacity-60' : ''}`}
                                             style={{ borderColor: 'var(--az-border)' }}
                                         >
-                                            <Archive size={16} className="shrink-0 opacity-70" />
+                                            <Archive size={14} className="shrink-0 opacity-70" />
                                             <span className="min-w-0 flex-1">
-                                                <span className="block text-[13px] font-medium">ZIP archive</span>
-                                                <span className="block text-[11.5px]" style={{ color: 'var(--az-text-secondary)' }}>
+                                                <span className="block text-[12px] font-medium">ZIP archive</span>
+                                                <span className="block text-[10.5px]" style={{ color: 'var(--az-text-secondary)' }}>
                                                     Up to 50 MB · structure preserved · unsafe paths skipped
                                                 </span>
                                             </span>
@@ -711,13 +689,13 @@ export const OnboardingScreen: React.FC = () => {
                                             />
                                         </label>
                                         <label
-                                            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors hover:bg-white/[0.03] focus-within:ring-2 ${busy ? 'pointer-events-none opacity-60' : ''}`}
+                                            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2.5 transition-colors hover:bg-white/[0.03] focus-within:ring-2 ${busy ? 'pointer-events-none opacity-60' : ''}`}
                                             style={{ borderColor: 'var(--az-border)' }}
                                         >
-                                            <FilePlus2 size={16} className="shrink-0 opacity-70" />
+                                            <FilePlus2 size={14} className="shrink-0 opacity-70" />
                                             <span className="min-w-0 flex-1">
-                                                <span className="block text-[13px] font-medium">Individual files</span>
-                                                <span className="block text-[11.5px]" style={{ color: 'var(--az-text-secondary)' }}>
+                                                <span className="block text-[12px] font-medium">Individual files</span>
+                                                <span className="block text-[10.5px]" style={{ color: 'var(--az-text-secondary)' }}>
                                                     Text files up to 2 MB each · up to 200 at once
                                                 </span>
                                             </span>
@@ -735,23 +713,23 @@ export const OnboardingScreen: React.FC = () => {
                                         </label>
                                     </div>
                                     {(busy || progress) && (
-                                        <p role="status" className="mt-3 flex items-center gap-2 text-[12.5px]" style={{ color: 'var(--az-text-secondary)' }}>
-                                            {busy && <Loader2 size={14} className="animate-spin" />}
+                                        <p role="status" className="mt-2 flex items-center gap-1 text-[12px]" style={{ color: 'var(--az-text-secondary)' }}>
+                                            {busy && <Loader2 size={12} className="animate-spin" />}
                                             {progress ?? 'Working…'}
                                         </p>
                                     )}
                                     {formError && (
-                                        <p role="alert" className="mt-3 flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: 'var(--az-error)' }}>
-                                            <TriangleAlert size={13} className="mt-[1px] shrink-0" />
+                                        <p role="alert" className="mt-2 flex items-start gap-1 text-[11px] leading-snug" style={{ color: 'var(--az-error)' }}>
+                                            <TriangleAlert size={12} className="mt-[1px] shrink-0" />
                                             {formError}
                                         </p>
                                     )}
-                                    <div className="mt-5 flex justify-end">
+                                    <div className="mt-3 flex justify-end">
                                         <button
                                             type="button"
                                             onClick={closeDialog}
                                             disabled={busy}
-                                            className="h-9 rounded-lg border px-4 text-[13px] font-medium transition-colors hover:bg-white/[0.05] disabled:opacity-60"
+                                            className="h-8 rounded-lg border px-3 text-[12px] font-medium transition-colors hover:bg-white/[0.05] disabled:opacity-60"
                                             style={{ borderColor: 'var(--az-border)', color: 'var(--az-text-secondary)' }}
                                         >
                                             {busy ? 'Please wait…' : 'Done'}
@@ -767,4 +745,3 @@ export const OnboardingScreen: React.FC = () => {
     );
 };
 
-const BRAND_NAME = 'Azemax';
