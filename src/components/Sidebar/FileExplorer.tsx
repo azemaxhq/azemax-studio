@@ -26,6 +26,8 @@ import { useSettingsSelector } from '../../context/SettingsContext';
 import { getSettings } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { loadSortState, sortTreeWithState, type ExplorerSortState } from '../../utils/explorerSort';
+import { buildRenderForest, resolveExplorerEmptyState } from '../../core/explorer/explorerModel';
+import { requestExplorerRefresh, subscribeExplorerRefresh } from '../../core/filesystem/fileChangeService';
 import { fuzzyMatch, fuzzyHighlight } from '../../utils/fuzzySearch';
 import { nsGetItem, nsSetItem } from '../../utils/userStorage';
 
@@ -835,34 +837,34 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
         };
         window.addEventListener('azemax-sort-changed' as any, onSort as any);
         window.addEventListener('storage', onStorage);
-        // refresh event — preserve selection/expanded, re-validate tree
-        const onRefresh = () => {
+        // Refresh requests (typed service — see fileChangeService). Preserve
+        // selection/expanded; force a micro-rerender so counts stay live.
+        // (No-op for the in-browser FS beyond that; the spinner in Sidebar
+        // provides feedback.)
+        const disposeRefresh = subscribeExplorerRefresh(() => {
             // No-op for in-browser FS; the spinner in Sidebar provides feedback.
             // We simply force a micro-rerender so counts stay live.
             setSortState(s => ({ ...s }));
-        };
-        window.addEventListener('explorer-refresh' as any, onRefresh as any);
+        });
         return () => {
+            disposeRefresh();
             window.removeEventListener('azemax-sort-changed' as any, onSort as any);
             window.removeEventListener('storage', onStorage);
-            window.removeEventListener('explorer-refresh' as any, onRefresh as any);
         };
     }, []);
 
-    // Render shape: the canonical model stores the project root as a top-level
-    // sibling of the root-level items (parentId === 'root'). For rendering, the
-    // root is presented as the container of those items, exactly like the
-    // legacy root.children model users saw before. This is a pure projection —
-    // the real tree is never mutated. Rows are rendered from a deterministic,
+    // Render forest: real workspace content lives as TOP-LEVEL SIBLINGS of the
+    // synthetic root (see core/explorer/explorerModel.ts). Pure projection —
+    // the real tree is never mutated. Rows render from a deterministic,
     // user-configurable sorted view derived from the filtered tree.
     const sortedTree = useMemo(() => sortTreeWithState(filteredTree, sortState), [filteredTree, sortState]);
 
-    const treeForRender = useMemo(() => {
-        const root = sortedTree.find(n => n.id === ROOT_NODE_ID);
-        if (!root) return sortedTree;
-        if (sortedTree.length === 1) return sortedTree;
-        return [{ ...root, children: sortedTree.filter(n => n.id !== ROOT_NODE_ID) }];
-    }, [sortedTree]);
+    const treeForRender = useMemo(() => buildRenderForest(sortedTree), [sortedTree]);
+
+    // Empty-state discrimination (no-workspace vs no-results vs ready).
+    // A lone synthetic root never counts as content: with no renderable rows
+    // and no search, the empty-workspace UI renders — never a fake folder.
+    const explorerEmptyState = resolveExplorerEmptyState({ rowCount: treeForRender.length, searchQuery });
 
     const isSearching = Boolean(searchQuery);
 
@@ -1407,7 +1409,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 { label: 'New File…', onClick: () => startCreating('file', 'root') },
                 { label: 'New Folder…', onClick: () => startCreating('folder', 'root') },
                 { type: 'separator' as const },
-                { label: 'Refresh Explorer', onClick: () => window.dispatchEvent(new CustomEvent('explorer-refresh')) },
+                { label: 'Refresh Explorer', onClick: () => requestExplorerRefresh('context-menu') },
                 { type: 'separator' as const },
                 { label: 'Expand All', onClick: () => expandAll() },
                 { label: 'Collapse All', onClick: () => collapseAll() },
@@ -1679,7 +1681,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                 onDragOver={(e) => { e.preventDefault(); setDragOverNodeId('root'); }}
                 onDrop={() => { if (draggedNode) { moveNode(draggedNode.id, 'root'); } handleDragEnd(); }}
             >
-                {filteredTree.length === 0 && searchQuery ? (
+                {explorerEmptyState === 'no-results' ? (
                     <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
                         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] flex items-center justify-center mb-4 border border-white/[0.06]">
                             <Search size={24} className="text-white/20" />
@@ -1687,7 +1689,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                         <p className="text-white/50 text-sm font-medium mb-1">No results found</p>
                         <p className="text-white/25 text-xs">No files matching "{searchQuery}"</p>
                     </div>
-                ) : filteredTree.length === 0 ? (
+                ) : explorerEmptyState === 'no-workspace' ? (
                     <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
                         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] flex items-center justify-center mb-4 border border-white/[0.06]">
                             <Folder size={24} className="text-white/20" />

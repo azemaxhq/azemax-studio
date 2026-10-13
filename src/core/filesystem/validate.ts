@@ -11,7 +11,7 @@
 
 import type { FileNode } from '../../utils/mockFileSystem';
 import { ROOT_NODE_ID } from '../../utils/mockFileSystem';
-import { derivePath, parentIdOf, nameOf } from './paths';
+import { derivePath, nameOf, PLACEHOLDER_ROOT_NAME } from './paths';
 import { MAX_TREE_DEPTH, MAX_TREE_NODES, walkTree } from '../../utils/safeTree';
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -196,18 +196,23 @@ const isString = (v: unknown): v is string => typeof v === 'string';
  * identified as that generated placeholder — never user content — and repair
  * collapses it to the explicit no-workspace state (`[]`). Any tree carrying
  * real content (siblings, children, files) is preserved untouched, whatever
- * it is named.
+ * it is named. A bare root with any OTHER name is likewise preserved: its
+ * provenance cannot be confirmed, so the data is kept but never treated as
+ * an active project (workspace state and Explorer key off real top-level
+ * content, not the container). See also: `PLACEHOLDER_ROOT_NAME` in paths.ts
+ * (single source of truth) and the Explorer projection in
+ * `core/explorer/explorerModel.ts`.
  */
-const PLACEHOLDER_ROOT_NAME = 'deep-context-ide';
+const isPlaceholderName = (name: string): boolean => name === PLACEHOLDER_ROOT_NAME;
 
 function isBarePlaceholderRoot(tree: FileNode[]): boolean {
     if (tree.length !== 1) return false;
     const only = tree[0];
     return (
         only.id === ROOT_NODE_ID &&
-        only.name === PLACEHOLDER_ROOT_NAME &&
+        isPlaceholderName(only.name) &&
         (only.children ?? []).length === 0 &&
-        (only.content ?? '') === ''
+        (typeof only.content === 'string' ? only.content.trim() : '') === ''
     );
 }
 
@@ -424,6 +429,3 @@ export function repairFileTree(input: unknown): RepairResult {
 
     return { tree: top, expansion, repaired };
 }
-
-// Re-export path helpers used by consumers of the canonical layer.
-export { parentIdOf, derivePath };

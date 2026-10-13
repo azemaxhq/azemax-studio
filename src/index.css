@@ -234,27 +234,17 @@ body {
    ============================================ */
 
 .az-surface { background: var(--az-surface); border: 1px solid var(--az-border); }
-.az-surface-2 { background: var(--az-surface-2); border: 1px solid var(--az-border); }
-.az-surface-3 { background: var(--az-surface-3); border: 1px solid var(--az-border); }
 
-.glass-panel, .glass-panel-light, .glass-panel-dark {
+.glass-panel {
   background: var(--az-surface);
   border: 1px solid var(--az-border);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: none;
 }
-.glass-panel-light { background: var(--az-surface-2); }
-.glass-panel-dark { background: var(--az-bg-subtle); }
-
-/* Legacy glows — neutralized */
-.bg-glow-primary, .bg-glow-purple { display: none !important; }
-.glass-glow { box-shadow: none; }
-.glass-border-gradient::before { display: none; }
 
 /* Dividers — hairline neutral */
 .glass-divider { height: 1px; background: var(--az-divider); margin: 12px 0; }
-.glass-divider-vertical { width: 1px; background: var(--az-divider); margin: 0 12px; }
 
 /* ============================================
    BUTTON SYSTEM — hierarchy, mostly neutral
@@ -318,43 +308,6 @@ body {
 }
 .az-btn-danger:hover { background: var(--az-error-soft); color: var(--az-error); border-color: var(--az-error-border); }
 
-/* Legacy glass buttons mapped to neutral */
-.glass-button {
-  background: var(--az-surface-3);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-md);
-  padding: 7px 12px;
-  color: var(--az-text);
-  font-weight: 500;
-  transition: all 140ms var(--az-ease);
-}
-.glass-button:hover { background: var(--az-surface-hover); border-color: var(--az-border-strong); transform: none; box-shadow: none; }
-.glass-button-primary {
-  background: var(--az-accent);
-  border: 1px solid var(--az-accent);
-  color: white;
-}
-.glass-button-primary:hover { background: var(--az-accent-hover); border-color: var(--az-accent-hover); box-shadow: none; }
-
-/* ============================================
-   INPUTS
-   ============================================ */
-
-.glass-input {
-  background: var(--az-surface-3);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-md);
-  padding: 8px 12px;
-  color: var(--az-text);
-  font-size: var(--az-text-base);
-  line-height: var(--az-lh-base);
-  letter-spacing: -0.01em;
-  transition: border-color var(--az-dur-base) var(--az-ease), box-shadow var(--az-dur-base) var(--az-ease), background var(--az-dur-base) var(--az-ease);
-}
-.glass-input:focus { outline: none; border-color: var(--az-accent-border); box-shadow: var(--az-focus-ring); background: var(--az-surface-2); }
-.glass-input::placeholder { color: var(--az-text-muted); font-weight: 400; }
-.input-focus-glow:focus-within { box-shadow: var(--az-focus-ring); border-color: var(--az-accent-border); background: var(--az-surface-2); }
-
 /* ============================================
    TABS — minimal, no pills
    ============================================ */
@@ -379,46 +332,8 @@ body {
 }
 
 /* ============================================
-   HEADER / SIDEBAR CHROME
-   ============================================ */
-
-.glass-header {
-  background: var(--az-surface);
-  border-bottom: 1px solid var(--az-border);
-  padding: 0 12px; min-height: 40px; height: 40px;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.glass-header::after { display: none; }
-
-/* Resize handles — hairline neutral, stable hover (use box-shadow to avoid layout) */
-.glass-resize-handle, .glass-resize-handle-vertical {
-  background: transparent;
-  transition: background var(--az-dur-fast) var(--az-ease);
-  position: relative;
-  z-index: 10;
-}
-.glass-resize-handle:hover, .glass-resize-handle-vertical:hover {
-  background: var(--az-border-strong);
-}
-.glass-resize-handle:active, .glass-resize-handle-vertical:active { background: var(--az-accent-soft); }
-
-/* ============================================
    CODE / EDITOR
    ============================================ */
-
-.glass-code-block {
-  background: var(--az-surface-2);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-md);
-  overflow: hidden;
-}
-.glass-code-block pre { margin: 0; padding: 12px 14px; overflow-x: auto; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
-.glass-code-header {
-  background: var(--az-surface-3);
-  border-bottom: 1px solid var(--az-border);
-  padding: 8px 12px;
-  display: flex; align-items: center; justify-content: space-between;
-}
 
 ::selection { background: rgba(91,140,255,0.28); color: var(--az-text); }
 ::-moz-selection { background: rgba(91,140,255,0.28); color: var(--az-text); }
@@ -537,8 +452,6 @@ body {
   box-shadow: 0 1px 0 0 rgba(255,100,124,0.18);
 }
 .ai-comment-glyph { border-left: 2px solid var(--az-border-strong); }
-.glass-line-highlight { background: rgba(91,140,255,0.07) !important; }
-.glass-line-highlight::before { display: none; }
 
 /* ── Inline AI activity badge — premium pill, icon + text ── */
 .ai-loading-spinner::after {
@@ -607,16 +520,6 @@ body {
    CARDS — restrained, neutral
    ============================================ */
 
-.glass-card {
-  background: var(--az-surface-2);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-lg);
-  padding: 16px;
-  transition: border-color 160ms var(--az-ease), background 160ms var(--az-ease);
-}
-.glass-card:hover { border-color: var(--az-border-strong); transform: none; box-shadow: none; }
-.glass-card-sm { padding: 12px; border-radius: var(--az-r-md); }
-
 .glass-analysis-card {
   background: var(--az-surface-2);
   border: 1px solid var(--az-border);
@@ -640,35 +543,7 @@ body {
   box-shadow: var(--az-shadow-sm);
 }
 .glass-terminal::before { display: none; }
-.glass-terminal-header {
-  background: var(--az-surface-2);
-  border-bottom: 1px solid var(--az-border);
-  padding: 8px 12px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.glass-terminal-dots { display: flex; gap: 6px; }
-.glass-terminal-dots span { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--az-border); box-shadow: none; }
-.glass-terminal-dots span:nth-child(1) { background: #3A3F4A; }
-.glass-terminal-dots span:nth-child(2) { background: #3A3F4A; }
-.glass-terminal-dots span:nth-child(3) { background: #3A3F4A; }
 .glass-terminal-body { padding: 12px; /* font is owned by xterm.js — VS Code leaves container neutral */ }
-
-/* ============================================
-   BADGES — neutral muted
-   ============================================ */
-
-.glass-badge {
-  background: var(--az-surface-3);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-full);
-  padding: 3px 8px;
-  font-size: 11px; font-weight: 600;
-  color: var(--az-text-secondary);
-  text-transform: uppercase; letter-spacing: 0.04em;
-}
-.glass-badge-success { background: var(--az-success-soft); border-color: var(--az-success-border); color: var(--az-success); }
-.glass-badge-warning { background: var(--az-warning-soft); border-color: var(--az-warning-border); color: var(--az-warning); }
-.glass-badge-error { background: var(--az-error-soft); border-color: var(--az-error-border); color: var(--az-error); }
 
 .glass-explanation { background: var(--az-surface); position: relative; }
 .glass-explanation::before { display: none; }
@@ -695,24 +570,10 @@ body {
 .glass-empty-state-icon { width: 56px; height: 56px; background: var(--az-surface-2); border: 1px solid var(--az-border); border-radius: var(--az-r-xl); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; position: relative; }
 .glass-empty-state-icon::before { display: none; }
 
-.glass-tooltip {
-  background: var(--az-overlay);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-sm);
-  padding: 6px 10px; font-size: 12px; line-height: 1.4; font-weight: 500; letter-spacing: -0.01em;
-  color: var(--az-text);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  backdrop-filter: none;
-  white-space: nowrap; max-width: 320px;
-  will-change: transform, opacity;
-}
-
 /* ============================================
    TYPOGRAPHY
    ============================================ */
 
-.text-glass-muted { color: var(--az-text-muted); }
-.text-glass-gradient { background: none; -webkit-text-fill-color: var(--az-text); color: var(--az-text); }
 /* Normalized typography — prevents inconsistent fallback fonts */
 h1, h2, h3, h4, h5, h6 { font-family: 'Inter', system-ui, sans-serif; letter-spacing: -0.015em; font-weight: 600; line-height: var(--az-lh-tight); -webkit-font-smoothing: antialiased; }
 p, span, label, button, input, textarea { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -754,22 +615,6 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
 .az-composer textarea:focus-visible {
   outline: none !important;
   box-shadow: none !important;
-}
-.az-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 8px; border-radius: var(--az-r-full);
-  background: var(--az-surface-hover);
-  border: 1px solid var(--az-border);
-  font-size: 11px; color: var(--az-text-secondary);
-}
-.az-chip-accent { border-color: var(--az-accent-border); color: var(--az-text); }
-
-/* Mention / slash popovers — neutral overlay */
-.az-popover {
-  background: var(--az-overlay);
-  border: 1px solid var(--az-border);
-  border-radius: var(--az-r-lg);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
 }
 
 .stream-caret { background: var(--az-text-muted); }
@@ -952,7 +797,7 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
 @keyframes az-ai-square-pulse { 0%,100% { opacity: 0.07; transform: scale(1); } 50% { opacity: 0.13; transform: scale(0.94); } }
 @keyframes az-ai-breathe { 0%,100% { opacity: 0.94; filter: brightness(1.02); } 50% { opacity: 1; filter: brightness(1.16); } }
 
-/* Tooltip — reuses app system (glass-tooltip) with subtle motion */
+/* Tooltip — app overlay tooltip with subtle motion */
 .az-ai-tooltip {
   position: fixed;
   z-index: 9999;
@@ -1002,17 +847,6 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
 }
 @keyframes az-tooltip-in { from { opacity: 0; transform: translateX(-50%) translateY(4px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 @keyframes az-tooltip-in-side { from { opacity: 0; transform: translateY(-50%) translateX(4px); } to { opacity: 1; transform: translateY(-50%) translateX(0); } }
-
-/* Legacy hidden overrides — neutralized but keep to avoid double rendering */
-.ai-toggle-btn, .ai-toggle-btn::before, .ai-toggle-btn.active,
-.ai-toggle-particles, .ai-toggle-shimmer, .ai-toggle-ripple, .ai-toggle-stars { display: none !important; }
-.ai-toggle-btn { box-shadow: none !important; }
-
-/* Legacy shimmer / glow classes neutralized */
-.animate-creation-glow, .animate-creation-glow-folder,
-.creation-shimmer-border, .creation-shimmer-border::before,
-.creation-shimmer-border-folder::before { box-shadow: none !important; }
-.creation-shimmer-border::before, .creation-shimmer-border-folder::before { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .az-ai-topbar-spinner, .az-ai-topbar-spinner::after,

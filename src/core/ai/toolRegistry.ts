@@ -6,7 +6,7 @@
 
 import { getActiveEditorContext } from '../editor/activeEditorStore';
 import type { FileNode } from '../../utils/mockFileSystem';
-import { resolvePath } from '../../utils/safeTree';
+import { normalizeResourcePath, resolveResource, listDirectory } from '../filesystem/queries';
 
 export type ToolName =
     | 'read_file'
@@ -58,33 +58,16 @@ export interface ToolRegistryDeps {
 }
 
 function findByPath(tree: FileNode[], target: string): FileNode | null {
-    if (!target || target === '/' || target === '.') return null;
-    const cleaned = target.replace(/^\//, '');
-    const hit = resolvePath(tree, cleaned);
-    if (hit) return hit;
-    // fallback name search
-    const byName = (nodes: FileNode[]): FileNode | null => {
-        for (const n of nodes) {
-            if (n.name === target) return n;
-            if (n.children) { const f = byName(n.children); if (f) return f; }
-        }
-        return null;
-    };
-    return byName(tree);
+    return resolveResource(tree, target, { fallbackNameMatch: true });
 }
 
 function listChildren(tree: FileNode[], dirPath: string): FileNode[] {
-    if (!dirPath) return tree.filter(n => n.id !== 'root');
-    const dir = findByPath(tree, dirPath);
-    if (!dir || dir.type !== 'folder') return [];
-    return dir.children ?? [];
+    return listDirectory(tree, dirPath);
 }
 
 function validatePath(p: string): string | null {
-    if (!p || typeof p !== 'string') return 'Invalid path';
-    if (p.includes('..')) return 'Invalid path: contains ..';
-    if (p.length > 512) return 'Path too long';
-    return null;
+    const result = normalizeResourcePath(p);
+    return result.ok ? null : result.error;
 }
 
 export function createToolRegistry(deps: ToolRegistryDeps) {
@@ -113,7 +96,9 @@ export function createToolRegistry(deps: ToolRegistryDeps) {
                         const qLower = query.toLowerCase();
                         const walk = (nodes: FileNode[], prefix: string) => {
                             for (const n of nodes) {
-                                if (n.id === 'root' && n.name === 'deep-context-ide') {
+                                // Synthetic root container (incl. the legacy
+                                // placeholder): descend without prefixing it.
+                                if (n.id === 'root') {
                                     if (n.children) walk(n.children, '');
                                     continue;
                                 }

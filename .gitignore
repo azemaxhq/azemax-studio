@@ -49,3 +49,6 @@ data/workspaces/*.log
 *.db-shm
 *.sqlite
 *.sqlite3
+
+# Compiled test binaries (build artifacts, never commit)
+test_cpp/main

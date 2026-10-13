@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 export interface PerformanceMetrics {
@@ -217,56 +216,3 @@ export function usePerformanceMonitor(
     onRender,
   };
 }
-
-export function useRenderCount(componentName: string): number {
-  const countRef = useRef(0);
-  countRef.current++;
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[Render] ${componentName}: ${countRef.current}`);
-    }
-  });
-
-  return countRef.current;
-}
-
-export function useWhyDidYouUpdate(name: string, props: Record<string, any>) {
-  const previousProps = useRef(props);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') return;
-
-    const allKeys = Object.keys({ ...previousProps.current, ...props });
-    const changes: Record<string, { from: any; to: any }> = {};
-
-    allKeys.forEach(key => {
-      if (previousProps.current[key] !== props[key]) {
-        changes[key] = {
-          from: previousProps.current[key],
-          to: props[key],
-        };
-      }
-    });
-
-    if (Object.keys(changes).length > 0) {
-      console.log(`[WhyDidYouUpdate] ${name}`, changes);
-    }
-
-    previousProps.current = props;
-  });
-}
-
-const profilerNoop: React.ProfilerOnRenderCallback = () => {};
-
-export const Profiler = ({ id, children, onRender = profilerNoop }: {
-  id: string;
-  children: React.ReactNode;
-  onRender?: React.ProfilerOnRenderCallback;
-}) => {
-  return React.createElement(
-    React.Profiler,
-    { id, onRender },
-    children
-  );
-};

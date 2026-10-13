@@ -21,10 +21,10 @@ import {
 import './OnboardingScreen.css';
 
 /**
- * First-time workspace experience. Rendered by MainLayout when the persisted
- * file tree contains only the canonical root (no real project yet). Creating
- * or importing files flips workspace state to 'project-loaded', which
- * transitions into the IDE automatically — no callbacks needed.
+ * First-time workspace experience. Rendered by MainLayout when there is no
+ * real project yet (empty workspace). Creating or importing files flips
+ * workspace state to 'project-loaded', which transitions into the IDE
+ * automatically — no callbacks needed.
  */
 
 type TemplateKey = 'empty' | 'web' | 'react-app' | 'node-api' | 'python-app';
@@ -171,7 +171,7 @@ function validateProjectName(raw: string): string | null {
 }
 
 export const OnboardingScreen: React.FC = () => {
-    const { createFile, createFolder, createNestedFolders, createProjectTemplate, deleteNode } = useProjectActions();
+    const { createFile, createFolder, createNestedFolders, createProjectTemplate, deleteNode, noteWorkspaceOrigin, setWorkspaceBusy } = useProjectActions();
 
     const [dialog, setDialog] = useState<'create' | 'import' | null>(null);
     const [templateKey, setTemplateKey] = useState<TemplateKey>('web');
@@ -238,9 +238,11 @@ export const OnboardingScreen: React.FC = () => {
             return;
         }
         setBusy(true);
+        setWorkspaceBusy('creating');
         setFormError(null);
         try {
             const name = projectName.trim();
+            noteWorkspaceOrigin(templateKey === 'empty' ? 'blank' : 'template');
             if (templateKey === 'empty') {
                 const res = createFolder(name);
                 if (res.error) {
@@ -271,8 +273,9 @@ export const OnboardingScreen: React.FC = () => {
             previouslyFocused.current?.focus?.();
         } finally {
             setBusy(false);
+            setWorkspaceBusy(null);
         }
-    }, [busy, projectName, templateKey, createFolder, createFile, createProjectTemplate]);
+    }, [busy, projectName, templateKey, createFolder, createFile, createProjectTemplate, noteWorkspaceOrigin, setWorkspaceBusy]);
 
     const importZip = useCallback(async (file: File) => {
         if (file.size > MAX_ARCHIVE_BYTES) {
@@ -280,6 +283,7 @@ export const OnboardingScreen: React.FC = () => {
             return;
         }
         setBusy(true);
+        setWorkspaceBusy('importing');
         setFormError(null);
         // Import under one top-level folder so a failed import can be removed
         // atomically instead of leaving a partial project behind.
@@ -358,6 +362,7 @@ export const OnboardingScreen: React.FC = () => {
                 if (imported % 25 === 0) setProgress(`Importing… ${imported} files`);
             }
             if (imported === 0) throw new Error('nothing-importable');
+            noteWorkspaceOrigin('import');
             setDialog(null);
             previouslyFocused.current?.focus?.();
         } catch (err) {
@@ -382,9 +387,10 @@ export const OnboardingScreen: React.FC = () => {
             }
         } finally {
             setBusy(false);
+            setWorkspaceBusy(null);
             setProgress(null);
         }
-    }, [createFolder, createNestedFolders, createFile, deleteNode]);
+    }, [createFolder, createNestedFolders, createFile, deleteNode, noteWorkspaceOrigin, setWorkspaceBusy]);
 
     const importLooseFiles = useCallback(async (files: FileList) => {
         const list = Array.from(files);
@@ -401,6 +407,7 @@ export const OnboardingScreen: React.FC = () => {
             setFormError(rootRes.error?.message ?? 'Could not create the import folder.');
             return;
         }
+        setWorkspaceBusy('importing');
         const rootFolderName = rootRes.node.name;
         let imported = 0;
         let skipped = 0;
@@ -423,6 +430,7 @@ export const OnboardingScreen: React.FC = () => {
                 else imported += 1;
             }
             if (imported === 0) throw new Error('nothing-importable');
+            noteWorkspaceOrigin('import');
             setDialog(null);
             previouslyFocused.current?.focus?.();
         } catch {
@@ -436,8 +444,9 @@ export const OnboardingScreen: React.FC = () => {
             );
         } finally {
             setBusy(false);
+            setWorkspaceBusy(null);
         }
-    }, [createFolder, createFile, deleteNode]);
+    }, [createFolder, createFile, deleteNode, noteWorkspaceOrigin, setWorkspaceBusy]);
 
     return (
         <div className="az-onboard">

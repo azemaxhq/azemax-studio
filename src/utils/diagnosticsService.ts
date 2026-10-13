@@ -924,22 +924,6 @@ export const checkCodeErrors = async (
     return { markers: ex.markers, output: ex.output, isError: ex.isError };
 };
 
-export const checkCodeErrorsWithAI = async (
-    code: string,
-    fileName: string,
-    language?: string,
-    monaco?: typeof Monaco,
-    opts?: { fileId?: string | null; filePath?: string | null; versionId?: number | null; signal?: AbortSignal; cursorLine?: number | null }
-): Promise<DiagnosticResult> => {
-    // Handle overload where language is actually opts (backward compat)
-    if (typeof language === 'object' && language !== null && !monaco) {
-        // Called as (code, fileName, monaco) incorrectly? Not needed
-    }
-    const lang = language || getLanguageFromFilename(fileName) || getExecLanguage(fileName);
-    const ex = await checkDiagnosticsEx(code, fileName, { ...opts, language: lang, includeAI: true, monaco });
-    return { markers: ex.markers, output: ex.output, isError: ex.isError };
-};
-
 // ─────────────────────────────────────────────
 // Canonical entry — production-grade
 // ─────────────────────────────────────────────

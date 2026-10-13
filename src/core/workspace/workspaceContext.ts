@@ -9,6 +9,7 @@
 
 import type { ActiveEditorContext } from '../editor/activeEditorStore';
 import type { FileNode } from '../../utils/mockFileSystem';
+import { resolveResource } from '../filesystem/queries';
 
 export interface WorkspaceSnapshot {
     activeEditor: ActiveEditorContext | null;
@@ -50,8 +51,11 @@ function collectFileMap(
     prefix: string = '',
 ): void {
     for (const node of nodes) {
-        // Skip the synthetic root node itself
-        if (node.id === 'root' && node.name === 'deep-context-ide') {
+        // Skip the synthetic root container itself (never a project folder —
+        // this includes the legacy `deep-context-ide` placeholder root).
+        // Legacy trees may nest real files under it, so descend without
+        // prefixing the container name.
+        if (node.id === 'root') {
             if (node.children) collectFileMap(node.children, map, paths, '');
             continue;
         }
@@ -101,16 +105,5 @@ export function resolveWorkspaceFileId(
     fileTree: FileNode[],
     targetName: string
 ): string | null {
-    const find = (nodes: FileNode[], name: string): FileNode | null => {
-        for (const n of nodes) {
-            if (n.name === name) return n;
-            if (n.children) {
-                const found = find(n.children, name);
-                if (found) return found;
-            }
-        }
-        return null;
-    };
-    const node = find(fileTree, targetName);
-    return node?.id ?? null;
+    return resolveResource(fileTree, targetName, { fallbackNameMatch: true })?.id ?? null;
 }

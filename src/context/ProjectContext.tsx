@@ -18,8 +18,17 @@ import {
     collectFolderIds,
     repairFileTree,
     validateFileTree,
+    emitFileChange,
 } from '../core/filesystem';
 import type { RepairResult, TreeOperationResult } from '../core/filesystem';
+import {
+    deriveWorkspaceStatus,
+    createWorkspaceMetadata,
+    generateWorkspaceId,
+    type WorkspaceMetadata,
+    type WorkspaceOrigin,
+    type WorkspaceStatus,
+} from '../core/workspace/workspaceModel';
 import { noopResult } from '../core/filesystem';
 import { findNodeById, resolvePath, isDescendantOf, findChildByName, pathOf } from '../utils/safeTree';
 import { setActiveEditor as syncActiveEditor, getActiveEditor as getSyncedEditor, getActiveMonaco as getSyncedMonaco, updateActiveFileMeta } from '../core/editor/activeEditorStore';
@@ -276,18 +285,61 @@ interface ProjectActions {
     expandRecursively: (folderId: string) => void;
     getFileTree: () => FileNode[];
     getActiveFile: () => FileNode | null;
+    /** Record how the workspace came into existence (provenance tracking). */
+    noteWorkspaceOrigin: (origin: WorkspaceOrigin) => void;
+    /** Mark creation/import work in progress (drives lifecycle status). */
+    setWorkspaceBusy: (busy: 'creating' | 'importing' | null) => void;
 }
 
 const ProjectFileContext = createContext<ProjectFileState | undefined>(undefined);
 const ProjectUIContext = createContext<ProjectUIState | undefined>(undefined);
 const ProjectActionsContext = createContext<ProjectActions | undefined>(undefined);
 
-// Workspace state context — tracks the current workspace lifecycle phase.
+// Workspace state context — tracks the current workspace lifecycle phase plus
+// stable workspace identity (see core/workspace/workspaceModel.ts). `state`
+// keeps the legacy values existing consumers rely on; `status` is the full
+// lifecycle vocabulary (`restoring` is distinct from `no-workspace`), and
+// `metadata` carries the stable id/display name (null when no workspace).
 const WorkspaceStateContext = createContext<{
     state: 'no-project' | 'project-loaded' | 'project-creating' | 'project-importing' | 'project-loading' | 'project-failed';
+    status: WorkspaceStatus;
+    metadata: WorkspaceMetadata | null;
     projectName: string | null;
     projectType: string | null;
 } | undefined>(undefined);
+
+// Persisted workspace record (stable identity + provenance). Created ONLY
+// when a real project exists — never for the empty state — and read back on
+// restore so reloads keep the same id. Unrelated keys are untouched.
+const WORKSPACE_RECORD_KEY = 'azemax-workspace-record';
+const LEGACY_WORKSPACE_RECORD_KEY = 'deepcontext-workspace-record';
+interface WorkspaceRecord {
+    id: string;
+    createdAt: number;
+    origin: WorkspaceOrigin;
+}
+
+const loadWorkspaceRecord = (): WorkspaceRecord | null => {
+    try {
+        const saved = nsGetItem(WORKSPACE_RECORD_KEY, [LEGACY_WORKSPACE_RECORD_KEY]);
+        if (!saved) return null;
+        const parsed = JSON.parse(saved) as Partial<WorkspaceRecord>;
+        if (typeof parsed.id === 'string' && parsed.id && typeof parsed.createdAt === 'number') {
+            return {
+                id: parsed.id,
+                createdAt: parsed.createdAt,
+                origin: parsed.origin === 'blank' || parsed.origin === 'template' || parsed.origin === 'import' || parsed.origin === 'restored' ? parsed.origin : 'unknown',
+            };
+        }
+    } catch { /* corrupt record is dropped; identity is re-created, data untouched */ }
+    return null;
+};
+
+const saveWorkspaceRecord = (record: WorkspaceRecord) => {
+    try {
+        nsSetItem(WORKSPACE_RECORD_KEY, JSON.stringify(record));
+    } catch { /* best-effort */ }
+};
 
 // The initial load is computed once and shared across the (possibly twice-run)
 // StrictMode initializers, so the repair + immediate-persist boundary is hit
@@ -319,6 +371,34 @@ const useTreeMutation = (
 export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
     const initial = getInitialLoad();
     const [fileTree, setFileTree] = useState<FileNode[]>(initial.tree);
+    // Bootstrapping phase: the tree itself loads synchronously above, but
+    // expansion/active-file hydration settles in effects below. Until then the
+    // lifecycle reports `restoring` — never `no-workspace` — so the UI cannot
+    // mistake "not loaded yet" for "empty". Idempotent under StrictMode.
+    const [restoring, setRestoring] = useState(true);
+    useEffect(() => {
+        setRestoring(false);
+    }, []);
+    // Explicit creation/import operations in progress (set by Onboarding and
+    // template flows via setWorkspaceBusy).
+    const [busy, setBusyState] = useState<'creating' | 'importing' | null>(null);
+    // Stable workspace identity, persisted per user namespace. Loaded (never
+    // created) here; creation happens in the effect below, only while a real
+    // project exists.
+    const [metaRecord, setMetaRecord] = useState<WorkspaceRecord | null>(() => loadWorkspaceRecord());
+    const originRef = useRef<WorkspaceOrigin>('unknown');
+    // Whether the boot tree already held real content (restored workspace).
+    const bootContentRef = useRef(initial.tree.some((n) => n.id !== ROOT_NODE_ID));
+    // Wall-clock of the last committed tree mutation (effect, never render).
+    const [workspaceUpdatedAt, setWorkspaceUpdatedAt] = useState<number>(() => Date.now());
+    const firstTreeSeenRef = useRef(false);
+    useEffect(() => {
+        if (!firstTreeSeenRef.current) {
+            firstTreeSeenRef.current = true;
+            return;
+        }
+        setWorkspaceUpdatedAt(Date.now());
+    }, [fileTree]);
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
         try {
             const saved = nsGetItem(EXPANDED_KEY, [LEGACY_EXPANDED_KEY]);
@@ -387,9 +467,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         stateRef.current = { fileTree, activeFile, selectedFolder, selectedNodeId, creationState, clipboard, expandedFolderIds };
     });
 
-    // Detect workspace state: "no-project" when the tree holds only the
-    // canonical root (a brand-new user or a cleared workspace). The canonical
-    // model stores real content as TOP-LEVEL SIBLINGS of the root node
+    // Detect workspace state: "no-project" when the tree holds no real content
+    // (empty tree, or only an empty synthetic root container — e.g. the legacy
+    // placeholder — which repair collapses to []). The canonical model stores
+    // real content as TOP-LEVEL SIBLINGS of the root node
     // (root.children is always empty at runtime), so siblings are the signal.
     // Depends on `fileTree` state (not the mutable ref) so the value
     // recomputes on every committed mutation — creating the first file or
@@ -399,6 +480,33 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         [fileTree],
     );
     const hasProject = topLevelNodes.length > 0;
+
+    // Create the stable workspace record on first sight of a real project —
+    // never for the empty state. The storage re-read makes the StrictMode
+    // double-effect idempotent (second run adopts the first run's id).
+    useEffect(() => {
+        if (!hasProject) return;
+        if (metaRecord) {
+            if (metaRecord.origin === 'unknown' && originRef.current !== 'unknown') {
+                const updated = { ...metaRecord, origin: originRef.current };
+                saveWorkspaceRecord(updated);
+                setMetaRecord(updated);
+            }
+            return;
+        }
+        const existing = loadWorkspaceRecord();
+        if (existing) {
+            setMetaRecord(existing);
+            return;
+        }
+        const record: WorkspaceRecord = {
+            id: generateWorkspaceId(),
+            createdAt: Date.now(),
+            origin: originRef.current !== 'unknown' ? originRef.current : (bootContentRef.current ? 'restored' : 'unknown'),
+        };
+        saveWorkspaceRecord(record);
+        setMetaRecord(record);
+    }, [hasProject, metaRecord]);
 
     // Human-readable project name: the single top-level entry's name. With
     // several top-level roots there is no single project name — report null.
@@ -438,9 +546,31 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
 
     const workspaceState: 'no-project' | 'project-loaded' | 'project-creating' | 'project-importing' | 'project-loading' | 'project-failed' =
         hasProject ? 'project-loaded' : 'no-project';
+    const status: WorkspaceStatus = deriveWorkspaceStatus({
+        initialized: true,
+        restoring,
+        busy,
+        hasProject,
+        error: null,
+    });
+    const metadata: WorkspaceMetadata | null = useMemo(() => {
+        if (!hasProject || !metaRecord) return null;
+        return createWorkspaceMetadata(
+            projectName,
+            metaRecord.origin,
+            {
+                id: metaRecord.id,
+                displayName: projectName,
+                origin: metaRecord.origin,
+                createdAt: metaRecord.createdAt,
+                updatedAt: metaRecord.createdAt,
+            },
+            workspaceUpdatedAt,
+        );
+    }, [hasProject, metaRecord, projectName, workspaceUpdatedAt]);
     const workspaceValue = useMemo(
-        () => ({ state: workspaceState, projectName, projectType }),
-        [workspaceState, projectName, projectType],
+        () => ({ state: workspaceState, status, metadata, projectName, projectType }),
+        [workspaceState, status, metadata, projectName, projectType],
     );
 
     const applyTreeMutation = useTreeMutation(latestTreeRef, setFileTree);
@@ -600,7 +730,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     const createFile = useCallback((path: string, content?: string): TreeOperationResult => {
         const { dirs, name, parentId } = splitPath(path);
         const templateContent = content !== undefined ? content : getFileTemplate(name, dirs).content;
-        return applyTreeMutation(tree => {
+        const outcome = applyTreeMutation(tree => {
             let t = tree;
             let actualParentId = parentId;
             if (dirs) {
@@ -617,11 +747,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             }
             return result;
         });
+        if (outcome.changed && outcome.node && !outcome.error) {
+            emitFileChange({ kind: 'created', id: outcome.node.id, name: outcome.node.name, parentId: outcome.node.parentId, path: pathOf(outcome.tree, outcome.node.id) || outcome.node.name });
+        }
+        return outcome;
     }, [applyTreeMutation, setActiveFile]);
 
     const createFolder = useCallback((path: string): TreeOperationResult => {
         const { dirs, name, parentId } = splitPath(path);
-        return applyTreeMutation(tree => {
+        const outcome = applyTreeMutation(tree => {
             let t = tree;
             let actualParentId = parentId;
             if (dirs) {
@@ -632,34 +766,54 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             }
             return opCreateFolder(t, { name, parentId: actualParentId });
         });
+        if (outcome.changed && outcome.node && !outcome.error) {
+            emitFileChange({ kind: 'created', id: outcome.node.id, name: outcome.node.name, parentId: outcome.node.parentId, path: pathOf(outcome.tree, outcome.node.id) || outcome.node.name });
+        }
+        return outcome;
     }, [applyTreeMutation]);
 
     const createNestedFolders = useCallback((path: string): TreeOperationResult => {
-        return applyTreeMutation(tree => ensureFolderPath(tree, path));
+        const outcome = applyTreeMutation(tree => ensureFolderPath(tree, path));
+        if (outcome.changed && outcome.node && !outcome.error) {
+            emitFileChange({ kind: 'created', id: outcome.node.id, name: outcome.node.name, parentId: outcome.node.parentId, path: pathOf(outcome.tree, outcome.node.id) || outcome.node.name });
+        }
+        return outcome;
     }, [applyTreeMutation]);
 
     /** Create a file directly under a resolved parent id (Explorer/terminal UI). */
     const createFileInFolder = useCallback((parentId: string, name: string, content?: string): TreeOperationResult => {
         const templateContent = content !== undefined ? content : getFileTemplate(name, parentId).content;
-        return applyTreeMutation(tree => {
+        const outcome = applyTreeMutation(tree => {
             const result = opCreateFile(tree, { name, parentId, content: templateContent });
             if (result.changed && result.node) {
                 setActiveFile(result.node);
             }
             return result;
         });
+        if (outcome.changed && outcome.node && !outcome.error) {
+            emitFileChange({ kind: 'created', id: outcome.node.id, name: outcome.node.name, parentId: outcome.node.parentId, path: pathOf(outcome.tree, outcome.node.id) || outcome.node.name });
+        }
+        return outcome;
     }, [applyTreeMutation, setActiveFile]);
 
     /** Create a folder directly under a resolved parent id (Explorer/terminal UI). */
     const createFolderInFolder = useCallback((parentId: string, name: string): TreeOperationResult => {
-        return applyTreeMutation(tree => opCreateFolder(tree, { name, parentId }));
+        const outcome = applyTreeMutation(tree => opCreateFolder(tree, { name, parentId }));
+        if (outcome.changed && outcome.node && !outcome.error) {
+            emitFileChange({ kind: 'created', id: outcome.node.id, name: outcome.node.name, parentId: outcome.node.parentId, path: pathOf(outcome.tree, outcome.node.id) || outcome.node.name });
+        }
+        return outcome;
     }, [applyTreeMutation]);
 
     /** mkdir -p under a resolved parent id, resolving segments by name. */
     const ensureFolderUnder = useCallback((parentId: string, path: string): TreeOperationResult => {
         const parts = path.split('/').filter((p) => p.trim().length > 0);
         if (parts.length === 0) return applyTreeMutation(tree => noopResult(tree));
-        return applyTreeMutation(tree => {
+        // Nodes created inside the updater are collected here: the updater
+        // runs exactly once and synchronously, so this is populated when
+        // applyTreeMutation returns.
+        const created: FileNode[] = [];
+        const outcome = applyTreeMutation(tree => {
             let t = tree;
             let pid = parentId;
             for (const part of parts) {
@@ -672,9 +826,14 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
                 if (!res.changed || !res.node) return { ...res, tree: t };
                 t = res.tree;
                 pid = res.node.id;
+                created.push(res.node);
             }
             return { tree: t, changed: t !== tree };
         });
+        for (const node of created) {
+            emitFileChange({ kind: 'created', id: node.id, name: node.name, parentId: node.parentId, path: pathOf(outcome.tree, node.id) || node.name });
+        }
+        return outcome;
     }, [applyTreeMutation]);
 
     // ============================================================================
@@ -693,6 +852,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         if (!id) return;
         const { activeFile, selectedFolder } = stateRef.current;
         const tree = latestTreeRef.current;
+        const target = findNodeById(tree, id);
 
         if (isDescendantOf(tree, id, selectedFolder)) setSelectedFolderState(ROOT_NODE_ID);
         if (isDescendantOf(tree, id, stateRef.current.selectedNodeId)) setSelectedNodeState(null);
@@ -721,11 +881,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
             return changed ? next : prev;
         });
 
-        applyTreeMutation(tree => opDeleteNode(tree, id));
+        const outcome = applyTreeMutation(tree => opDeleteNode(tree, id));
+        if (outcome.changed && target) {
+            emitFileChange({ kind: 'deleted', id, name: target.name, parentId: target.parentId });
+        }
     }, [applyTreeMutation, resolveNodeId]);
 
     const deleteMultipleNodes = useCallback((ids: string[]) => {
         const { activeFile } = stateRef.current;
+        const deleted: Array<{ id: string; name: string; parentId?: string }> = [];
         for (const id of ids) {
             const resolved = resolveNodeId(id);
             if (!resolved) continue;
@@ -741,7 +905,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         }
         for (const id of ids) {
             const resolved = resolveNodeId(id);
-            if (resolved) applyTreeMutation(tree => opDeleteNode(tree, resolved));
+            if (!resolved) continue;
+            const before = findNodeById(latestTreeRef.current, resolved);
+            const outcome = applyTreeMutation(tree => opDeleteNode(tree, resolved));
+            if (outcome.changed && before) {
+                deleted.push({ id: resolved, name: before.name, parentId: before.parentId });
+            }
+        }
+        for (const d of deleted) {
+            emitFileChange({ kind: 'deleted', id: d.id, name: d.name, parentId: d.parentId });
         }
         setSelectedNodes(new Set());
         setSelectedNodeState(null);
@@ -769,11 +941,18 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
 
         if (clipboard.mode === 'cut') {
             for (const id of clipboard.nodeIds) {
-                applyTreeMutation(tree => opMoveNode(tree, id, targetFolderId));
+                const before = findNodeById(latestTreeRef.current, id);
+                const outcome = applyTreeMutation(tree => opMoveNode(tree, id, targetFolderId));
+                if (outcome.changed && before) {
+                    emitFileChange({ kind: 'moved', id, name: before.name, parentId: targetFolderId, prevParentId: before.parentId, path: pathOf(outcome.tree, id) || before.name });
+                }
             }
         } else {
             for (const id of clipboard.nodeIds) {
-                applyTreeMutation(tree => opCopyNode(tree, id, targetFolderId));
+                const outcome = applyTreeMutation(tree => opCopyNode(tree, id, targetFolderId));
+                if (outcome.changed && outcome.node && !outcome.error) {
+                    emitFileChange({ kind: 'created', id: outcome.node.id, name: outcome.node.name, parentId: outcome.node.parentId, path: pathOf(outcome.tree, outcome.node.id) || outcome.node.name });
+                }
             }
         }
 
@@ -828,6 +1007,8 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         const result = applyTreeMutation(tree => opUpdateFileContent(tree, fileId, content));
 
         if (result.changed) {
+            const node = findNodeById(result.tree, fileId);
+            emitFileChange({ kind: 'updated', id: fileId, name: node?.name ?? fileId, parentId: node?.parentId, path: pathOf(result.tree, fileId) || undefined });
             setModifiedFiles(prev => {
                 const next = new Set(prev);
                 next.add(fileId);
@@ -842,8 +1023,13 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     }, [applyTreeMutation]);
 
     const renameNode = useCallback((id: string, newName: string): TreeOperationResult => {
+        const before = findNodeById(latestTreeRef.current, id);
         const result = applyTreeMutation(tree => opRenameNode(tree, id, newName));
-        if (result.changed) refreshActiveFileFromTree();
+        if (result.changed) {
+            refreshActiveFileFromTree();
+            const node = result.node ?? findNodeById(result.tree, id);
+            emitFileChange({ kind: 'renamed', id, name: node?.name ?? newName, parentId: node?.parentId, prevName: before?.name, path: pathOf(result.tree, id) || undefined });
+        }
         return result;
     }, [applyTreeMutation, refreshActiveFileFromTree]);
 
@@ -855,14 +1041,30 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         setSelectedNodeState(nodeId);
     }, []);
 
+    const noteWorkspaceOrigin = useCallback((origin: WorkspaceOrigin) => {
+        originRef.current = origin;
+    }, []);
+
+    const setWorkspaceBusy = useCallback((next: 'creating' | 'importing' | null) => {
+        setBusyState(next);
+    }, []);
+
     const moveNode = useCallback((sourceId: string, targetFolderId: string): TreeOperationResult => {
+        const before = findNodeById(latestTreeRef.current, sourceId);
         const result = applyTreeMutation(tree => opMoveNode(tree, sourceId, targetFolderId));
-        if (result.changed) refreshActiveFileFromTree();
+        if (result.changed) {
+            refreshActiveFileFromTree();
+            emitFileChange({ kind: 'moved', id: sourceId, name: before?.name ?? sourceId, parentId: targetFolderId, prevParentId: before?.parentId, path: pathOf(result.tree, sourceId) || undefined });
+        }
         return result;
     }, [applyTreeMutation, refreshActiveFileFromTree]);
 
     const duplicateNode = useCallback((id: string): TreeOperationResult => {
-        return applyTreeMutation(tree => opDuplicateNode(tree, id));
+        const outcome = applyTreeMutation(tree => opDuplicateNode(tree, id));
+        if (outcome.changed && outcome.node && !outcome.error) {
+            emitFileChange({ kind: 'created', id: outcome.node.id, name: outcome.node.name, parentId: outcome.node.parentId, path: pathOf(outcome.tree, outcome.node.id) || outcome.node.name });
+        }
+        return outcome;
     }, [applyTreeMutation]);
 
     // ============================================================================
@@ -965,13 +1167,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         getFileTree,
         getActiveFile,
         closeFile,
+        noteWorkspaceOrigin,
+        setWorkspaceBusy,
     }), [
         setActiveFile, setSelectedFolder, setSelectedNode, toggleFolder, createFile, createFolder, createNestedFolders,
         createFileInFolder, createFolderInFolder, ensureFolderUnder,
         createProjectTemplate, deleteNode, updateFileContent, startCreating, cancelCreation, commitCreation,
         renameNode, collapseAll, expandAll, moveNode, toggleSelection, selectRange, selectAll,
         deleteMultipleNodes, clearSelection, cutNodes, copyNodes, pasteNodes, duplicateNode,
-        expandRecursively, getFileTree, getActiveFile, closeFile,
+        expandRecursively, getFileTree, getActiveFile, closeFile, noteWorkspaceOrigin, setWorkspaceBusy,
     ]);
 
     const openFiles = React.useMemo(() => {

@@ -89,7 +89,7 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
           'vendor-monaco': ['@monaco-editor/react'],
-          'vendor-terminal': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-search', '@xterm/addon-web-links', '@xterm/addon-webgl'],
+          'vendor-terminal': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links', '@xterm/addon-webgl'],
           'vendor-motion': ['framer-motion'],
           'vendor-icons': ['lucide-react', 'react-icons'],
           'vendor-markdown': ['react-markdown', 'remark-gfm', 'prismjs'],

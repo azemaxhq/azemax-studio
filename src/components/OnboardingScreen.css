@@ -360,13 +360,7 @@
     flex-shrink: 0;
 }
 
-/* ---- Recent projects: compact native list ---- */
-
-.az-onboard-recents {
-    margin: 12px 0 0;
-    padding: 0;
-    list-style: none;
-}
+/* ---- Empty state ---- */
 
 .az-onboard-empty {
     display: flex;

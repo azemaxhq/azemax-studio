@@ -230,13 +230,6 @@ html.az-landing-active #root {
 }
 
 /* ============================================================
-   HAIRLINES & BORDERS
-   ============================================================ */
-.az-hairline-border  { border: 1px solid var(--az-line); }
-.az-hairline-top     { border-top: 1px solid var(--az-line); }
-.az-hairline-bottom  { border-bottom: 1px solid var(--az-line); }
-
-/* ============================================================
    GLASS SURFACES
    contain:layout style paint fully isolates backdrop-filter
    repaints from the rest of the document. This is the single
@@ -254,36 +247,6 @@ html.az-landing-active #root {
   -webkit-transform: translateZ(0);
 }
 
-.az-glass-surface-interactive {
-  background: rgba(7, 16, 29, 0.65);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--az-line);
-  /* Explicit properties only — `transition:all` covers layout props
-     (width, padding) and triggers layout recalc on every frame. */
-  transition: background-color 0.25s var(--az-ease-out),
-              border-color 0.25s var(--az-ease-out),
-              box-shadow 0.25s var(--az-ease-out);
-}
-
-.az-glass-surface-interactive:hover {
-  background: rgba(11, 23, 40, 0.85);
-  border-color: var(--az-line-bright);
-  box-shadow: 0 0 28px rgba(79, 140, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-/* ============================================================
-   GLOW SPOTS & ATMOSPHERE
-   ============================================================ */
-.az-glow-spot {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: blur(80px);
-  opacity: 0.45;
-  transition: opacity 0.5s ease;
-}
-
 /* Large radial atmosphere washes: static decor. Own compositor layer,
    contain:paint so scrolling never re-rasterizes the blur region.
    will-change:auto ensures the layer is released when not needed. */
@@ -293,41 +256,6 @@ html.az-landing-active #root {
   -webkit-transform: translateZ(0);
   will-change: auto;
   pointer-events: none;
-}
-
-/* ============================================================
-   PHYSICAL LAPTOP / WORKSTATION MOCKUP
-   ============================================================ */
-.az-laptop-chassis {
-  background: linear-gradient(145deg, #1C222F 0%, #0F141F 40%, #080C14 100%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 12px;
-  box-shadow:
-    0 32px 80px -16px rgba(0, 0, 0, 0.95),
-    0 0 50px -6px rgba(79, 140, 255, 0.28),
-    inset 0 1px 1px rgba(255, 255, 255, 0.28),
-    inset 0 0 0 1px rgba(79, 140, 255, 0.2);
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.4s var(--az-ease-out),
-              box-shadow 0.4s ease;
-}
-
-.az-laptop-base {
-  background: linear-gradient(180deg, #1A202D 0%, #0A0E16 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.8);
-  border-radius: 0 0 14px 14px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.98);
-  position: relative;
-}
-
-.az-laptop-notch {
-  width: 72px;
-  height: 4px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.08), rgba(255,255,255,0.22), rgba(255,255,255,0.08));
-  border-radius: 2px;
-  margin: 0 auto;
 }
 
 /* ============================================================
@@ -410,17 +338,8 @@ html.az-landing-active #root {
   transform: scale(0.99);
 }
 /* ============================================================
-   CODE EDITOR STYLING (inside mockups)
+   CODE SYNTAX COLORS (inside mockups)
    ============================================================ */
-.az-code-window {
-  font-family: var(--az-font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  background: #060B12;
-  color: #D6DEEB;
-  contain: layout paint;
-}
-
 .az-syntax-kw   { color: #569CD6; }
 .az-syntax-fn   { color: #DCDCAA; }
 .az-syntax-str  { color: #CE9178; }
@@ -514,7 +433,6 @@ html.az-landing-active #root {
 .az-delay-2 { transition-delay: 160ms; }
 .az-delay-3 { transition-delay: 240ms; }
 .az-delay-4 { transition-delay: 320ms; }
-.az-delay-5 { transition-delay: 400ms; }
 
 /* ============================================================
    HERO ENTRANCE ANIMATIONS
@@ -524,10 +442,6 @@ html.az-landing-active #root {
 @keyframes az-hero-fadeUp {
   0%   { opacity: 0; transform: translateY(24px); }
   100% { opacity: 1; transform: translateY(0); }
-}
-@keyframes az-hero-scaleIn {
-  0%   { opacity: 0; transform: scale(0.94) translateY(20px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 @keyframes az-hero-lineGrow {
   0%   { transform: scaleX(0); opacity: 0; }
@@ -547,7 +461,6 @@ html.az-landing-active #root {
 .az-hero-subtitle  { animation: az-hero-fadeUp 0.8s var(--az-ease-out) 0.9s backwards; }
 .az-hero-cta       { animation: az-hero-fadeUp 0.75s var(--az-ease-out) 1.1s backwards; }
 .az-hero-metadata  { animation: az-hero-fadeUp 0.7s var(--az-ease-out) 1.4s backwards; }
-.az-hero-product   { animation: az-hero-scaleIn 0.9s var(--az-ease-out) 1.2s backwards; }
 
 .az-discovery-item:hover  { transform: translateY(-1px); }
 .az-discovery-item:active { transform: translateY(0); }
@@ -677,13 +590,6 @@ html.az-landing-active #root {
    TAB PANEL VISIBILITY & TRANSITION SYSTEM
    Smooth fade and glide when switching workspace modes.
    ============================================================ */
-.az-tab-panel-inactive {
-  display: none;
-}
-.az-tab-panel-active {
-  display: block;
-  animation: az-panel-fadein var(--az-duration-base) ease both;
-}
 .az-tab-panel-enter {
   animation: az-panel-fadein 200ms var(--az-ease-out) both;
 }
@@ -698,7 +604,6 @@ html.az-landing-active #root {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .az-tab-panel-active,
   .az-tab-panel-enter {
     animation: none !important;
   }
@@ -766,8 +671,7 @@ html.az-landing-active #root {
   .az-hero-subtitle,
   .az-hero-cta,
   .az-hero-metadata,
-  .az-hero-positioning,
-  .az-hero-product {
+  .az-hero-positioning {
     animation-duration: 0.5s;
   }
 }
@@ -848,12 +752,4 @@ html.az-landing-active #root {
     transform: none !important;
     transition: none !important;
   }
-}
-
-/* ============================================================
-   FOCUS VISIBLE RING — unified accessible focus indicator
-   ============================================================ */
-.az-focus-ring:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--az-void), 0 0 0 4px var(--az-blue-electric);
 }

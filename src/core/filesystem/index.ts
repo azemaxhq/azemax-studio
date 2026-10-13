@@ -27,3 +27,19 @@ export {
     toggleFolderExpansion,
     collectFolderIds,
 } from './operations';
+export {
+    normalizeResourcePath,
+    resolveResource,
+    listDirectory,
+    readFileContent,
+    getResourceMetadata,
+    MAX_RESOURCE_PATH_LENGTH,
+} from './queries';
+export type { NormalizeResult, ResolveOptions, ResourceMetadata } from './queries';
+export {
+    subscribeFileChanges,
+    emitFileChange,
+    requestExplorerRefresh,
+    subscribeExplorerRefresh,
+} from './fileChangeService';
+export type { FileChangeKind, FileChangeEvent, FileChangeListener, RefreshListener } from './fileChangeService';

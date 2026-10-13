@@ -61,13 +61,6 @@ export interface DiagnosticResultEx {
     meta: DiagnosticRunMeta | null;
 }
 
-/** Legacy compat interface - extends DiagnosticResultEx but preserves old shape */
-export interface DiagnosticResult {
-    markers: Monaco.editor.IMarkerData[];
-    output: string;
-    isError: boolean;
-}
-
 export const SEVERITY_MONACO_MAP: Record<DiagnosticSeverity, number> = {
     error: 8,   // MarkerSeverity.Error
     warning: 4, // MarkerSeverity.Warning

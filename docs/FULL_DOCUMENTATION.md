@@ -50,7 +50,7 @@ This document consolidates and updates all major documentation for the Azemax pr
   - `index.cjs` – Express + WebSocket, local execution + Wandbox, AI chat endpoint.
   - `find-compilers.cjs`, `print-cmd.cjs`, `test_langs.py`, `test_ws_conn.js` – auxiliary tools/tests.
 - **`docs/`** – project documentation (architecture, components, services, contexts, server, and this file).
-- **`test_cpp/`** – sample C++ program and compiled binary for execution testing.
+- **`test_cpp/`** – sample C++ program for execution testing.
 - **Configs** – `package.json`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`, `tailwind.config.js`, `postcss.config.js`, `index.html`.
 
 ---
@@ -277,7 +277,6 @@ Located in `src/context/`.
     - `@xterm/addon-fit` (auto resize).
     - `@xterm/addon-webgl` (hardware acceleration).
     - `@xterm/addon-web-links` (link detection).
-    - `@xterm/addon-search` (search in buffer).
 - **Shell Behavior**
   - Implements a lightweight in‑browser pseudo‑shell over `mockFileSystem`:
     - Commands: `ls`, `cd`, `pwd`, `cat`, `touch`, `mkdir`, `rm`, `clear`, `help`, etc.

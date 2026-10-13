@@ -21,10 +21,6 @@ export function setCurrentUserId(id: string | null): void {
     }
 }
 
-export function getCurrentUserId(): string | null {
-    return currentUserId;
-}
-
 export function namespacedKey(base: string): string {
     return currentUserId ? `azemax:u:${currentUserId}:${base}` : base;
 }

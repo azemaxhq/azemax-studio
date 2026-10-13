@@ -707,6 +707,24 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
         try { nsSetItem(COMPOSER_MODE_KEY, composerMode); } catch { /* ignore */ }
     }, [composerMode]);
 
+    // Task context — tracks ongoing agent task for follow-up resolution
+    // e.g., last user request, inferred framework, mentioned directories, current plan
+    const [taskContext, setTaskContext] = useState<{
+        lastUserMessage: string;
+        inferredFramework: string;
+        mentionedDirs: string[];
+        lastPlanSummary: string;
+    }>({
+        lastUserMessage: '',
+        inferredFramework: 'unknown',
+        mentionedDirs: [],
+        lastPlanSummary: '',
+    });
+
+    // Memoized task context for dependency references
+    const taskContextRef = useRef(taskContext);
+    taskContextRef.current = taskContext;
+
     // Restore textarea height after draft restore
     useEffect(() => {
         if (input && inputRef.current) {
@@ -1170,6 +1188,48 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
         setAgentActivities([]);
         setLastDiffs([]);
 
+        // ── FOLLOW-UP RESOLUTION ─────────────────────────────────────────
+        // Check if this is a short follow-up that references the prior task.
+        // If so, resolve the destination from context and continue the existing
+        // task rather than starting a new conversation.
+        const isShortAffirmation =
+            /^\s*(yes|sure|okay|alright|go.?ahead|continue|do.?it|yeah|yep|sounds.?good)\s*$/i.test(
+                userMessageText,
+            );
+        const isDestinationRef =
+            /(inside|in|within)\s+["']?([\w/-]+)["']?/i.test(userMessageText) &&
+            taskContextRef.current.mentionedDirs.length > 0;
+
+        // Resolve destination from context for follow-up messages
+        let updatedTaskContext = taskContextRef.current;
+
+        if (isDestinationRef) {
+            // Extract the directory name mentioned after "inside / in / within"
+            const match = userMessageText.match(/(inside|in|within)\s+["']?([\w/-]+)["']?/i);
+            if (match && match[2]) {
+                const mentionedDir = match[2];
+                // Check if this dir was mentioned in the prior task context
+                const priorDirs = taskContextRef.current.mentionedDirs;
+                if (priorDirs.includes(mentionedDir)) {
+                    // Resolve: update task context with mentioned directory
+                    updatedTaskContext = {
+                        ...taskContextRef.current,
+                        lastUserMessage: userMessageText,
+                        mentionedDirs: [...priorDirs, mentionedDir],
+                    };
+                }
+            }
+        } else if (isShortAffirmation && taskContextRef.current.lastPlanSummary.length > 0) {
+            // User gave a short affirmation after a multi-step plan — continue
+            updatedTaskContext = {
+                ...taskContextRef.current,
+                lastUserMessage: userMessageText,
+            };
+        }
+
+        // Store updated task context
+        setTaskContext(updatedTaskContext);
+
         // Centralized loading: thinking immediately — single requestId for concurrent protection
         const requestId = aiLoading.start('thinking');
         currentRequestIdRef.current = requestId;
@@ -1530,9 +1590,19 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 const chatFileName = pinnedCtxForChat.fileName || fileName;
                 const chatLanguage = pinnedCtxForChat.language || language;
                 let fileContext: string;
+                // Include task context from prior turns if available — helps the model
+                // resolve follow-ups like "inside hello", "continue", "do it" without
+                // requiring the user to repeat the full request.
+                const taskCtx = taskContextRef.current;
+                const taskContextHint = taskCtx.inferredFramework !== 'unknown'
+                    ? ` — currently working on a ${taskCtx.inferredFramework} project`
+                    : '';
+                const dirHint = taskCtx.mentionedDirs.length > 0
+                    ? ` — directory${taskCtx.mentionedDirs.length > 1 ? 's' : ''}: ${taskCtx.mentionedDirs.join(', ')}`
+                    : '';
                 if (dynamicContext && !isFastChat) {
                     // Rich dynamic context already contains tree, active file, mentioned files, recent edits, visible window
-                    fileContext = `${dynamicContext.fragments}\n\n---\nMode: ${composerMode} | Mentioned: ${atPaths.join(', ') || '(none)'} | Question: "${userMessageText}"`;
+                    fileContext = `${dynamicContext.fragments}\n\n---\nMode: ${composerMode} | Mentioned: ${atPaths.join(', ') || '(none)'} | Question: "${userMessageText}"${taskContextHint}${dirHint}`;
                 } else {
                     const refBlock = referencedContents.length ? `\nReferenced files:\n${referencedContents.map(r => `@${r.path}:\n\`\`\`\n${r.content}\n\`\`\``).join('\n')}` : '';
                     const treeSnapshot = buildWorkspaceSnapshot(getActiveEditorContext() ?? null, fileTree).fileTreeString.slice(0, 1500);

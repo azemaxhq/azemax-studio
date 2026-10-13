@@ -26,14 +26,13 @@ export function derivePath(parentId: string, name: string): string {
     return parentId === ROOT_NODE_ID ? name : `${parentId}/${name}`;
 }
 
-/**
- * Whether `descendantId` could live under `ancestorId` purely by path prefix.
- * NOTE: this is a cheap string check only — use it for id generation guards,
- * not as a substitute for `isDescendantOf` (which walks the real tree).
- */
-export function isPathBelow(ancestorId: string, descendantId: string): boolean {
-    return descendantId === ancestorId || descendantId.startsWith(ancestorId + '/');
-}
-
 /** Root's canonical node id. */
 export { ROOT_NODE_ID };
+
+/**
+ * Legacy default project name materialized by the pre-empty-state
+ * `initialFileTree` fallback. Single source of truth: repair (validate.ts)
+ * and presentation (explorerModel.ts) both key provenance off this constant.
+ * Never use it as a fallback display name for a missing workspace.
+ */
+export const PLACEHOLDER_ROOT_NAME = 'deep-context-ide';

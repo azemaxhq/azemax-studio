@@ -140,12 +140,6 @@ export const updateSession = (sessions: ChatSession[], updatedSession: ChatSessi
     return newSessions;
 };
 
-export const deleteSession = (sessions: ChatSession[], sessionId: string): ChatSession[] => {
-    const newSessions = sessions.filter(s => s.id !== sessionId);
-    saveSessions(newSessions);
-    return newSessions;
-};
-
 export const saveCurrentSessionId = (id: string | null) => {
     if (id) {
         nsSetItem(CURRENT_SESSION_KEY, id);

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { FileExplorer } from './FileExplorer';
 import { useProjectFile, useProjectUI, useProjectActions } from '../../context/ProjectContext';
+import { requestExplorerRefresh } from '../../core/filesystem/fileChangeService';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { ErrorBoundary } from '../UI/ErrorBoundary';
 import { countTree } from '../../utils/safeTree';
@@ -144,6 +145,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
         window.dispatchEvent(new CustomEvent('azemax-sort-changed', { detail: sortState }));
     }, [sortState]);
 
+    // Open the sort menu on request (Explorer context menu "Sort By…").
+    useEffect(() => {
+        const openSortMenu = () => setShowSortMenu(true);
+        window.addEventListener('azemax-open-sort', openSortMenu);
+        return () => window.removeEventListener('azemax-open-sort', openSortMenu);
+    }, []);
+
     useEffect(() => () => {
         if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     }, []);
@@ -193,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     const handleRefresh = useCallback(() => {
         if (isRefreshing) return;
         setIsRefreshing(true);
-        window.dispatchEvent(new CustomEvent('explorer-refresh'));
+        requestExplorerRefresh('manual');
         refreshTimerRef.current = setTimeout(() => {
             setIsRefreshing(false);
         }, 700);
