@@ -29,6 +29,11 @@ export * from './taskConfigClient';
 export * from './commentSyntax';
 export * from './AIProviderNormalizer';
 export * from './intentResolver';
+export * from './agentTaskContext';
+export * from './agentTools';
+export * from './agentLoop';
+export * from './agentController';
+export * from './intentUnderstanding';
 
 import { AIRequestManager, aiRequestManager } from './AIRequestManager';
 import { AIMessageStore } from './AIMessageStore';

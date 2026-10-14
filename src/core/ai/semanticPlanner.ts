@@ -18,7 +18,7 @@ import type { ActiveEditorContext } from '../editor/activeEditorStore';
 import type { ChatMessage } from './types';
 import { sendChat } from './AIClient';
 
-export type SemanticOperation = 'chat' | 'explain' | 'edit';
+export type SemanticOperation = 'chat' | 'explain' | 'edit' | 'implement';
 
 export type SemanticActionType =
     | 'chat'
@@ -40,7 +40,9 @@ export type SemanticActionType =
     | 'get_diagnostics'
     | 'get_editor_context'
     | 'open_file'
-    | 'run_code';
+    | 'run_code'
+    | 'create_directory'
+    | 'implement';
 
 export interface SemanticTarget {
     /** Absolute or workspace-relative path, e.g. "src/hello.c" */
@@ -145,8 +147,26 @@ export function buildSemanticPlannerPrompt(
 CRITICAL OUTPUT RULES:
 - Output ONLY valid JSON. No markdown fences, no explanation, no reasoning.
 - Infer operation, target, scope, constraints from the user's wording. Paraphrases must produce the same correct plan.
-- Decide semantically whether the user wants: an edit to code/comments (operation "edit" with concrete actions), only an explanation (operation "explain"), or conversation (operation "chat").
-- Be conservative: if the request is ambiguous — you cannot identify WHICH lines/file/symbol it targets — return a chat action asking for clarification. Never guess when the target is unclear.
+- Decide semantically whether the user wants: an edit to code/comments (operation "edit" with concrete actions), the construction of new files (operation "implement"), only an explanation (operation "explain"), or conversation (operation "chat").
+
+CLARIFICATION POLICY (this is the most important rule):
+- DO NOT ask the user to specify a stack, a file name, a directory, or a framework when they did not. That is not ambiguity — that is your job to decide.
+- An ordinary, informal request ("create a simple website", "create a todo website", "make it responsive", "add dark mode", "add a contact form") is a COMPLETE, ACTIONABLE request. Set wantsModification=true and produce concrete actions.
+- For an unspecified "build me X" request, choose a sensible default yourself and set operation="implement":
+  - If the workspace is empty or has no web project: create plain HTML/CSS/JS files (index.html, styles.css, script.js). Do NOT introduce React, Vue, ASP.NET, a package manager, or a build step.
+  - If the workspace already has a project (package.json, or existing source files), extend THAT project's structure instead of scaffolding something parallel.
+- The ONLY acceptable reason to emit a chat action asking a question is a GENUINE BLOCKER:
+  (a) required information is genuinely unavailable,
+  (b) two readings of the request would produce materially different deliverables,
+  (c) the operation is destructive or security-sensitive,
+  (d) a permission or credential is missing,
+  (e) the task cannot be completed safely without user input.
+  Anything outside that list: proceed with a sensible default. Uncertainty is resolved by inspecting the workspace, not by asking.
+
+FOLLOW-UP CONTEXT (critical):
+- The TASK CONTEXT section below states the ORIGINAL task plus the user's follow-ups. A follow-up like "using html", "make it responsive", or "add dark mode" MODIFIES that task. Never treat a follow-up as a standalone request and never re-ask what the original request already established.
+- If TASK CONTEXT lists FILES CREATED/MODIFIED SO FAR, a follow-up applies to those files.
+- "continue" / "do the remaining work" means: continue the existing task, inspect the current state, and finish it.
 
 TOOL SELECTION RULES (Cursor-style Agent):
 - You have IDE tools: read_file(path), search_files(query), list_files(path), get_editor_context(), get_diagnostics(path), open_file(path), plus mutation tools below.
@@ -282,7 +302,7 @@ export function parseSemanticPlan(raw: string): SemanticPlan | null {
         if (!Array.isArray(actions)) return null;
         // Normalize and validate
         const operation = analysis.operation as string;
-        if (!['chat', 'explain', 'edit'].includes(operation)) return null;
+        if (!['chat', 'explain', 'edit', 'implement'].includes(operation)) return null;
         const wantsModification = Boolean(analysis.wantsModification);
         const wantsExplanation = Boolean(analysis.wantsExplanation);
         const summary = typeof analysis.summary === 'string' ? analysis.summary : '';
@@ -292,8 +312,8 @@ export function parseSemanticPlan(raw: string): SemanticPlan | null {
             if (!a || typeof a !== 'object' || typeof (a as any).type !== 'string') continue;
             const type = (a as any).type as SemanticActionType;
             const allowed: SemanticActionType[] = [
-                'chat', 'explain', 'add_comments', 'remove_comments', 'create_file', 'delete_file', 'rename_file', 'update_file', 'insert_code', 'replace_code', 'delete_code', 'refactor', 'fix',
-                'read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file', 'run_code',
+                'chat', 'explain', 'implement', 'add_comments', 'remove_comments', 'create_file', 'delete_file', 'rename_file', 'update_file', 'insert_code', 'replace_code', 'delete_code', 'refactor', 'fix',
+                'read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file', 'run_code', 'create_directory',
             ];
             if (!allowed.includes(type)) continue;
             normalizedActions.push({
@@ -367,12 +387,13 @@ export function semanticPlanToAIOperationType(plan: SemanticPlan | null): import
     const op = plan.analysis.operation;
     if (op === 'explain') return 'explanation';
     if (op === 'chat') return 'chat';
+    if (op === 'implement') return 'generate';
     // Edit: map first action type to operation for loading indicator
     const first = plan.actions[0]?.type;
     if (first === 'add_comments') return 'comment';
     if (first === 'remove_comments') return 'remove-comment';
     if (first === 'fix') return 'fix';
     if (first === 'refactor') return 'refactor';
-    if (['create_file', 'delete_file', 'rename_file', 'update_file', 'insert_code', 'replace_code', 'delete_code'].includes(first)) return 'edit';
+    if (['create_file', 'create_directory', 'delete_file', 'rename_file', 'update_file', 'insert_code', 'replace_code', 'delete_code'].includes(first)) return 'edit';
     return 'edit';
 }

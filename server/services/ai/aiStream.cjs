@@ -300,6 +300,117 @@ function createVisibleContentFilter() {
  * `onFirstByte` fires on the first network chunk (TTFB), distinct from the
  * first visible token (`onFirstToken`).
  */
+/**
+ * Accumulates OpenAI-compatible streaming `delta.tool_calls` fragments.
+ *
+ * Providers emit tool calls incrementally: `id`/`name` arrive on the first
+ * fragment of a call and `arguments` stream as string deltas keyed by `index`.
+ * Fragments are merged by index — blind concatenation would corrupt parallel
+ * tool calls. Malformed entries (no function name) are dropped at `finish`.
+ */
+function createToolCallAccumulator() {
+    const byIndex = new Map();
+    const order = [];
+    return {
+        push(deltas) {
+            if (!Array.isArray(deltas)) return;
+            for (const d of deltas) {
+                if (!d || typeof d !== 'object') continue;
+                const idx = typeof d.index === 'number' ? d.index : order.length;
+                let entry = byIndex.get(idx);
+                if (!entry) {
+                    entry = { id: '', name: '', args: '' };
+                    byIndex.set(idx, entry);
+                    order.push(idx);
+                }
+                if (typeof d.id === 'string' && d.id) entry.id = d.id;
+                if (d.function && typeof d.function.name === 'string') entry.name += d.function.name;
+                if (d.function && typeof d.function.arguments === 'string') entry.args += d.function.arguments;
+            }
+        },
+        finish() {
+            const calls = [];
+            for (const idx of order) {
+                const e = byIndex.get(idx);
+                if (!e || !e.name) continue;
+                calls.push({
+                    id: e.id || `call_${idx}`,
+                    type: 'function',
+                    function: { name: e.name, arguments: e.args },
+                });
+            }
+            return calls;
+        },
+    };
+}
+
+/** Also normalize a complete (non-streamed) `message.tool_calls` array. */
+function normalizeOneToolCall(item, index) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const obj = item;
+    let name = '';
+    let rawArgs = '';
+    let id = '';
+    const fn = obj.function;
+    if (fn && typeof fn === 'object' && !Array.isArray(fn) && typeof fn.name === 'string' && fn.name) {
+        name = fn.name;
+        rawArgs = fn.arguments ?? fn.args ?? fn.parameters ?? '';
+        id = typeof obj.id === 'string' ? obj.id : '';
+    } else if (typeof obj.name === 'string' && obj.name) {
+        name = obj.name;
+        rawArgs = obj.arguments ?? obj.args ?? obj.parameters ?? obj.input ?? '';
+        id = typeof obj.id === 'string' ? obj.id : '';
+    }
+    if (!name) return null;
+    let argumentsString;
+    if (typeof rawArgs === 'string') argumentsString = rawArgs;
+    else if (rawArgs === undefined || rawArgs === null || rawArgs === '') argumentsString = '{}';
+    else {
+        try { argumentsString = JSON.stringify(rawArgs); } catch { argumentsString = ''; }
+    }
+    if (!id) id = `call_${name}_${index}`;
+    return { id, type: 'function', function: { name, arguments: argumentsString } };
+}
+
+function normalizeToolCalls(raw) {
+    if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+        const one = normalizeOneToolCall(raw, 0);
+        return one ? [one] : [];
+    }
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const item of raw) {
+        const call = normalizeOneToolCall(item, out.length);
+        if (call) out.push(call);
+    }
+    return out;
+}
+
+function extractToolCallsFromContent(content) {
+    if (typeof content !== 'string') return null;
+    const trimmed = content.trim();
+    if (!trimmed) return null;
+    let body = trimmed;
+    const fence = body.match(/^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/i);
+    if (fence) body = fence[1].trim();
+    if (!body.startsWith('{') && !body.startsWith('[')) return null;
+    let parsed;
+    try { parsed = JSON.parse(body); } catch { return null; }
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    if (!arr.length) return null;
+    const calls = normalizeToolCalls(arr);
+    if (calls.length !== arr.length) return null;
+    for (let i = 0; i < arr.length; i++) {
+        const obj = arr[i];
+        const hasArgs = Object.prototype.hasOwnProperty.call(obj, 'arguments') ||
+            Object.prototype.hasOwnProperty.call(obj, 'args') ||
+            Object.prototype.hasOwnProperty.call(obj, 'parameters') ||
+            Object.prototype.hasOwnProperty.call(obj, 'input');
+        if (!hasArgs && arr.length === 1) return null;
+    }
+    return calls;
+}
+
 async function pipeProviderStream(response, res, onChunk, onFirstToken, onFirstByte, onReasoning) {
     if (!response.body) {
         throw new Error('Provider returned no response body for streaming');
@@ -308,12 +419,15 @@ async function pipeProviderStream(response, res, onChunk, onFirstToken, onFirstB
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const filter = createVisibleContentFilter();
+    const toolCalls = createToolCallAccumulator();
     let buffer = '';
     let tokenCount = 0;
     let usage = null;
     let reasoningChars = 0;
     let firstTokenSent = false;
     let firstByteSent = false;
+    /** A tool-call-only turn emits no visible token but is NOT empty. */
+    let sawToolCalls = false;
 
     const finish = () => {
         const tail = filter.end();
@@ -321,7 +435,12 @@ async function pipeProviderStream(response, res, onChunk, onFirstToken, onFirstB
             writeSse(res, { type: 'token', content: tail });
             tokenCount += 1;
         }
-        return { tokenCount, usage, reasoningChars };
+        const calls = toolCalls.finish();
+        if (calls.length) {
+            writeSse(res, { type: 'tool_calls', tool_calls: calls });
+        }
+        // `sawToolCalls` lets the caller treat a tool-only turn as success.
+        return { tokenCount, usage, reasoningChars, toolCallCount: calls.length || (sawToolCalls ? 1 : 0) };
     };
 
     while (true) {
@@ -368,6 +487,12 @@ async function pipeProviderStream(response, res, onChunk, onFirstToken, onFirstB
                     if (typeof onReasoning === 'function') onReasoning(reasoningDelta);
                 }
 
+                // TOOL channel: accumulated, emitted once complete at finish().
+                if (Array.isArray(delta.tool_calls) && delta.tool_calls.length) {
+                    toolCalls.push(delta.tool_calls);
+                    sawToolCalls = true;
+                }
+
                 // VISIBLE channel: only content deltas, through the canonical
                 // filter (thinking blocks + leading reasoning preambles).
                 const contentDelta = delta.content;
@@ -396,5 +521,8 @@ module.exports = {
     writeSse,
     createVisibleContentFilter,
     createLeadingPreambleSuppressor,
+    createToolCallAccumulator,
+    normalizeToolCalls,
+    extractToolCallsFromContent,
     pipeProviderStream,
 };

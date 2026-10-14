@@ -2,7 +2,7 @@ import { API_BASE } from '../../utils/apiClient';
 import { authHeaders } from '../../utils/sessionToken';
 import { isAbortError } from './AIAbortController';
 import { streamFromBackend, streamFromOpenAI } from './AIStream';
-import type { AIStreamEvent } from './types';
+import type { AIStreamEvent, AIToolCall } from './types';
 import { taskDefaults, DEFAULT_MODEL } from './AIContextBuilder';
 import { cleanResponse, createVisibleContentFilter } from './AIResponseParser';
 import type { AIRequestContext, AIRequestOptions, AIResult, ChatMessage } from './types';
@@ -148,14 +148,153 @@ function resolveDirectEndpoint(model: string): DirectEndpoint {
     return { url: `${GROQ_BASE_URL}/chat/completions`, apiKey, model };
 }
 
+/**
+ * Normalizes a provider's raw `message.tool_calls` into our wire shape.
+ *
+ * Malformed entries are DROPPED, never repaired: a call with no name or a
+ * non-string id is not a valid tool call and must not reach dispatch.
+ */
+/**
+ * Convert a single provider item (native or alternative shape) into our wire
+ * type. Provider compatibility adapters across vendors use different envelopes:
+ *   - OpenAI/OpenRouter/NVIDIA: { id, type, function: { name, arguments } }
+ *   - Bare tool-call objects:    { id?, name, arguments? | args? | params? }
+ *   - A bare object on its own is never a tool call — it must at least carry
+ *     a `name` string.
+ */
+function normalizeOneToolCall(item: unknown, index: number): AIToolCall | null {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const obj = item as Record<string, unknown>;
+
+    let name = '';
+    let rawArgs: unknown = '';
+    let id = '';
+
+    const fn = (obj as { function?: unknown }).function;
+    if (fn && typeof fn === 'object' && !Array.isArray(fn)) {
+        const f = fn as Record<string, unknown>;
+        if (typeof f.name === 'string' && f.name) {
+            name = f.name;
+            rawArgs = f.arguments ?? f.args ?? f.parameters ?? '';
+            id = typeof obj.id === 'string' ? obj.id : '';
+        }
+    }
+    if (!name && typeof obj.name === 'string' && obj.name) {
+        name = obj.name;
+        rawArgs = obj.arguments ?? obj.args ?? obj.params ?? obj.input ?? '';
+        id = typeof obj.id === 'string' ? obj.id : '';
+    }
+    if (!name) return null;
+
+    let argumentsString = '';
+    if (typeof rawArgs === 'string') {
+        argumentsString = rawArgs;
+    } else if (rawArgs === undefined || rawArgs === null || rawArgs === '') {
+        argumentsString = '{}';
+    } else {
+        try {
+            argumentsString = JSON.stringify(rawArgs);
+        } catch {
+            argumentsString = '';
+        }
+    }
+    if (!id) id = `call_${name}_${index}`;
+    return { id, type: 'function', function: { name, arguments: argumentsString } };
+}
+
+export function normalizeToolCalls(raw: unknown): AIToolCall[] {
+    // A single bare object may be a tool call (some providers serialize one
+    // call without an array wrapper).
+    if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+        const one = normalizeOneToolCall(raw, 0);
+        return one ? [one] : [];
+    }
+    if (!Array.isArray(raw)) return [];
+    const out: AIToolCall[] = [];
+    for (const item of raw) {
+        const call = normalizeOneToolCall(item, out.length);
+        if (call) out.push(call);
+    }
+    return out;
+}
+
+/**
+ * Extract structured tool calls that a provider mistakenly serialized inside
+ * the assistant `content` field as JSON instead of `tool_calls`.
+ *
+ * Only a *complete, standalone* tool-call payload is converted: the trimmed
+ * content must be JSON and deserialize to one or more objects carrying a
+ * string `name` (and optionally arguments/args/parameters/input). Ordinary
+ * prose or fenced code blocks are never touched, so genuine code/JSON
+ * answers stay intact.
+ *
+ * Returns `null` when the content is not a tool-call payload.
+ */
+export function extractToolCallsFromContent(content: unknown): AIToolCall[] | null {
+    if (typeof content !== 'string') return null;
+    const trimmed = content.trim();
+    if (!trimmed) return null;
+    // Strip a single Markdown code fence, if present, before parsing.
+    let body = trimmed;
+    const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    if (fence) body = fence[1].trim();
+    if (!body.startsWith('{') && !body.startsWith('[')) return null;
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(body);
+    } catch {
+        return null;
+    }
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    if (!arr.length) return null;
+    const calls = normalizeToolCalls(arr);
+    // Require every array entry to have survived validation as a tool call,
+    // so a stray JSON array (e.g. [{"name":"x"}]) inside a real code sample
+    // is only treated as a tool call if ALL entries look like calls.
+    if (calls.length !== arr.length) return null;
+    // A lone object without arguments is only a tool call if it also carries
+    // an explicit `arguments`/`args` field. This prevents a plain JSON object
+    // that happens to have `name` from being misclassified.
+    for (let i = 0; i < arr.length; i++) {
+        const obj = arr[i] as Record<string, unknown>;
+        if (!Object.prototype.hasOwnProperty.call(obj, 'arguments') &&
+            !Object.prototype.hasOwnProperty.call(obj, 'args') &&
+            !Object.prototype.hasOwnProperty.call(obj, 'parameters') &&
+            !Object.prototype.hasOwnProperty.call(obj, 'input')) {
+            if (arr.length === 1 && (obj as { tool_calls?: unknown }).tool_calls === undefined) {
+                // permit only if name matches a known tool? We don't have catalog here;
+                // keep strict to avoid false positives.
+                return null;
+            }
+        }
+    }
+    return calls;
+}
+
+/**
+ * Serializes messages for transport, keeping the tool-calling fields that the
+ * older hand-rolled JSON stringify dropped (`tool_calls`, `tool_call_id`,
+ * `name`). `content` is always coerced to a string — several OpenAI-compatible
+ * providers reject `null`.
+ */
+function serializeMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
+    return messages.map((m) => {
+        const out: Record<string, unknown> = { role: m.role, content: typeof m.content === 'string' ? m.content : '' };
+        if (m.tool_calls && m.tool_calls.length) out.tool_calls = m.tool_calls;
+        if (m.tool_call_id) out.tool_call_id = m.tool_call_id;
+        if (m.name) out.name = m.name;
+        return out;
+    });
+}
+
 function buildBackendBody(
     messages: ChatMessage[],
     options: AIRequestOptions,
     context: AIRequestContext,
     stream: boolean,
 ): string {
-    return JSON.stringify({
-        messages,
+    const body: Record<string, unknown> = {
+        messages: serializeMessages(messages),
         model: options.model,
         temperature: options.temperature,
         maxTokens: options.maxTokens,
@@ -163,7 +302,14 @@ function buildBackendBody(
         stream,
         task: options.task,
         allowFallback: options.allowFallback,
-    });
+    };
+    // Omitted entirely for every non-agent feature so existing chat/explain/
+    // autocomplete requests are byte-identical to before tool calling.
+    if (options.tools && options.tools.length) {
+        body.tools = options.tools;
+        body.toolChoice = options.toolChoice || 'auto';
+    }
+    return JSON.stringify(body);
 }
 
 async function postBackend(
@@ -216,13 +362,18 @@ function buildDirectBody(
     stream: boolean,
 ): string {
     const defaults = taskDefaults(options, context.responseLength);
-    return JSON.stringify({
+    const body: Record<string, unknown> = {
         model,
-        messages,
+        messages: serializeMessages(messages),
         temperature: options.temperature ?? defaults.temperature,
         max_tokens: options.maxTokens || defaults.maxTokens,
         stream,
-    });
+    };
+    if (options.tools && options.tools.length) {
+        body.tools = options.tools;
+        body.tool_choice = options.toolChoice || 'auto';
+    }
+    return JSON.stringify(body);
 }
 
 async function postDirect(
@@ -573,8 +724,15 @@ export async function sendChatResult(
                 data.usage?.completion_tokens,
                 data.usage?.completion_tokens_details?.reasoning_tokens,
             );
-            const content = cleanResponse(data.choices?.[0]?.message?.content || '');
-            if (!content) {
+            const nativeToolCalls = normalizeToolCalls(data.choices?.[0]?.message?.tool_calls);
+            const rawContent = data.choices?.[0]?.message?.content || '';
+            const extracted = nativeToolCalls.length ? null : extractToolCallsFromContent(rawContent);
+            const toolCalls = extracted ?? nativeToolCalls;
+            const content = cleanResponse(extracted ? '' : (rawContent || ''));
+            // A tool-call turn legitimately carries NO visible content — only
+            // the structured calls. Treating that as "empty response" is what
+            // previously made native tool calling impossible.
+            if (!content && toolCalls.length === 0) {
                 throw new AIError({
                     code: AI_ERROR_CODES.AI_INVALID_RESPONSE,
                     model: options.model,
@@ -587,6 +745,8 @@ export async function sendChatResult(
             return {
                 ok: true,
                 content,
+                toolCalls,
+                finishReason: data.choices?.[0]?.finish_reason,
                 model: data.model || options.model,
                 provider: data.provider,
                 usage: data.usage,
@@ -647,8 +807,12 @@ export async function sendChatResult(
                 data.usage?.completion_tokens,
                 data.usage?.completion_tokens_details?.reasoning_tokens,
             );
-            const content = cleanResponse(data.choices?.[0]?.message?.content || '');
-            if (!content) {
+            const nativeToolCalls2 = normalizeToolCalls(data.choices?.[0]?.message?.tool_calls);
+            const rawContent2 = data.choices?.[0]?.message?.content || '';
+            const extracted2 = nativeToolCalls2.length ? null : extractToolCallsFromContent(rawContent2);
+            const toolCalls = extracted2 ?? nativeToolCalls2;
+            const content = cleanResponse(extracted2 ? '' : (rawContent2 || ''));
+            if (!content && toolCalls.length === 0) {
                 throw new AIError({
                     code: AI_ERROR_CODES.AI_INVALID_RESPONSE,
                     provider: providerOf(model), model,
@@ -658,7 +822,15 @@ export async function sendChatResult(
             }
             attempt.complete();
             attempt.log();
-            return { ok: true, content, model, provider: providerOf(model), usage: data.usage };
+            return {
+                ok: true,
+                content,
+                toolCalls,
+                finishReason: data.choices?.[0]?.finish_reason,
+                model,
+                provider: providerOf(model),
+                usage: data.usage,
+            };
         } catch (err) {
             if (isAbortError(err)) {
                 attempt.abort();

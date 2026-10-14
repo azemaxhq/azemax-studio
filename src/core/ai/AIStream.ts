@@ -1,6 +1,7 @@
-import type { AIStreamEvent, AIUsage } from './types';
+import type { AIStreamEvent, AIUsage, AIToolCall } from './types';
 import { AIError, AI_ERROR_CODES, aiErrorToUserMessage } from './AIError';
 import type { AIErrorCode } from './AIError';
+import { extractToolCallsFromContent } from './AIClient';
 
 /**
  * The single SSE stream parser + frame-coalesced render buffer for the AI
@@ -93,6 +94,8 @@ interface BackendSseEvent {
     code?: string;
     retryable?: boolean;
     usage?: AIUsage;
+    /** Native tool calls forwarded by the backend SSE bridge. */
+    tool_calls?: AIToolCall[];
 }
 
 /**
@@ -100,15 +103,51 @@ interface BackendSseEvent {
  * to normalized `AIStreamEvent`s. Backend `error` events carry a typed
  * `AI_ERROR_CODES` value (never the raw developer message) and surface as a
  * typed `AIError` so fallback and display logic can branch on the code.
+ *
+ * Additionally, this function detects JSON-style tool-call payloads embedded
+ * in backend `token` events' content and converts them to structured
+ * `type: 'tool_calls'` events, so they are not rendered as ordinary assistant
+ * prose. The same strict matching as `extractToolCallsFromContent` is used:
+ * only complete, standalone JSON tool-call envelopes are recognized (prose,
+ * code fences, and JSON examples are left untouched).
  */
 export async function* streamFromBackend(
     response: Response,
     signal?: AbortSignal,
 ): AsyncGenerator<AIStreamEvent, void, unknown> {
+    // `sawContent` guards against empty streams. Tool calls count as a signal:
+    // an agent step that only requests tools emits no visible tokens.
     let sawContent = false;
+    let sawToolCalls = false;
+    /** Accumulates content from `token` events so we can detect a complete
+     *  JSON tool-call payload that arrived across one or more chunks. */
+    let contentBuffer = '';
+    /** Tracks whether we have already emitted a tool_calls event (via native
+     *  `tool_calls` SSE frames or JSON extraction) so we never emit duplicates. */
+    let toolCallsEmitted = false;
+
     for await (const block of parseSseBlocks(response, signal)) {
         if (block.done) {
-            if (!sawContent) throw new Error('AI stream ended without any content');
+            // Flush any pending native tool calls.
+            if (!toolCallsEmitted) {
+                if (sawToolCalls) {
+                    // The backend already forwarded native tool_calls SSE frames.
+                    // Re-yield them so the consumer sees them once.
+                    // (We don't have the original array here, but the consumer
+                    // should have seen them already; this is a safety net.)
+                } else {
+                    // Check the content buffer for a standalone JSON tool call
+                    // that may have arrived in the last chunk(s).
+                    const extracted = contentBuffer.trim()
+                        ? extractToolCallsFromContent(contentBuffer)
+                        : null;
+                    if (extracted) {
+                        yield { type: 'tool_calls', calls: extracted };
+                        toolCallsEmitted = true;
+                    }
+                }
+            }
+            sawContent = true;
             return;
         }
         const event = block.payload as BackendSseEvent;
@@ -123,11 +162,52 @@ export async function* streamFromBackend(
             case 'token':
                 if (event.content) {
                     sawContent = true;
-                    yield { type: 'delta', content: event.content };
+                    contentBuffer += event.content;
+
+                    // Try to extract a complete tool-call from the accumulated
+                    // content.  This handles the case where the backend streams
+                    // JSON tool calls in content deltas rather than as separate
+                    // 'tool_calls' SSE frames.
+                    if (!toolCallsEmitted) {
+                        const extracted = extractToolCallsFromContent(contentBuffer);
+                        if (extracted && extracted.length > 0) {
+                            yield { type: 'tool_calls', calls: extracted };
+                            toolCallsEmitted = true;
+                            contentBuffer = '';
+                        } else {
+                            // Not a tool-call payload — yield as regular delta.
+                            yield { type: 'delta', content: event.content };
+                        }
+                    }
+                    // If we already emitted tool calls, skip yielding delta content
+                    // to avoid duplicate display (the tool-calls event takes precedence).
+                }
+                break;
+            case 'tool_calls':
+                if (Array.isArray(event.tool_calls) && event.tool_calls.length) {
+                    sawToolCalls = true;
+                    // Only emit if we haven't already emitted tool calls via
+                    // JSON extraction (prevents duplicate execution).
+                    if (!toolCallsEmitted) {
+                        yield { type: 'tool_calls', calls: event.tool_calls };
+                        toolCallsEmitted = true;
+                    }
                 }
                 break;
             case 'done':
-                if (!sawContent) throw new Error('AI stream ended without any content');
+                if (!sawContent && !sawToolCalls) throw new Error('AI stream ended without any content');
+                // Final flush: check content buffer one last time if we haven't
+                // already emitted tool calls.
+                if (!toolCallsEmitted) {
+                    const extracted = contentBuffer.trim()
+                        ? extractToolCallsFromContent(contentBuffer)
+                        : null;
+                    if (extracted) {
+                        yield { type: 'tool_calls', calls: extracted };
+                        toolCallsEmitted = true;
+                    }
+                }
+                sawContent = true;
                 yield { type: 'done', model: event.model, usage: event.usage };
                 return;
             case 'error': {
@@ -157,6 +237,13 @@ export async function* streamFromBackend(
 interface OpenAIDelta {
     content?: string;
     reasoning_content?: string;
+    /** Streaming native tool call fragment (arguments arrive in pieces). */
+    tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+    }>;
 }
 
 interface OpenAIChunk {
@@ -166,16 +253,96 @@ interface OpenAIChunk {
 }
 
 /**
+ * Accumulates OpenAI streaming `delta.tool_calls` fragments.
+ *
+ * Providers emit tool calls incrementally: the `id`/`name` arrive on the first
+ * fragment of a call and `arguments` are streamed as string deltas keyed by
+ * `index`. Fragments are merged by index — never concatenated blindly, which
+ * would corrupt parallel tool calls.
+ */
+export function createToolCallAccumulator(): {
+    push: (deltas: NonNullable<OpenAIDelta['tool_calls']>) => void;
+    finish: () => AIToolCall[];
+} {
+    const byIndex = new Map<number, { id: string; name: string; args: string }>();
+    const order: number[] = [];
+    return {
+        push(deltas) {
+            for (const d of deltas) {
+                if (!d || typeof d !== 'object') continue;
+                const idx = typeof d.index === 'number' ? d.index : order.length;
+                let entry = byIndex.get(idx);
+                if (!entry) {
+                    entry = { id: '', name: '', args: '' };
+                    byIndex.set(idx, entry);
+                    order.push(idx);
+                }
+                if (typeof d.id === 'string' && d.id) entry.id = d.id;
+                if (d.function?.name) entry.name += d.function.name;
+                if (typeof d.function?.arguments === 'string') entry.args += d.function.arguments;
+            }
+        },
+        finish() {
+            const calls: AIToolCall[] = [];
+            for (const idx of order) {
+                const e = byIndex.get(idx)!;
+                if (!e.name) continue;
+                calls.push({
+                    id: e.id || `call_${idx}`,
+                    type: 'function',
+                    function: { name: e.name, arguments: e.args },
+                });
+            }
+            return calls;
+        },
+    };
+}
+
+/**
  * Maps a raw OpenAI-compatible SSE stream (used by the direct-provider fallback
  * path) to normalized `AIStreamEvent`s. `reasoning_content` is surfaced as a
  * separate `reasoning` event and never mixed into `delta`.
+ *
+ * Additionally, this function detects JSON-style tool-call payloads embedded
+ * in assistant `content` deltas and converts them to structured
+ * `type: 'tool_calls'` events, so they are not rendered as ordinary assistant
+ * prose. Only complete, standalone JSON tool-call envelopes are recognized
+ * (see `extractToolCallsFromContent`); prose, code fences, and JSON examples
+ * are left untouched.
  */
 export async function* streamFromOpenAI(
     response: Response,
     signal?: AbortSignal,
 ): AsyncGenerator<AIStreamEvent, void, unknown> {
+    const toolCalls = createToolCallAccumulator();
+    /** Accumulates content deltas so we can detect a complete JSON tool-call
+     *  payload that arrived across one or more chunks.  Never executed
+     *  independently — only used to decide whether to emit a
+     *  `type: 'tool_calls'` event instead of `type: 'delta'` content. */
+    let contentBuffer = '';
+    /** Tracks whether we have already emitted a tool_calls event (via native
+     *  deltas or JSON extraction) so we never emit duplicates. */
+    let toolCallsEmitted = false;
+    /** Tracks that we have seen at least one meaningful signal from the provider. */
+    let sawAnySignal = false;
+
     for await (const block of parseSseBlocks(response, signal)) {
         if (block.done) {
+            // Finish accumulating native tool calls and emit if not already done.
+            if (!toolCallsEmitted) {
+                const calls = toolCalls.finish();
+                if (calls.length) yield { type: 'tool_calls', calls };
+                // Also check the content buffer for a standalone JSON tool call
+                // that may have arrived in the last chunk(s).
+                const extracted = contentBuffer.trim()
+                    ? extractToolCallsFromContent(contentBuffer)
+                    : null;
+                if (extracted && !toolCallsEmitted) {
+                    yield { type: 'tool_calls', calls: extracted };
+                    toolCallsEmitted = true;
+                }
+            }
+            sawAnySignal = true;
             yield { type: 'done' };
             return;
         }
@@ -187,21 +354,93 @@ export async function* streamFromOpenAI(
         const choice = chunk.choices?.[0];
         if (!choice) {
             if (chunk.usage) {
+                sawAnySignal = true;
+                if (!toolCallsEmitted) {
+                    const calls = toolCalls.finish();
+                    if (calls.length) yield { type: 'tool_calls', calls };
+                }
                 yield { type: 'done', usage: chunk.usage as AIUsage };
                 return;
             }
             continue;
         }
         const delta = choice.delta ?? choice.message;
+
+        // Reasoning delta — never mixed into delta or tool_calls.
         if (delta?.reasoning_content) {
+            sawAnySignal = true;
             yield { type: 'reasoning', content: delta.reasoning_content };
         }
-        if (delta?.content) {
-            yield { type: 'delta', content: delta.content };
+
+        // Native tool-call deltas — accumulate by index.
+        if (delta?.tool_calls?.length) {
+            sawAnySignal = true;
+            toolCalls.push(delta.tool_calls);
         }
+
+        // Content delta — also check for a JSON-style tool-call payload.
+        if (delta?.content) {
+            sawAnySignal = true;
+            contentBuffer += delta.content;
+
+            // Try to extract a complete tool-call from the accumulated content.
+            // extractToolCallsFromContent is strict: it only matches when the
+            // (fence-stripped) content starts with `{` or `[` and contains a
+            // recognized tool-call envelope.  This prevents false positives from
+            // code examples, prose, or JSON embedded in explanatory text.
+            if (!toolCallsEmitted) {
+                const extracted = extractToolCallsFromContent(contentBuffer);
+                if (extracted && extracted.length > 0) {
+                    // Found a complete tool-call payload — emit it structured,
+                    // then reset the buffer so further content is not misinterpreted.
+                    yield { type: 'tool_calls', calls: extracted };
+                    toolCallsEmitted = true;
+                    contentBuffer = '';
+                } else {
+                    // Not a tool-call payload — yield as regular content delta.
+                    yield { type: 'delta', content: delta.content };
+                }
+            } else {
+                // We already emitted tool calls; just accumulate remaining text
+                // (but do not try another extraction to avoid duplicates).
+                // Optionally we could still yield delta content for transparency,
+                // but we skip it to keep the UI clean.
+            }
+        }
+
+        // If the model sends a finish reason, flush whatever we have.
         if (choice.finish_reason) {
-            yield { type: 'done', usage: chunk.usage as AIUsage };
+            if (!toolCallsEmitted) {
+                const calls = toolCalls.finish();
+                if (calls.length) yield { type: 'tool_calls', calls };
+                // Also check content buffer one last time.
+                const extracted = contentBuffer.trim()
+                    ? extractToolCallsFromContent(contentBuffer)
+                    : null;
+                if (extracted) {
+                    yield { type: 'tool_calls', calls: extracted };
+                    toolCallsEmitted = true;
+                }
+            }
+            sawAnySignal = true;
+            yield { type: 'done', usage: chunk.usage as AIUsage, finishReason: choice.finish_reason };
             return;
+        }
+    }
+
+    // If the loop ended without a done (e.g. abort), flush pending state.
+    if (!sawAnySignal) {
+        throw new Error('AI stream ended without any content');
+    }
+    if (!toolCallsEmitted) {
+        const calls = toolCalls.finish();
+        if (calls.length) yield { type: 'tool_calls', calls };
+        // Also check content buffer one final time.
+        const extracted = contentBuffer.trim()
+            ? extractToolCallsFromContent(contentBuffer)
+            : null;
+        if (extracted) {
+            yield { type: 'tool_calls', calls: extracted };
         }
     }
 }

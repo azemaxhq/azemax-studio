@@ -111,7 +111,7 @@ function resolveEndpoint(provider) {
  *   For non-streaming responses, reasoning_content is stripped from the final message.
  *   For streaming, reasoning is filtered at the stream level.
  */
-async function chatCompletion({ provider, model, messages, temperature = 0.6, top_p = null, maxTokens = 2500, stream = false, signal, chatTemplateKwargs = null, forceNonemptyContent = false, timeoutMs = null }) {
+async function chatCompletion({ provider, model, messages, temperature = 0.6, top_p = null, maxTokens = 2500, stream = false, signal, chatTemplateKwargs = null, forceNonemptyContent = false, timeoutMs = null, tools = null, toolChoice = null }) {
     const resolvedProvider = provider || inferProvider(model);
     const { url, apiKey } = resolveEndpoint(resolvedProvider);
 
@@ -183,6 +183,24 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
         stream,
     };
     if (top_p != null) body.top_p = top_p;
+
+    // Native tool calling. Only sent when the caller supplied tools AND the
+    // resolved provider actually supports them — HuggingFace's router rejects
+    // unknown body fields, so sending blindly would 400 the whole request.
+    if (Array.isArray(tools) && tools.length) {
+        if (!providerSupportsTools(resolvedProvider)) {
+            throw new AIError({
+                code: AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR,
+                provider: resolvedProvider,
+                model: resolvedModel,
+                status: 400,
+                retryable: false,
+                message: `Provider ${resolvedProvider} does not support native tool calling`,
+            });
+        }
+        body.tools = tools;
+        body.tool_choice = toolChoice || 'auto';
+    }
 
     // Provider-specific request capabilities (NVIDIA-only reasoning knobs).
     // `chatTemplateKwargs` comes pre-built by the router — we never construct
@@ -311,6 +329,26 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
     return response;
 }
 
+/**
+ * Per-provider native tool-calling support.
+ *
+ * HuggingFace's inference router rejects unknown request body fields, and
+ * NVIDIA's OpenAI-compatible endpoint is the only configured provider we can
+ * verify emits `message.tool_calls`. Everything else is opt-in by config so a
+ * provider is never handed `tools` it cannot honor (which would surface as a
+ * confusing 400 rather than a clean capability signal).
+ */
+function providerSupportsTools(provider) {
+    const key = String(provider || '').toLowerCase();
+    if (key === 'huggingface') return false;
+    if (process.env.AI_NATIVE_TOOLS === 'off') return false;
+    if (process.env.AI_NATIVE_TOOLS === 'on') return true;
+    // OpenRouter, Groq and Kilo currently pass native `tool_calls` in the
+    // OpenAI-compatible format (verified). Only HuggingFace is treated as
+    // non-native by default since its router rejects stray body fields.
+    return key === 'nvidia' || key === 'groq' || key === 'openrouter' || key === 'kilocode';
+}
+
 function listModels() {
     const models = [];
 
@@ -378,4 +416,5 @@ module.exports = {
     resolveEndpoint,
     chatCompletion,
     listModels,
+    providerSupportsTools,
 };

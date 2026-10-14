@@ -134,3 +134,74 @@
     .ai-loading-minimal-text { animation: none !important; background: none; -webkit-text-fill-color: var(--az-text-secondary, #A7B0BF); }
     .streaming-caret-premium { box-shadow: none; }
 }
+
+/* ── Progress row styles ── */
+.ai-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 20px;
+    padding: 2px 0;
+    font-size: 12px;
+}
+.ai-progress-row--active {}
+.ai-progress-row--done {}
+.ai-progress-row--error {}
+.ai-progress-row--cancelled {}
+
+/* ── Progress label ── */
+.ai-progress-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: opacity 150ms ease, color 150ms ease;
+}
+.ai-progress-row--active .ai-progress-label { font-weight: 500; opacity: 1; color: var(--az-text); }
+.ai-progress-row--done .ai-progress-label { font-weight: 400; opacity: 0.55; color: var(--az-text-muted); }
+.ai-progress-row--error .ai-progress-label { font-weight: 400; opacity: 0.45; color: var(--az-error); }
+.ai-progress-row--cancelled .ai-progress-label { font-weight: 400; opacity: 0.45; color: var(--az-text-muted); }
+
+/* ── Progress path metadata ── */
+.ai-progress-path {
+    font-size: 11px;
+    color: var(--az-text-muted);
+    margin-left: 4px;
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Progress indicator: running dot ── */
+.ai-progress-indicator {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--az-primary);
+    margin-left: 6px;
+    transition: background-color 150ms ease;
+}
+.ai-progress-row--active .ai-progress-indicator { animation: ai-pulse-dot 2s ease-in-out infinite; }
+.ai-progress-row--done .ai-progress-indicator,
+.ai-progress-row--error .ai-progress-indicator,
+.ai-progress-row--cancelled .ai-progress-indicator { display: none; }
+
+/* ── Checkmark for completed stages ── */
+.ai-progress-check {
+    flex-shrink: 0;
+    width: 8px;
+    height: 9px;
+    margin-left: 6px;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+.ai-progress-row--done .ai-progress-check { opacity: 1; }
+.ai-progress-check svg { width: 100%; height: 100%; }
+
+/* ── Active dot pulse ── */
+@keyframes ai-pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.9); }
+}

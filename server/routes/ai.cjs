@@ -6,6 +6,8 @@ const { inferProvider } = require('../services/ai/aiClient.cjs');
 const {
     validateRequestedModel,
     buildServerMessages,
+    sanitizeTools,
+    sanitizeToolChoice,
 } = require('../services/ai/aiPolicy.cjs');
 const { getTodayUsage, recordUsage } = require('../services/auth/authService.cjs');
 const { LIMITS } = require('../config/index.cjs');
@@ -39,7 +41,7 @@ function validateMessages(messages) {
         if (m.content.length > MAX_CONTENT_CHARS) return `message content exceeds ${MAX_CONTENT_CHARS} chars`;
         total += m.content.length;
         if (total > MAX_TOTAL_CHARS) return `total messages content exceeds ${MAX_TOTAL_CHARS} chars`;
-        if (m.role && !['system', 'user', 'assistant'].includes(m.role)) return `invalid role: ${m.role}`;
+        if (m.role && !['system', 'user', 'assistant', 'tool'].includes(m.role)) return `invalid role: ${m.role}`;
     }
     return null;
 }
@@ -65,25 +67,42 @@ function checkDailyQuota(userId, isAnonymous) {
  * - messages rebuilt with the server-pinned system prompt (client `system`
  *   roles are demoted — history cannot override server behavior)
  */
-function applyPolicy({ messages, model, maxTokens }) {
+function applyPolicy({ messages, model, maxTokens, tools, toolChoice }) {
     if (model !== undefined && model !== null) {
         validateRequestedModel(model, inferProvider);
     }
     const cappedTokens = maxTokens === undefined || maxTokens === null
         ? maxTokens
         : Math.min(Math.max(1, Math.floor(Number(maxTokens) || 0)), LIMITS.AI_MAX_TOKENS_ABSOLUTE);
-    return { serverMessages: buildServerMessages(messages), model, maxTokens: cappedTokens };
+    // Tools are validated here, not trusted: a malformed tool definition is
+    // rejected with 400 rather than forwarded to a provider.
+    let serverTools = null;
+    if (tools !== undefined && tools !== null) {
+        serverTools = sanitizeTools(tools);
+        if (!serverTools) {
+            const err = new Error('Invalid tools payload');
+            err.status = 400;
+            throw err;
+        }
+    }
+    return {
+        serverMessages: buildServerMessages(messages),
+        model,
+        maxTokens: cappedTokens,
+        tools: serverTools,
+        toolChoice: serverTools ? sanitizeToolChoice(toolChoice) : 'auto',
+    };
 }
 
 router.post('/chat', betaGate, asyncHandler(async (req, res) => {
-    const { messages, model, temperature, maxTokens, responseLength, stream, task, allowFallback } = req.body;
+    const { messages, model, temperature, maxTokens, responseLength, stream, task, allowFallback, tools, toolChoice } = req.body;
 
     const validationError = validateMessages(messages);
     if (validationError) {
         return res.status(400).json({ error: validationError });
     }
     checkDailyQuota(req.user.id, isAnonymousRequest(req));
-    const policy = applyPolicy({ messages, model, maxTokens });
+    const policy = applyPolicy({ messages, model, maxTokens, tools, toolChoice });
 
     if (stream) {
         let streamedTokens = 0;
@@ -97,6 +116,8 @@ router.post('/chat', betaGate, asyncHandler(async (req, res) => {
             req,
             task,
             allowFallback,
+            tools: policy.tools,
+            toolChoice: policy.toolChoice,
             userId: req.user.id,
             onUsage: (u) => { streamedTokens = Number(u && u.total_tokens) || 0; },
         });
@@ -112,12 +133,18 @@ router.post('/chat', betaGate, asyncHandler(async (req, res) => {
         responseLength,
         task,
         allowFallback,
+        tools: policy.tools,
+        toolChoice: policy.toolChoice,
         requestId: req.id,
         userId: req.user.id,
     });
     recordUsage(req.user.id, { aiRequests: 1, aiTokens: Number(result.usage && result.usage.total_tokens) || 0 });
+    // A tool-call turn has empty `content` by design — it must survive the
+    // response envelope, otherwise the client cannot dispatch anything.
+    const message = { role: 'assistant', content: result.content };
+    if (result.toolCalls && result.toolCalls.length) message.tool_calls = result.toolCalls;
     res.json({
-        choices: [{ message: { role: 'assistant', content: result.content } }],
+        choices: [{ message, finish_reason: result.finishReason || null }],
         model: result.model,
         provider: result.provider,
         usage: result.usage,

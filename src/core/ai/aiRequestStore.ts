@@ -26,6 +26,63 @@ export type AIRequestStatus =
     | 'error'
     | 'cancelled';
 
+/**
+ * Explicit agent lifecycle phases.
+ *
+ * `status` answers "is a request running?"; `phase` answers "what is it
+ * actually doing right now?". Keeping them separate is what lets the UI say
+ * "Inspecting workspace" instead of an indeterminate spinner, and what makes
+ * "completed" impossible to assert while tool work is still pending.
+ *
+ * `idle` and the three terminal phases mirror the request status; everything
+ * in between is real, emitted execution.
+ */
+export type AgentTaskPhase =
+    | 'idle'
+    | 'understanding'
+    | 'inspecting'
+    | 'planning'
+    | 'executing'
+    | 'validating'
+    | 'summarizing'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
+
+/** Phases during which work is still in flight. */
+export const ACTIVE_AGENT_PHASES: ReadonlySet<AgentTaskPhase> = new Set<AgentTaskPhase>([
+    'understanding',
+    'inspecting',
+    'planning',
+    'executing',
+    'validating',
+    'summarizing',
+]);
+
+export const isTerminalPhase = (p: AgentTaskPhase): boolean =>
+    p === 'completed' || p === 'failed' || p === 'cancelled' || p === 'idle';
+
+/**
+ * One internal execution event.
+ *
+ * These are ORCHESTRATION facts, never assistant prose. They drive the task
+ * progress UI only — they are never committed to conversation history as an
+ * assistant message.
+ */
+export interface AgentProgressEvent {
+    /** Stable id of the task that emitted it (prevents stale cross-task writes). */
+    taskId: string;
+    phase: AgentTaskPhase;
+    /** Stage label suitable for display ("Inspecting workspace"). */
+    label: string;
+    /** Optional secondary detail ("8 files", "index.html"). */
+    detail?: string;
+    /** The tool that produced this event, when tool-driven. */
+    tool?: string;
+    status: 'running' | 'done' | 'error';
+    at: number;
+}
+
 export type AIOperationType =
     | 'chat'
     | 'explanation'
@@ -42,6 +99,10 @@ export interface AIRequest {
     id: string;
     operation: AIOperationType;
     status: AIRequestStatus;
+    /** Explicit agent lifecycle phase (defaults to 'idle' for plain chat). */
+    phase: AgentTaskPhase;
+    /** Bounded internal execution events for this task. */
+    progress: AgentProgressEvent[];
     createdAt: number;
     updatedAt: number;
     error?: string | null;
@@ -55,29 +116,59 @@ function nextId(): string {
     return `ai-req-${Date.now()}-${requestCounter}`;
 }
 
+/** Bound the per-task progress log so a long run cannot grow it forever. */
+const MAX_PROGRESS_EVENTS = 60;
+
 // Store: map of all active requests (idle/success/error are not kept long; we keep last per operation for UI)
 const requests = new Map<string, AIRequest>();
 // Latest active requestId per operation (for concurrent protection per operation)
 const latestByOperation = new Map<AIOperationType, string>();
 
 const listeners = new Set<Listener>();
+const progressListeners = new Set<(taskId: string, events: AgentProgressEvent[]) => void>();
 
 function emit() {
     for (const l of listeners) l();
+}
+
+function emitProgress(taskId: string) {
+    const req = requests.get(taskId);
+    if (!req) return;
+    for (const l of Array.from(progressListeners)) {
+        try {
+            l(taskId, req.progress);
+        } catch (e) {
+            console.warn('[AIRequestStore] progress listener failed:', e);
+        }
+    }
 }
 
 function now() {
     return Date.now();
 }
 
+/** Map a request status onto the agent phase it implies. */
+const PHASE_FOR_STATUS: Partial<Record<AIRequestStatus, AgentTaskPhase>> = {
+    thinking: 'understanding',
+    preparing: 'understanding',
+    generating: 'executing',
+    streaming: 'summarizing',
+    applying: 'executing',
+    success: 'completed',
+    error: 'failed',
+    cancelled: 'cancelled',
+};
+
 export const AIRequestStore = {
     // Create and immediately set to thinking — caller must do this BEFORE await provider()
-    startRequest(operation: AIOperationType, initialStatus: AIRequestStatus = 'thinking'): string {
+    startRequest(operation: AIOperationType, initialStatus: AIRequestStatus = 'thinking', phase?: AgentTaskPhase): string {
         const id = nextId();
         const req: AIRequest = {
             id,
             operation,
             status: initialStatus,
+            phase: phase ?? PHASE_FOR_STATUS[initialStatus] ?? 'understanding',
+            progress: [],
             createdAt: now(),
             updatedAt: now(),
         };
@@ -86,6 +177,121 @@ export const AIRequestStore = {
         traceAIRequest(operation, id, 'START', { status: initialStatus });
         emit();
         return id;
+    },
+
+    /**
+     * Move a task to an explicit lifecycle phase.
+     *
+     * The status and phase are updated together so the loading indicator and
+     * the progress label can never disagree. A terminal phase also sets the
+     * matching terminal status, which is what guarantees the spinner clears.
+     */
+    setPhase(id: string, phase: AgentTaskPhase, label?: string, detail?: string): void {
+        const req = requests.get(id);
+        if (!req) return;
+        // Stale guard: only the current request for its operation may advance.
+        if (latestByOperation.get(req.operation) !== id) return;
+        // A terminal task is immutable. Guarding on the CURRENT STATUS (not the
+        // phase) means a task marked success/error/cancelled can never be
+        // dragged back into an active phase by a late async callback.
+        if (req.status === 'success' || req.status === 'error' || req.status === 'cancelled') return;
+        if (phase === 'idle') return;
+        req.phase = phase;
+        if (phase === 'completed') req.status = 'success';
+        else if (phase === 'failed') req.status = 'error';
+        else if (phase === 'cancelled') req.status = 'cancelled';
+        else {
+            req.status = phase === 'summarizing' ? 'streaming' : phase === 'validating' ? 'applying' : 'generating';
+        }
+        req.updatedAt = now();
+        if (label) {
+            const event: AgentProgressEvent = {
+                taskId: id,
+                phase,
+                label,
+                ...(detail !== undefined ? { detail } : {}),
+                status: 'running',
+                at: req.updatedAt,
+            };
+            req.progress = [...req.progress, event].slice(-MAX_PROGRESS_EVENTS);
+        }
+        traceAIRequest(req.operation, id, 'PHASE', { phase });
+        emit();
+        emitProgress(id);
+    },
+
+    /**
+     * Record an internal execution event against a task.
+     *
+     * Events from a task that is no longer current are DROPPED, which is what
+     * prevents a stale async callback from painting progress onto a newer task.
+     */
+    emitProgressEvent(
+        id: string,
+        event: Omit<AgentProgressEvent, 'taskId' | 'at'> & { at?: number },
+    ): void {
+        const req = requests.get(id);
+        if (!req) return;
+        if (latestByOperation.get(req.operation) !== id) return;
+        req.progress = [...req.progress, { ...event, taskId: id, at: event.at ?? now() }].slice(-MAX_PROGRESS_EVENTS);
+        req.updatedAt = now();
+        emitProgress(id);
+    },
+
+    getProgress(id: string): AgentProgressEvent[] {
+        return requests.get(id)?.progress ?? [];
+    },
+
+    getPhase(id: string): AgentTaskPhase {
+        return requests.get(id)?.phase ?? 'idle';
+    },
+
+    subscribeProgress(listener: (taskId: string, events: AgentProgressEvent[]) => void): () => void {
+        progressListeners.add(listener);
+        return () => {
+            progressListeners.delete(listener);
+        };
+    },
+
+    /** Record a genuinely user-visible reason a task failed. */
+    failTask(id: string, error?: string | null): void {
+        const req = requests.get(id);
+        if (!req) return;
+        if (latestByOperation.get(req.operation) !== id) {
+            requests.delete(id);
+            emit();
+            return;
+        }
+        req.status = 'error';
+        req.phase = 'failed';
+        req.error = error ?? null;
+        req.updatedAt = now();
+        traceAIRequest(req.operation, id, 'ERROR', { status: 'error', error });
+        emit();
+        emitProgress(id);
+        requestAnimationFrame(() => {
+            if (requests.get(id)?.status === 'error') {
+                requests.delete(id);
+                if (latestByOperation.get(req.operation) === id) latestByOperation.delete(req.operation);
+                emit();
+            }
+        });
+    },
+
+    /** Mark a task cancelled (user stop or timeout). */
+    cancelTask(id: string, reason?: string | null): void {
+        const req = requests.get(id);
+        if (!req) return;
+        req.status = 'cancelled';
+        req.phase = 'cancelled';
+        if (reason !== undefined) req.error = reason ?? null;
+        req.updatedAt = now();
+        traceAIRequest(req.operation, id, 'CANCEL', { status: 'cancelled', reason });
+        emit();
+        emitProgress(id);
+        requests.delete(id);
+        if (latestByOperation.get(req.operation) === id) latestByOperation.delete(req.operation);
+        emit();
     },
 
     updateRequest(id: string, status: AIRequestStatus, error?: string | null) {
@@ -99,6 +305,11 @@ export const AIRequestStore = {
             return;
         }
         req.status = status;
+        // Keep the phase in lockstep with the status unless a phase was
+        // already advanced past the generic mapping (an agent run sets
+        // explicit phases via setPhase).
+        const implied = PHASE_FOR_STATUS[status];
+        if (implied && req.phase === 'idle') req.phase = implied;
         req.updatedAt = now();
         if (error !== undefined) req.error = error;
         const eventMap: Record<string, any> = {
@@ -130,9 +341,11 @@ export const AIRequestStore = {
             return;
         }
         req.status = 'success';
+        req.phase = 'completed';
         req.updatedAt = now();
         traceAIRequest(req.operation, id, 'COMPLETE', { status: 'success' });
         emit();
+        emitProgress(id);
         // Remove on next frame so UI can see success briefly, no artificial minimum duration
         requestAnimationFrame(() => {
             if (requests.get(id)?.status === 'success') {
@@ -152,10 +365,12 @@ export const AIRequestStore = {
             return;
         }
         req.status = 'error';
+        req.phase = 'failed';
         req.error = error ?? null;
         req.updatedAt = now();
         traceAIRequest(req.operation, id, 'ERROR', { status: 'error', error });
         emit();
+        emitProgress(id);
         requestAnimationFrame(() => {
             if (requests.get(id)?.status === 'error') {
                 requests.delete(id);
@@ -170,9 +385,11 @@ export const AIRequestStore = {
         if (!req) return;
         // Allow cancel even if not latest (user explicitly cancelled)
         req.status = 'cancelled';
+        req.phase = 'cancelled';
         req.updatedAt = now();
         traceAIRequest(req.operation, id, 'CANCEL', { status: 'cancelled' });
         emit();
+        emitProgress(id);
         requests.delete(id);
         if (latestByOperation.get(req.operation) === id) latestByOperation.delete(req.operation);
         emit();
@@ -209,5 +426,10 @@ export const AIRequestStore = {
         requests.clear();
         latestByOperation.clear();
         emit();
+    },
+
+    /** Test/observability helper: how many progress listeners are attached. */
+    _progressListenerCount(): number {
+        return progressListeners.size;
     },
 };

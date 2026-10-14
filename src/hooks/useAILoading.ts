@@ -1,10 +1,14 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import { AIRequestStore, type AIOperationType, type AIRequestStatus } from '../core/ai/aiRequestStore';
+import { AIRequestStore, type AIOperationType, type AIRequestStatus, type AgentTaskPhase, type AgentProgressEvent } from '../core/ai/aiRequestStore';
 
 export type AILoadingStatus = AIRequestStatus;
 
 export interface UseAILoadingReturn {
     status: AILoadingStatus;
+    /** Explicit agent lifecycle phase for the active request. */
+    phase: AgentTaskPhase;
+    /** Latest internal execution event (orchestration, never assistant prose). */
+    latestProgress: AgentProgressEvent | null;
     operation: AIOperationType | null;
     requestId: string | null;
     isLoading: boolean;
@@ -41,6 +45,9 @@ export function useAILoading(operation: AIOperationType = 'chat'): UseAILoadingR
     );
 
     const status: AILoadingStatus = request?.status ?? 'idle';
+    const phase: AgentTaskPhase = request?.phase ?? 'idle';
+    const progressEvents = request?.progress ?? [];
+    const latestProgress: AgentProgressEvent | null = progressEvents.length ? progressEvents[progressEvents.length - 1] : null;
     const requestOperation: AIOperationType | null = request?.operation ?? null;
     const requestId = request?.id ?? null;
     const error = request?.error ?? null;
@@ -111,6 +118,8 @@ export function useAILoading(operation: AIOperationType = 'chat'): UseAILoadingR
 
     return {
         status,
+        phase,
+        latestProgress,
         operation: requestOperation,
         requestId,
         isLoading,

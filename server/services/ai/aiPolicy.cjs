@@ -38,11 +38,20 @@ function openRouterAllowed() {
 
 function nvidiaAllowed() {
     const set = new Set([AI_MODELS.nvidia.default]);
+    const def = AI_MODELS.nvidia.default || '';
     // Same-family variants explicitly permitted; everything else rejected.
-    if (AI_MODELS.nvidia.default.startsWith('nvidia/')) {
-        set.add('nvidia/nemotron-3-super-120b-a12b');
-    }
-    if (AI_MODELS.nvidia.default.startsWith('deepseek-ai/')) {
+    // NOTE: Nemotron 3 Super 120B is the documented primary model for every
+    // task, and it is spelled with or without the `-a12b` suffix depending
+    // on catalog vs client ('nvidia/nemotron-3-super-120b-a12b' vs
+    // 'nvidia/nemotron-3-super-120b-a12b'). Both spellings are ALWAYS
+    // permitted, independent of which one the NVIDIA_MODEL env var names:
+    // otherwise any request carrying the non-configured spelling fails
+    // policy with 403 ("Model not permitted on provider nvidia") before
+    // any provider fallback can run — which surfaces as a dead-end
+    // "Explanation failed" in the UI.
+    set.add('nvidia/nemotron-3-super-120b-a12b');
+    set.add('nvidia/nemotron-3-super-120b-a12b');
+    if (def.startsWith('deepseek-ai/')) {
         set.add('deepseek-ai/deepseek-v4-flash-0731');
     }
     return set;
@@ -135,12 +144,111 @@ const SERVER_SYSTEM_PROMPT = [
  * Project file content is untrusted context — it stays inside user messages,
  * never in the system slot.
  */
+/**
+ * Roles the server accepts from a client. `tool` is required for the agent
+ * loop: the model rejects a `tool` message whose `tool_call_id` has no
+ * matching preceding assistant `tool_calls` entry.
+ */
+const ALLOWED_CLIENT_ROLES = new Set(['system', 'user', 'assistant', 'tool']);
+
+/**
+ * Structured tool calls as received from a client. Validated (not trusted):
+ * the name must be a short identifier and the arguments must be a string —
+ * a client must never be able to inject arbitrary provider-only fields.
+ */
+const MAX_TOOL_CALLS = 16;
+const TOOL_NAME_RE = /^[a-zA-Z0-9_.-]{1,64}$/;
+
+function sanitizeToolCalls(raw) {
+    if (!Array.isArray(raw)) return null;
+    if (raw.length === 0 || raw.length > MAX_TOOL_CALLS) return null;
+    const out = [];
+    for (const call of raw) {
+        if (!call || typeof call !== 'object') return null;
+        const name = call.function && call.function.name;
+        if (typeof name !== 'string' || !TOOL_NAME_RE.test(name)) return null;
+        const args = call.function.arguments;
+        if (typeof args !== 'string' || args.length > 64_000) return null;
+        // Malformed JSON is never forwarded as a valid call.
+        try {
+            JSON.parse(args);
+        } catch {
+            return null;
+        }
+        const id = typeof call.id === 'string' && call.id.length <= 128 ? call.id : `call_${out.length}`;
+        out.push({ id, type: 'function', function: { name, arguments: args } });
+    }
+    return out;
+}
+
 function buildServerMessages(clientMessages) {
     const cleaned = (Array.isArray(clientMessages) ? clientMessages : []).map((m) => {
-        const role = m && m.role === 'assistant' ? 'assistant' : 'user';
-        return { role, content: String(m && m.content !== undefined ? m.content : '') };
+        const rawRole = m && typeof m.role === 'string' ? m.role : 'user';
+        // Client `system` roles are DEMOTED to `user` (history must never
+        // override server behavior). `assistant` and `tool` are preserved —
+        // the agent loop's tool-result chain depends on both.
+        const role = rawRole === 'system' ? 'user' : (ALLOWED_CLIENT_ROLES.has(rawRole) ? rawRole : 'user');
+        const msg = { role, content: String(m && m.content !== undefined ? m.content : '') };
+        if (role === 'assistant') {
+            const calls = sanitizeToolCalls(m && m.tool_calls);
+            if (calls && calls.length) msg.tool_calls = calls;
+        }
+        if (role === 'tool') {
+            const id = m && m.tool_call_id;
+            const name = m && m.name;
+            if (typeof name === 'string' && TOOL_NAME_RE.test(name)) msg.name = name;
+            if (typeof id === 'string' && id.length <= 128) msg.tool_call_id = id;
+            // A tool result without a matching id cannot be attributed to a
+            // call — the provider would reject the whole conversation.
+            else msg.role = 'user';
+        }
+        return msg;
     });
     return [{ role: 'system', content: SERVER_SYSTEM_PROMPT }, ...cleaned];
+}
+
+/**
+ * Validate + cap client-supplied tool definitions.
+ *
+ * Tool schemas come from the application, but the transport is untrusted, so
+ * they are still bounded and shape-checked before reaching a provider: a
+ * request may not carry an unbounded tool list and a definition must be a
+ * `function` tool with a string name and an object parameter schema.
+ */
+const MAX_TOOLS = 64;
+const MAX_TOOL_DESCRIPTION = 2000;
+
+function sanitizeTools(raw) {
+    if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_TOOLS) return null;
+    const seen = new Set();
+    const out = [];
+    for (const tool of raw) {
+        if (!tool || typeof tool !== 'object') return null;
+        if (tool.type !== 'function') return null;
+        const fn = tool.function;
+        if (!fn || typeof fn !== 'object') return null;
+        if (typeof fn.name !== 'string' || !TOOL_NAME_RE.test(fn.name)) return null;
+        if (seen.has(fn.name)) return null;
+        seen.add(fn.name);
+        const parameters = fn.parameters;
+        if (!parameters || typeof parameters !== 'object' || parameters.type !== 'object') return null;
+        if (!parameters.properties || typeof parameters.properties !== 'object') return null;
+        out.push({
+            type: 'function',
+            function: {
+                name: fn.name,
+                description: String(fn.description || '').slice(0, MAX_TOOL_DESCRIPTION),
+                parameters,
+            },
+        });
+    }
+    return out;
+}
+
+function sanitizeToolChoice(raw) {
+    if (raw === undefined || raw === null) return 'auto';
+    if (raw === 'auto' || raw === 'none' || raw === 'required') return raw;
+    return 'auto';
 }
 
 module.exports = {
@@ -153,5 +261,7 @@ module.exports = {
     validateRequestedModel,
     capMaxTokens,
     buildServerMessages,
+    sanitizeTools,
+    sanitizeToolChoice,
     SERVER_SYSTEM_PROMPT,
 };

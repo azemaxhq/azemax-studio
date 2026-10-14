@@ -1,21 +1,57 @@
 /**
- * Agent Controller — Cursor-style orchestrator.
- * Pipeline: Intent → Live Context → Tool Selection → Tool Execution → Validation → Apply → Verify → Response
- * Provider/model independent; delegates to model via semanticPlanner/AIClient, never touches editor directly.
+ * Agent Controller — the real autonomous agent entry point.
+ *
+ * REPLACES the previous single-shot "plan once, apply once" pipeline. The old
+ * controller asked the model for a plan, ran a fixed list of read tools,
+ * generated one edit, applied it, and finished — with no cycle, so the model
+ * never saw a tool result and could not continue. It also ran with
+ * `preview: true`, so nothing was ever written without a manual Accept.
+ *
+ * The lifecycle implemented here:
+ *
+ *   UNDERSTAND ──▶ INSPECT WORKSPACE ──▶ PLAN CHANGES ──▶ SELECT+EXECUTE TOOLS
+ *        ▲                                                            │
+ *        │                                                            ▼
+ *        │                                                    READ TOOL RESULTS
+ *        │                                                            │
+ *        └──── CORRECT AND RETRY ◀── VALIDATE CHANGES ◀───────────────┘
+ *                                    │
+ *                                    ▼
+ *                            VERIFY COMPLETION ──▶ SUMMARIZE
+ *
+ * The cycle lives in `runAgentLoop` (bounded steps, real tool results fed back
+ * to the model). This module owns the parts around it: task context, intent,
+ * workspace discovery, the confirmation gate, validation, and the summary.
  */
 
 import { getActiveEditorContext } from '../editor/activeEditorStore';
-import { captureLiveIDEContext, recordRecentEdit } from '../workspace/liveIDEContext';
-import { generateSemanticPlan, type SemanticPlan } from './semanticPlanner';
-import { semanticPlanToActions, type AIAction, type ExecutionResult } from './aiToolExecutor';
-import { createToolRegistry } from './toolRegistry';
-import { createExecutorDeps, type WorkspaceBridgeActions } from '../editor/workspaceBridge';
+import { recordRecentEdit } from '../workspace/liveIDEContext';
 import { createPreviewWorkspace, type PreviewWorkspace, type ProposedChange } from '../editor/previewWorkspace';
-import type { ExecutorDeps } from './aiToolExecutor';
+import { createExecutorDeps, type WorkspaceBridgeActions } from '../editor/workspaceBridge';
+import { runAgentLoop, type AgentLoopResult, type AgentStepRecord } from './agentLoop';
+import { executeActionPlan, type AIAction, type ExecutionResult } from './aiToolExecutor';
+import type { AgentToolDeps } from './agentTools';
+import {
+    createTaskContext,
+    extendTask,
+    addConstraint,
+    addMentionedPath,
+    recordPlan,
+    recordValidationFailure,
+    DEFAULT_AGENT_BUDGET,
+    type AgentBudget,
+    type AgentTaskContext,
+} from './agentTaskContext';
+import {
+    chooseImplementationDefault,
+    detectWorkspaceFacts,
+    renderWorkspaceFacts,
+    understandIntent,
+    type IntentResult,
+} from './intentUnderstanding';
 import type { FileNode } from '../../utils/mockFileSystem';
 import type { ChatMessage } from './types';
-import { AIRequestStore } from './aiRequestStore';
-import { resolvePath, findNodeById } from '../../utils/safeTree';
+import { AIRequestStore, type AgentTaskPhase } from './aiRequestStore';
 
 export type AgentToolStatus = 'running' | 'done' | 'error';
 export interface AgentActivity {
@@ -25,6 +61,63 @@ export interface AgentActivity {
     message: string;
     path?: string;
     detail?: string;
+}
+
+/**
+ * Stable activity identity.
+ *
+ * A stage that starts as 'running' and later becomes 'done' MUST keep the same
+ * id, otherwise the 'running' row is never updated and its animated dots spin
+ * forever next to a finished task. Ids are therefore derived from the stage
+ * key (plus a per-run nonce), never from the clock.
+ */
+const activitySeq = { n: 0 };
+const makeActivityId = (stage: string): string => `${stage}#${++activitySeq.n}`;
+
+/**
+ * Stage → display label.
+ *
+ * Deliberately separate from internal orchestration wording: these are the
+ * stage names a user can act on, and each one only appears when the
+ * corresponding work ACTUALLY started.
+ */
+const STAGE_LABELS: Record<string, string> = {
+    understand: 'Understanding your request',
+    inspect: 'Inspecting workspace',
+    plan: 'Planning changes',
+    read: 'Reading relevant files',
+    create: 'Creating files',
+    update: 'Updating code',
+    check: 'Running checks',
+    fix: 'Fixing reported issues',
+    summarize: 'Preparing final summary',
+};
+
+/** Map a tool name onto its user-facing stage label. */
+export function stageLabelForTool(tool: string): string {
+    switch (tool) {
+        case 'list_files':
+        case 'read_file':
+        case 'search_files':
+        case 'get_file_info':
+        case 'get_editor_context':
+            return STAGE_LABELS.read;
+        case 'create_file':
+        case 'create_directory':
+            return STAGE_LABELS.create;
+        case 'write_file':
+        case 'replace_range':
+        case 'insert_text':
+        case 'delete_range':
+            return STAGE_LABELS.update;
+        case 'rename_file':
+        case 'delete_file':
+            return STAGE_LABELS.update;
+        case 'get_diagnostics':
+            return STAGE_LABELS.check;
+        default:
+            return STAGE_LABELS.plan;
+    }
 }
 
 export interface AgentRequestContext {
@@ -49,15 +142,47 @@ export interface AgentControllerRequest {
     history?: ChatMessage[];
     signal?: AbortSignal;
     onActivity?: (activity: AgentActivity) => void;
-    /** Pinned context from request creation time — prevents stale file switch from corrupting wrong document */
+    /**
+     * Task id this run belongs to (from `AIRequestStore`). Supplied by the
+     * caller so progress events are attributed to the exact request that owns
+     * them; resolved from the store when omitted.
+     */
+    taskId?: string;
+    /** Lifecycle phase transitions. */
+    onPhase?: (phase: AgentTaskPhase, label?: string) => void;
+    /** Internal execution events (never assistant prose). */
+    onProgress?: (event: {
+        phase: AgentTaskPhase;
+        label: string;
+        detail?: string;
+        tool?: string;
+        status: 'running' | 'done' | 'error';
+    }) => void;
+    /** Pinned context from request creation time — prevents stale file switch. */
     requestContext?: AgentRequestContext | null;
     /**
-     * Preview mode (Accept/Reject gate): the agent plans and validates against
-     * a shadow copy of the workspace. NOTHING is written to the real tree,
-     * Monaco, or React state — the caller receives `proposedChanges` and
-     * applies them only after explicit user approval.
+     * Continue an existing task instead of starting a new one. Supplied by the
+     * chat panel, which owns the conversation, so a short follow-up inherits
+     * the original objective and the files already changed.
+     */
+    previousTask?: AgentTaskContext | null;
+    /**
+     * Preview mode (Accept/Reject gate). The agent still runs its full tool
+     * loop, but mutations apply into a shadow tree and the caller must accept
+     * them. Defaults to FALSE — Agent mode applies reversible work directly
+     * and only gates destructive operations behind explicit confirmation.
      */
     preview?: boolean;
+    /**
+     * Approval callback for destructive tools (delete/rename). Returning false
+     * denies the operation; the agent then reports honestly and stops.
+     */
+    confirmDestructive?: (tool: string, args: Record<string, unknown>) => boolean | Promise<boolean>;
+    /** Folder creation, bound to the workspace's folder-creation path. */
+    createDirectory?: (path: string) => { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
+    budget?: Partial<AgentBudget>;
+    /** Requested model for agent steps. */
+    model?: string;
 }
 
 export interface AgentControllerResult extends ExecutionResult {
@@ -66,27 +191,25 @@ export interface AgentControllerResult extends ExecutionResult {
     activities: AgentActivity[];
     planSummary: string;
     diffs?: Array<{ file: string; added: number; removed: number; summary: string }>;
-    /** Preview mode only: ordered before/after changes awaiting user approval. */
+    /** Preview mode only: ordered before/after changes awaiting approval. */
     proposedChanges?: ProposedChange[];
+    /** True when real tool executions mutated the workspace. */
+    changedWorkspace?: boolean;
+    /** Why the agent stopped. */
+    stopReason?: AgentLoopResult['stopReason'];
+    /** Task context after the run (operation log, touched files). */
+    taskContext?: AgentTaskContext;
+    /** Real validation results (never fabricated). */
+    validation?: Array<{ path: string; isError: boolean; markers: number }>;
 }
 
-function makeActivity(tool: string, status: AgentToolStatus, message: string, path?: string): AgentActivity {
-    return { id: `${tool}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, tool, status, message, path };
-}
-function withTimeout<T>(promise: Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`Tool timed out after ${ms}ms`)), ms);
-        const onAbort = () => { clearTimeout(timer); reject(new DOMException('The operation was aborted.', 'AbortError')); };
-        if (signal) {
-            if (signal.aborted) { clearTimeout(timer); reject(new DOMException('The operation was aborted.', 'AbortError')); return; }
-            signal.addEventListener('abort', onAbort, { once: true });
-        }
-        promise.then(v => { clearTimeout(timer); if(signal) signal.removeEventListener('abort', onAbort); resolve(v); }, e => { clearTimeout(timer); if(signal) signal.removeEventListener('abort', onAbort); reject(e); });
-    });
-}
-
-const READ_TYPES = new Set(['read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file', 'run_code']);
-
+/**
+ * Run the autonomous agent for one user request.
+ *
+ * Returns a truthful result: `changedWorkspace` reflects real successful
+ * mutations, `validation` reflects real diagnostics, and `message` is generated
+ * from what actually happened rather than what was intended.
+ */
 export async function runAgentController(req: AgentControllerRequest): Promise<AgentControllerResult> {
     const activities: AgentActivity[] = [];
     const push = (a: AgentActivity) => {
@@ -95,388 +218,577 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
         else activities.push(a);
         req.onActivity?.(a);
     };
+    /** Discovered workspace facts, injected into the loop's leading context. */
+    let workspaceContextBlock = '';
 
-    // [1] INTENT + [2] LIVE CONTEXT (fresh Monaco + workspace)
-    // Use pinned requestContext when available — avoids race where user switches file during semantic planning
-    const live = captureLiveIDEContext(req.workspace.getFileTree());
-    const pinned = req.requestContext ?? null;
-    const fileName = pinned?.fileName ?? req.fileName ?? live.fileName ?? '';
-    void pinned?.filePath;
-    const fileContent = pinned ? (getActiveEditorContext()?.code ?? live.code ?? '') : (live.code ?? '');
-    // Re-derive actual content for pinned file via deps to avoid reading newly-active file after switch
-    const readForPinned = (): string => {
-        if (!pinned?.fileName) return fileContent;
-        const curCtx = getActiveEditorContext();
-        if (curCtx && curCtx.fileName === pinned.fileName) return curCtx.code;
-        const tree = req.workspace.getFileTree();
-        try {
-            const node = resolvePath(tree as any, (pinned.filePath ?? pinned.fileName ?? '') as string);
-            if (node && typeof (node as any).content === 'string') return (node as any).content as string;
-        } catch {}
-        const walk = (nodes: any[]): any | null => {
-            for (const n of nodes) {
-                if (n.name === pinned.fileName) return n;
-                if (n.children) { const f = walk(n.children); if (f) return f; }
-            }
-            return null;
-        };
-        const found = walk(req.workspace.getFileTree() as any);
-        return (found?.content as string) ?? fileContent;
+    /**
+     * Task lifecycle, keyed to the request that owns this run.
+     *
+     * `taskId` is resolved once from the existing `AIRequestStore` — the same
+     * store that drives the loading indicator — so there is exactly ONE task
+     * identity in the system. Every phase/progress emission is stamped with it,
+     * which is what makes a stale async callback harmless: the store drops
+     * events whose task is no longer current.
+     */
+    const taskId: string = req.taskId ?? AIRequestStore.getActiveRequestForOperation('chat')?.id ?? '';
+    const setPhase = (phase: AgentTaskPhase, label?: string, detail?: string) => {
+        if (taskId) AIRequestStore.setPhase(taskId, phase, label, detail);
+        req.onPhase?.(phase, label);
     };
-    const pinnedContent = pinned ? readForPinned() : fileContent;
-    const language = pinned?.language ?? live.language ?? 'plaintext';
+    const progress = (event: { phase: AgentTaskPhase; label: string; detail?: string; tool?: string; status: 'running' | 'done' | 'error' }) => {
+        if (taskId) AIRequestStore.emitProgressEvent(taskId, event);
+        req.onProgress?.(event);
+    };
 
-    // [1] Intent detection (semantic planner) — single refined status, no duplicate
-    const interpretingId = `interpret-${Date.now()}`;
-    const interpreting: AgentActivity = { id: interpretingId, tool: 'interpret', status: 'running', message: 'Understanding request', path: fileName || undefined };
+    // ── [1] UNDERSTAND ──────────────────────────────────────────────────
+    setPhase('understanding', STAGE_LABELS.understand);
+    const interpreting: AgentActivity = { id: makeActivityId('understand'), tool: 'understand', status: 'running', message: STAGE_LABELS.understand };
     push(interpreting);
-    AIRequestStore.updateRequest(AIRequestStore.getActiveRequestForOperation('chat')?.id ?? '', 'thinking');
 
-    let plan: SemanticPlan | null = null;
-    let fallbackEditActions: AIAction[] | null = null;
-    try {
-        plan = await generateSemanticPlan(req.userMessage, getActiveEditorContext(), live.fileTreeString, req.history ?? [], req.signal);
-    } catch (e: unknown) {
-        if ((e as Error).name === 'AbortError') throw e;
-    }
-    // Refined, non-duplicate, human-friendly summary — no "Interpreted:" prefix, no truncation
-    if (plan) {
-        // Keep it minimal premium: show file context, not raw summary dump
-        const isSingleLineComment = plan.actions.length === 1 && plan.actions[0].type === 'add_comments' && (plan.actions[0].payload?.comments?.length === 1);
-        if (isSingleLineComment) {
-            const line = (plan.actions[0].payload?.comments?.[0] as { line?: number })?.line;
-            interpreting.message = line ? `Add comment → line ${line}` : `Add comment → ${fileName || 'file'}`;
-        } else if (plan.analysis.summary) {
-            // Clean summary: first sentence, no ellipsis duplication
-            const clean = plan.analysis.summary.split('.')[0].trim().slice(0, 60);
-            interpreting.message = clean || 'Ready';
-        } else {
-            interpreting.message = 'Ready';
-        }
-    } else {
-        interpreting.message = 'Ready';
-    }
+    const fileTree = req.workspace.getFileTree() as FileNode[];
+    const facts = detectWorkspaceFacts(fileTree);
+    // A supplied `previousTask` means the conversation already has a coherent
+    // task. The chat panel decides when a message starts a NEW objective (it
+    // clears the task); the controller therefore extends whatever it is given.
+    // Ignoring `completed` here is deliberate: a finished task plus "add dark
+    // mode" is still one task, not two.
+    const hasActiveTask = Boolean(req.previousTask);
+
+    const intent: IntentResult = understandIntent(req.userMessage, facts, {
+        historyLength: req.history?.length ?? 0,
+        hasActiveTask,
+    });
+    // The internal classification ("Conversational message", "Continuing the
+    // previous task") is NOT user-facing text — it stays internal. What the
+    // user sees is the stage, which is complete.
     interpreting.status = 'done';
     push({ ...interpreting });
+    progress({ phase: 'understanding', label: STAGE_LABELS.understand, status: 'done' });
 
-    if (!plan) {
-        return { success: false, appliedCount: 0, message: 'Could not interpret the request safely — no changes were made.', activities, planSummary: '' };
+    // Genuine blocker — the ONLY path that returns a question.
+    if (intent.needsClarification) {
+        return {
+            success: true,
+            appliedCount: 0,
+            wasChatOrExplain: true,
+            message: intent.clarificationQuestion ?? 'I need one more detail before I can proceed safely.',
+            chatResponse: intent.clarificationQuestion,
+            activities,
+            planSummary: intent.summary,
+            stopReason: 'approval_required',
+        };
     }
 
-    let wantsMutation = plan.analysis.wantsModification && !plan.actions.every(a => ['chat', 'explain'].includes(a.type));
-    if (!wantsMutation) {
-        // Chat/explain path — but don't trust it blindly. If we have an active file with code,
-        // the planner may have misclassified an edit like "Add comments to this code" as chat.
-        // Use a second, edit-focused model pass (no hard-coded keywords) to verify. If that
-        // pass produces concrete edit actions, we treat the request as an edit and continue
-        // to the tool execution path instead of returning chat. This fixes the "edit in chat" bug
-        // without any if(message.includes(...)) hard-coding.
-        // Only double-check for non-trivial, longer messages to avoid extra cost on greetings/short chat
-        const msgTrim = req.userMessage.trim();
-        if (fileName && fileContent && fileContent.trim().length > 0 && msgTrim.length > 15) {
-            // Silent double-check — no extra card, just verify without spamming UI
-            try {
-                const { generateConstrainedActions } = await import('./editPipeline');
-                const ctx = getActiveEditorContext();
-                // Synthetic edit plan — lets the model decide if an edit is actually warranted
-                const syntheticPlan: SemanticPlan = {
-                    analysis: { operation: 'edit', wantsModification: true, wantsExplanation: false, summary: plan.analysis.summary },
-                    actions: [{ type: 'refactor', target: { filePath: fileName } }],
-                    globalConstraints: plan.globalConstraints,
-                };
-                const fallbackActions = await generateConstrainedActions(
-                    req.userMessage,
-                    syntheticPlan,
-                    fileName,
-                    language,
-                    fileContent,
-                    ctx?.selectionText ?? null,
-                    ctx?.selection ?? null,
-                    req.history ?? [],
-                    req.signal,
-                    { filePath: (ctx?.filePath ?? fileName), className: ctx?.className ?? pinned?.className ?? null, moduleName: ctx?.moduleName ?? pinned?.moduleName ?? null }
-                );
-                if (fallbackActions && fallbackActions.length > 0) {
-                    // Model confirmed this is an edit — continue to edit flow
-                    plan = { ...plan, analysis: { ...plan.analysis, operation: 'edit', wantsModification: true } };
-                    fallbackEditActions = fallbackActions;
-                    wantsMutation = true;
-                } else {
-                    return {
-                        success: true,
-                        appliedCount: 0,
-                        wasChatOrExplain: true,
-                        message: plan.responseMessage || plan.analysis.summary || '',
-                        chatResponse: plan.responseMessage,
-                        activities,
-                        planSummary: plan.analysis.summary,
-                    };
-                }
-            } catch {
-                return {
-                    success: true,
-                    appliedCount: 0,
-                    wasChatOrExplain: true,
-                    message: plan.responseMessage || plan.analysis.summary || '',
-                    chatResponse: plan.responseMessage,
-                    activities,
-                    planSummary: plan.analysis.summary,
-                };
-            }
-        } else {
-            return {
-                success: true,
-                appliedCount: 0,
-                wasChatOrExplain: true,
-                message: plan.responseMessage || plan.analysis.summary || '',
-                chatResponse: plan.responseMessage,
-                activities,
-                planSummary: plan.analysis.summary,
-            };
-        }
-    }
-
-    // [3] TOOL SELECTION: separate reads vs mutations
-    const readActions = plan.actions.filter(a => READ_TYPES.has(a.type));
-    const mutationCandidates = plan.actions.filter(a => !READ_TYPES.has(a.type));
-
-    // [4] TOOL EXECUTION for reads (local, no LLM)
-    let readEnrichment = '';
-    if (readActions.length > 0) {
-        const maybeSetActive = (req.workspace as unknown as { setActiveFile?: (f: FileNode) => void }).setActiveFile;
-        const registry = createToolRegistry({
-            getFileTree: req.workspace.getFileTree,
-            getActiveFile: () => {
-                const ctx = getActiveEditorContext();
-                if (!ctx) return null;
-                const tree = req.workspace.getFileTree();
-                const walk = (nodes: FileNode[]): FileNode | null => {
-                    for (const n of nodes) {
-                        if (n.name === ctx.fileName) return n;
-                        if (n.children) { const f = walk(n.children); if (f) return f; }
-                    }
-                    return null;
-                };
-                return walk(tree);
-            },
-            createFile: req.workspace.createFile as unknown as ToolRegistryDeps['createFile'],
-            deleteNode: req.workspace.deleteNode,
-            updateFileContent: req.workspace.updateFileContent as unknown as ToolRegistryDeps['updateFileContent'],
-            setActiveFile: maybeSetActive ? (node: FileNode) => maybeSetActive(node) : undefined,
-        } as unknown as import('./toolRegistry').ToolRegistryDeps);
-
-        for (const ra of readActions) {
-            const toolName = ra.type as import('./toolRegistry').ToolName;
-            const args: Record<string, unknown> = { ...(ra.payload as Record<string, unknown>), ...(ra.target as Record<string, unknown>) };
-            // normalize: payload.path / target.filePath -> path, payload.query -> query
-            if (!args.path && (ra.target?.filePath || (ra.payload as { path?: string })?.path)) args.path = ra.target?.filePath ?? (ra.payload as { path?: string })?.path;
-            if (!args.query && (ra.payload as { query?: string })?.query) args.query = (ra.payload as { query?: string })?.query;
-            const act = makeActivity(toolName, 'running', `Reading ${String(args.path ?? args.query ?? '')}`, String(args.path ?? ''));
-            push(act);
-            try {
-                if (req.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-                const res = await withTimeout(registry.execute(toolName, args), 12000, req.signal);
-                act.status = res.ok ? 'done' : 'error';
-                act.message = res.ok ? `Read ${String(args.path ?? args.query)}` : `Failed: ${res.error}`;
-                act.detail = res.ok ? JSON.stringify(res.result).slice(0, 600) : res.error;
-                push({ ...act });
-                if (res.ok && res.result) {
-                    readEnrichment += `\n[Tool ${toolName} ${JSON.stringify(args)}]\n${JSON.stringify(res.result).slice(0, 4000)}\n`;
-                }
-            } catch (e: any) {
-                if (e?.name === 'AbortError') {
-                    act.status = 'error';
-                    act.message = `Cancelled ${toolName}`;
-                    (act as any).detail = 'Request cancelled';
-                } else if (String(e?.message || '').includes('timed out')) {
-                    act.status = 'error';
-                    act.message = `Timeout ${toolName}`;
-                    (act as any).detail = e.message;
-                } else {
-                    act.status = 'error';
-                    act.message = `Error ${toolName}`;
-                    (act as any).detail = e?.message ?? String(e);
-                }
-                push({ ...act });
-            }
-        }
-    }
-
-    // [3b] Convert mutation intents to concrete AIAction[] — reuse fallback if we already double-checked
-    let actions: AIAction[] | null = null;
-    if (fallbackEditActions && fallbackEditActions.length > 0) {
-        actions = fallbackEditActions;
+    // ── Task context: continue the existing task, or start a new one ────
+    let taskContext: AgentTaskContext;
+    if (hasActiveTask && req.previousTask) {
+        taskContext = extendTask(req.previousTask, req.userMessage);
     } else {
-        actions = semanticPlanToActions({ ...plan, actions: mutationCandidates as typeof plan.actions }, fileName, pinnedContent ? pinnedContent.split('\n') : null);
+        taskContext = createTaskContext(req.userMessage);
+    }
+    for (const p of intent.mentionedPaths) taskContext = addMentionedPath(taskContext, p);
+    if (intent.destinationDir) {
+        taskContext = addConstraint(taskContext, `destination: ${intent.destinationDir}`, intent.destinationDir);
+    }
+    if (intent.explicitStack) {
+        taskContext = addConstraint(taskContext, `stack: ${intent.explicitStack}`);
     }
 
-    // If no concrete ops yet, do constrained generation enriched with read results
-    if (!actions || actions.length === 0) {
-        const generating = makeActivity('generate', 'running', 'Planning edits');
-        push(generating);
-        const { generateConstrainedActions } = await import('./editPipeline');
-        const ctxForSel = pinned ? { selectionText: pinned.selectionText, selection: pinned.selection } as unknown as ReturnType<typeof getActiveEditorContext> : getActiveEditorContext();
-        const enrichedPlan: SemanticPlan = { ...plan, responseMessage: (plan.responseMessage ?? '') + readEnrichment };
-        // inject enrichment via history trick: add tool results as user message context
-        const enrichedHistory = [...(req.history ?? [])];
-        if (readEnrichment) enrichedHistory.push({ role: 'user', content: `Tool results:${readEnrichment}` } as ChatMessage);
-        actions = await generateConstrainedActions(
-            req.userMessage,
-            enrichedPlan,
-            fileName,
-            language,
-            pinnedContent,
-            ctxForSel?.selectionText ?? null,
-            ctxForSel?.selection ?? null,
-            enrichedHistory,
-            req.signal,
-            { filePath: pinned?.filePath ?? fileName, className: pinned?.className ?? ctxForSel?.className ?? null, moduleName: pinned?.moduleName ?? null }
-        );
-        generating.status = actions && actions.length ? 'done' : 'error';
-        generating.message = actions && actions.length ? `Planned ${actions.length} edit(s)` : 'No safe edits generated';
-        push({ ...generating });
+    // Workspace discovery decides the implementation shape. When the user
+    // named no stack, a sensible default is chosen here — this is the code
+    // that makes "create a simple website" actionable instead of ambiguous.
+    const defaultImpl = chooseImplementationDefault(facts, intent.explicitStack, intent.destinationDir);
+    taskContext = addConstraint(taskContext, `implementation default: ${defaultImpl.stack} — ${defaultImpl.rationale}`);
+    for (const f of defaultImpl.files) {
+        if (f.includes('/') && !f.includes('.')) taskContext = addMentionedPath(taskContext, f);
     }
+    taskContext = recordPlan(
+        taskContext,
+        `${intent.summary} — workspace: ${facts.hasProject ? `${facts.fileCount} file(s)` : 'empty'}`,
+    );
+    // ── [2] INSPECT WORKSPACE ───────────────────────────────────────────
+    // The stage is announced BEFORE inspection starts (never after), and the
+    // real discovered counts are the secondary detail — never the headline.
+    const inspectActivity: AgentActivity = { id: makeActivityId('inspect'), tool: 'inspect', status: 'running', message: STAGE_LABELS.inspect };
+    push(inspectActivity);
+    setPhase('inspecting', STAGE_LABELS.inspect);
+    const inspectDetail = facts.hasProject ? `${facts.fileCount} file${facts.fileCount === 1 ? '' : 's'}` : 'empty workspace';
+    progress({ phase: 'inspecting', label: STAGE_LABELS.inspect, detail: inspectDetail, status: 'running' });
+    inspectActivity.status = 'done';
+    inspectActivity.detail = inspectDetail;
+    push({ ...inspectActivity });
+    progress({ phase: 'inspecting', label: STAGE_LABELS.inspect, detail: inspectDetail, status: 'done' });
 
-    if (!actions || actions.length === 0) {
-        // Fallback for simplify/refactor that the JSON planner missed (same as editPipeline's direct synthesis)
-        const summaryL = plan.analysis.summary.toLowerCase();
-        const isSimplify = summaryL.includes('simpl') || summaryL.includes('remove the class') || summaryL.includes('without class') || summaryL.includes('direct print') || /make.*simple/.test(req.userMessage.toLowerCase());
-        if (isSimplify && pinnedContent && fileName) {
-            try {
-                const { sendChat } = await import('./AIClient');
-                const fallbackPrompt = `Rewrite the file "${fileName}" to satisfy: "${req.userMessage}"
+    // The discovered facts + chosen default are handed to the loop as leading
+    // context so the model plans against reality, not assumptions.
+    workspaceContextBlock = `${renderWorkspaceFacts(facts)}\n- Implementation default: ${defaultImpl.stack} (${defaultImpl.rationale})\nSuggested starting files: ${defaultImpl.files.join(', ') || '(decide from the request)'}`;
 
-Current file (${language}):
-\`\`\`${language}
-${pinnedContent.slice(0, 8000)}
-\`\`\`
-
-Respond ONLY with the complete new file content, no JSON, no fences, no explanation. For Python class hello -> just print Hello World, remove class boilerplate. Preserve output.`;
-                const raw = await sendChat(
-                    [
-                        { role: 'system', content: `You are a code rewrite engine for ${language}. Output ONLY the complete new file content. No JSON, no markdown.` },
-                        { role: 'user', content: fallbackPrompt },
-                    ],
-                    { signal: req.signal, task: 'simple_edit', temperature: 0.1, maxTokens: 2000 },
-                );
-                const cleaned = raw ? raw.replace(/^```(?:\w+)?\s*/m, '').replace(/\s*```$/m, '').trim() : '';
-                if (cleaned && cleaned !== pinnedContent.trim() && cleaned.length < pinnedContent.length * 2) {
-                    actions = [{ action: 'update_file', path: fileName, content: cleaned } as unknown as import('./aiToolExecutor').AIAction];
-                    const gen = makeActivity('generate', 'done', `Synthesized fallback for ${fileName}`);
-                    push(gen);
-                }
-            } catch { /* ignore */ }
-        }
-        if (!actions || actions.length === 0) {
+    // ── Non-mutation intents answer without touching files ─────────────
+    if (!intent.wantsModification) {
+        // The agent still has real tools; it just may not write. Give it the
+        // loop so it can INSPECT and answer from real workspace data rather
+        // than from a guess. Destructive tools are hard-denied for this pass.
+        if (intent.kind === 'explain' || intent.kind === 'inspect' || intent.kind === 'execute') {
+            const answer = await runReadOnlyAgent(req, taskContext, push, workspaceContextBlock, { setPhase, progress });
             return {
-                success: false,
-                appliedCount: 0,
-                message: `Understood "${plan.analysis.summary}" but could not build a safe edit for the current file. No changes were made.`,
+                ...answer,
                 activities,
-                planSummary: plan.analysis.summary,
+                planSummary: intent.summary,
             };
         }
+        // Plain conversation (greetings, thanks, small talk) does NOT go
+        // through the tool loop: forcing workspace inspection on "hi" burns a
+        // dozen provider calls to produce a one-sentence reply, and is the
+        // reason short chat used to stall with progress and no answer.
+        const chatText = await streamPlainReply(req, taskContext, workspaceContextBlock);
+        setPhase('completed', STAGE_LABELS.summarize);
+        progress({ phase: 'completed', label: STAGE_LABELS.summarize, status: 'done' });
+        return {
+            success: true,
+            appliedCount: 0,
+            wasChatOrExplain: true,
+            message: chatText,
+            chatResponse: chatText,
+            activities,
+            planSummary: intent.summary,
+            stopReason: 'done',
+            changedWorkspace: false,
+            taskContext,
+        };
     }
 
-    // Filter out read-only actions that slipped through (they are already handled)
-    actions = actions.filter(a => !READ_TYPES.has((a as { action: string }).action));
-
-    if (actions.length === 0) {
-        return { success: true, appliedCount: 0, wasChatOrExplain: true, message: 'Gathered context.', chatResponse: readEnrichment.slice(0, 2000), activities, planSummary: plan.analysis.summary };
-    }
-
-    // [5] VALIDATION + [6] APPLY + [7] VERIFY — refined, single card per phase
-    // Build a human-friendly label for the apply step
-    const firstAction = actions[0] as { action: string; file?: string; path?: string; comments?: { line?: number }[] };
-    let applyLabel = `Updating ${fileName || 'file'}`;
-    if (firstAction.action === 'add_comments' && firstAction.comments?.length === 1 && firstAction.comments[0].line) {
-        applyLabel = `Adding comment to line ${firstAction.comments[0].line}`;
-    } else if (firstAction.action === 'add_comments') {
-        applyLabel = `Adding ${firstAction.comments?.length ?? actions.length} comment(s)`;
-    } else if (firstAction.action === 'create_file') {
-        applyLabel = `Creating ${firstAction.path}`;
-    } else if (firstAction.action === 'rename_file') {
-        applyLabel = `Renaming file`;
-    }
-    // Stale-context guard: if pinned file was deleted/renamed, abort rather than writing to wrong file
-    if (pinned?.fileId) {
-        const exists = findNodeById(req.workspace.getFileTree() as any, pinned.fileId);
-        if (!exists) {
-            return { success: false, appliedCount: 0, message: `Target file "${fileName}" no longer exists (deleted/renamed) — no changes were made.`, activities, planSummary: plan.analysis.summary };
-        }
-    }
-    if (req.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-    const applying = makeActivity('apply', 'running', applyLabel);
-    push(applying);
-    const effectiveFileId = pinned?.fileId ?? req.fileId ?? getActiveEditorContext()?.fileId ?? null;
-    // Preview gate: apply into a shadow tree. Real files change only when the
-    // caller replays `proposedChanges` after explicit user approval.
+    // ── Preview vs live ────────────────────────────────────────────────
+    // Preview applies into a shadow tree; live applies into the real one via
+    // the authoritative workspace actions.
     let preview: PreviewWorkspace | null = null;
-    let deps: ExecutorDeps;
-    if (req.preview) {
-        preview = createPreviewWorkspace(req.workspace.getFileTree() as FileNode[], {
-            fileName: fileName || null,
-            fileId: effectiveFileId,
+    const pinnedFileName = req.requestContext?.fileName ?? req.fileName ?? getActiveEditorContext()?.fileName ?? null;
+    const pinnedFileId = req.requestContext?.fileId ?? req.fileId ?? getActiveEditorContext()?.fileId ?? null;
+    const deps = req.preview
+        ? (preview = createPreviewWorkspace(fileTree, { fileName: pinnedFileName, fileId: pinnedFileId })).deps
+        : createExecutorDeps(req.workspace, pinnedFileName, pinnedFileId);
+
+    // Read tools in preview mode must see the shadow tree (it reflects what
+    // the agent has already written this run), while writes go through the
+    // preview deps.
+    const getEffectiveTree = (): FileNode[] =>
+        preview ? (preview.getShadowTree() as FileNode[]) : (req.workspace.getFileTree() as FileNode[]);
+
+    const budget = { ...DEFAULT_AGENT_BUDGET, ...(req.budget ?? {}) };
+
+    // ── [3..6] PLAN → EXECUTE TOOLS → READ RESULTS → CONTINUE ───────────
+    setPhase('planning', STAGE_LABELS.plan);
+    const executeActivity: AgentActivity = { id: makeActivityId('execute'), tool: 'execute', status: 'running', message: STAGE_LABELS.plan };
+    push(executeActivity);
+
+    /**
+     * Validation runs on whatever the agent actually produced.
+     *
+     * In live mode that is the real tree. In preview mode the shadow tree is
+     * authoritative for the proposal, so validating against the real tree
+     * would check the WRONG bytes and report a pass that means nothing.
+     */
+    const validateDeps = req.preview
+        ? { getFileTree: getEffectiveTree, deps, isCancelled: () => Boolean(req.signal?.aborted) }
+        : { getFileTree: () => req.workspace.getFileTree() as FileNode[], deps, isCancelled: () => Boolean(req.signal?.aborted) };
+
+    const loop = await runAgentLoop({
+        taskContext,
+        history: req.history ?? [],
+        workspaceContextBlock,
+        deps: {
+            getFileTree: getEffectiveTree,
+            deps,
+            // No callback supplied → destructive tools are DENIED by default
+            // in `executeTool`. The chat panel supplies an explicit
+            // confirmation handler; nothing is ever silently deleted.
+            confirmDestructive: req.confirmDestructive
+                ? (tool, args) => req.confirmDestructive!(tool, args)
+                : undefined,
+            isCancelled: () => Boolean(req.signal?.aborted),
+            createDirectory: req.preview ? undefined : req.createDirectory,
+        },
+        signal: req.signal,
+        budget,
+        model: req.model,
+        onStatus: (status) => {
+            if (status === 'thinking') {
+                // Real model round-trip in flight.
+                setPhase('executing');
+                executeActivity.status = 'running';
+                push({ ...executeActivity });
+            }
+            if (status === 'tool') {
+                setPhase('executing');
+            }
+        },
+        onStep: (step) => {
+            // A step that actually executed tools moves the task to
+            // 'executing'; inspection alone is NOT completion.
+            if (step.requested.some(r => r.tool !== 'get_editor_context')) {
+                setPhase('executing');
+            }
+            reportStep(step, push, progress, executeActivity);
+        },
+    });
+
+    executeActivity.status = 'done';
+    push({ ...executeActivity });
+
+    // ── [7] VALIDATE — real diagnostics on files the agent changed ──────
+    // ONE row for the whole validation stage: a running row and its settled
+    // row must share an id, otherwise the spinner never stops.
+    const touchedPaths = loop.taskContext.touchedPaths;
+    const validateActivity: AgentActivity = {
+        id: makeActivityId('validate'),
+        tool: 'check',
+        status: touchedPaths.length > 0 ? 'running' : 'done',
+        message: STAGE_LABELS.check,
+    };
+    if (touchedPaths.length > 0) {
+        setPhase('validating', STAGE_LABELS.check, `${touchedPaths.length} file(s)`);
+        push(validateActivity);
+    }
+    const validation = await validateChangedFiles(touchedPaths, req.signal, validateDeps);
+    for (const v of validation) {
+        if (v.isError && v.firstMessage) {
+            loop.taskContext = recordValidationFailure(loop.taskContext, v.path, v.firstMessage);
+        }
+    }
+    if (touchedPaths.length > 0) {
+        validateActivity.status = 'done';
+        push({ ...validateActivity });
+        const errorCount = validation.filter(v => v.isError).length;
+        progress({
+            phase: 'validating',
+            label: STAGE_LABELS.check,
+            detail: errorCount ? `${errorCount} issue(s)` : `${validation.length} file(s) checked`,
+            status: errorCount ? 'error' : 'done',
         });
-        deps = preview.deps;
-    } else {
-        deps = createExecutorDeps(req.workspace, fileName || null, effectiveFileId);
     }
-    const snapshotForEdit = pinnedContent ? { filePath: fileName, content: pinnedContent, lines: pinnedContent.split('\n'), timestamp: Date.now() } as import('./editEngine').FileSnapshot : null;
-    const snapshotMap = new Map<string, import('./editEngine').FileSnapshot>();
-    if (snapshotForEdit) snapshotMap.set(snapshotForEdit.filePath, snapshotForEdit);
 
-    const { executeActionPlan } = await import('./aiToolExecutor');
-    const result = await executeActionPlan(actions as AIAction[], deps as import('./aiToolExecutor').ExecutorDeps, { language, snapshot: snapshotForEdit, snapshotMap });
-
-    applying.status = result.success ? 'done' : 'error';
-    if (result.success) {
-        if (firstAction.action === 'add_comments' && result.appliedCount) {
-            const line = firstAction.comments?.[0]?.line;
-            applying.message = line ? `Added comment to line ${line}` : `Added ${result.appliedCount} comment(s)`;
-        } else {
-            applying.message = result.appliedCount ? `Updated ${fileName || 'file'}` : 'No changes needed';
-        }
-    } else {
-        applying.message = `Apply failed`;
-    }
-    // Keep detail for tooltip/debug but don't spam list with long text
-    applying.detail = result.success ? undefined : result.message.slice(0, 200);
-    push({ ...applying });
-
-    // Generate compact diff summary for artifact UI — use pinnedContent as baseline so switch doesn't skew diff
-    let diffs: Array<{ file: string; added: number; removed: number; summary: string }> | undefined;
-    if (result.success && result.appliedCount > 0) {
-        const newContent = deps.getFileContent(fileName) ?? '';
-        if (newContent && pinnedContent) {
-            const origSet = new Set(pinnedContent.split('\n').map(l => l.trim()).filter(Boolean));
-            const newLines = newContent.split('\n').map(l => l.trim()).filter(Boolean);
-            const newSet = new Set(newLines);
-            let added = 0, removed = 0;
-            for (const l of newLines) if (!origSet.has(l)) added++;
-            for (const l of origSet) if (!newSet.has(l)) removed++;
-            // For comment-only, added is number of comments
-            if (added === 0 && firstAction.action === 'add_comments') added = firstAction.comments?.length ?? result.appliedCount;
-            diffs = [{ file: fileName, added, removed, summary: `${added} added, ${removed} removed` }];
-        } else if (firstAction.action === 'create_file' && firstAction.path) {
-            const createdContent = deps.getFileContent(firstAction.path) ?? '';
-            const lines = createdContent ? createdContent.split('\n').length : 0;
-            diffs = [{ file: firstAction.path as string, added: lines, removed: 0, summary: `Created · ${lines} lines` }];
+    // Record recent edits for follow-up context (live applies only).
+    if (!req.preview && loop.changedWorkspace) {
+        for (const p of loop.taskContext.touchedPaths) {
+            recordRecentEdit(p, 'agent edit', 0);
         }
     }
 
-    // Record recent edits for live context history (live applies only —
-    // previewed proposals are recorded when the user accepts them).
-    if (!req.preview && result.success && result.appliedCount > 0) {
-        for (const a of actions) {
-            const p = (a as { path?: string; file?: string }).path ?? (a as { file?: string }).file ?? fileName;
-            if (p) recordRecentEdit(p, (a as { action: string }).action, result.appliedCount);
-        }
-    }
-
-    // [8] Natural response is result.message (brief, verified)
     const proposedChanges = preview ? preview.getChanges() : undefined;
-    return { ...result, activities, planSummary: plan.analysis.summary, diffs, proposedChanges };
+    const diffs = buildDiffs(loop.taskContext, preview);
+
+    // ── [8] SUMMARIZE — a final user-facing answer is MANDATORY ────────
+    setPhase('summarizing', STAGE_LABELS.summarize);
+    const message = buildFinalResponse(loop, validation, Boolean(proposedChanges?.length), Boolean(req.preview));
+
+    // ── [9] TERMINAL STATE ─────────────────────────────────────────────
+    // 'completed' is only asserted here, AFTER the loop finished and the
+    // final response exists. Pending tool work can never be reported as done.
+    setPhase(loop.stopReason === 'cancelled' ? 'cancelled' : 'completed', STAGE_LABELS.summarize);
+    progress({ phase: 'completed', label: STAGE_LABELS.summarize, status: 'done' });
+
+    return {
+        success: loop.success,
+        appliedCount: loop.toolCallCount,
+        message,
+        activities,
+        planSummary: intent.summary,
+        diffs,
+        proposedChanges,
+        changedWorkspace: loop.changedWorkspace,
+        stopReason: loop.stopReason,
+        taskContext: loop.taskContext,
+        validation: validation.map(v => ({ path: v.path, isError: v.isError, markers: v.markers.length })),
+    };
 }
 
-type ToolRegistryDeps = import('./toolRegistry').ToolRegistryDeps;
+/**
+ * Read-only agent pass: the loop runs with real tools, but every mutating
+ * tool is denied, so an explanation request cannot modify the workspace even
+ * if the model tries.
+ */
+async function runReadOnlyAgent(
+    req: AgentControllerRequest,
+    taskContext: AgentTaskContext,
+    push: (a: AgentActivity) => void,
+    workspaceContextBlock: string,
+    hooks: { setPhase: (p: AgentTaskPhase, l?: string, d?: string) => void; progress: (e: { phase: AgentTaskPhase; label: string; detail?: string; tool?: string; status: 'running' | 'done' | 'error' }) => void },
+): Promise<Omit<AgentControllerResult, 'activities' | 'planSummary'>> {
+    const readActivity: AgentActivity = { id: makeActivityId('read'), tool: 'read', status: 'running', message: STAGE_LABELS.read };
+    push(readActivity);
+    hooks.progress({ phase: 'executing', label: STAGE_LABELS.read, status: 'running' });
+    const fileTree = req.workspace.getFileTree() as FileNode[];
+    const deps = createExecutorDeps(req.workspace, req.fileName ?? null, req.fileId ?? null);
+
+    const loop = await runAgentLoop({
+        taskContext,
+        history: req.history ?? [],
+        workspaceContextBlock,
+        deps: {
+            getFileTree: () => fileTree,
+            deps,
+            // A read-only pass still authorizes destructive tools as DENIED —
+            // the gate exists to refuse, and denying is the safe default when
+            // the request itself promised no modifications.
+            confirmDestructive: () => false,
+        },
+        signal: req.signal,
+        model: req.model,
+        onStep: (step) => reportStep(step, push, hooks.progress, readActivity),
+    });
+
+    // Same id → this REPLACES the running row instead of appending a second
+    // one. (Two ids was the original bug: the 'running' row kept spinning
+    // forever next to a finished task.)
+    readActivity.status = 'done';
+    push({ ...readActivity });
+
+    hooks.progress({ phase: 'executing', label: STAGE_LABELS.read, detail: `${loop.taskContext.operations.length} operation(s)`, status: 'done' });
+
+    // ── GUARANTEED FINAL RESPONSE ──────────────────────────────────────
+    // An explanation request must always end in real prose. If the model
+    // produced none (budget, repeated failure, provider error), the message
+    // is built from VERIFIED read results — never invented.
+    const fallback = buildReadOnlySummary(loop, fileTree);
+    const message = loop.content?.trim() || fallback;
+    hooks.setPhase(loop.stopReason === 'cancelled' ? 'cancelled' : 'completed', STAGE_LABELS.summarize);
+
+    return {
+        success: loop.success,
+        appliedCount: 0,
+        wasChatOrExplain: true,
+        message,
+        chatResponse: message,
+        changedWorkspace: false,
+        stopReason: loop.stopReason,
+        taskContext: loop.taskContext,
+    };
+}
+
+/**
+ * Plain conversational reply (greetings, thanks, small talk).
+ *
+ * Deliberately does NOT enter the tool loop: "hi" must not trigger workspace
+ * inspection and a dozen provider round-trips. It streams one short answer
+ * through the existing AIClient and always returns non-empty text.
+ */
+async function streamPlainReply(
+    req: AgentControllerRequest,
+    taskContext: AgentTaskContext,
+    workspaceContextBlock: string,
+): Promise<string> {
+    const { streamChat } = await import('./AIClient');
+    const messages: ChatMessage[] = [
+        { role: 'system', content: 'You are a warm, concise coding assistant inside the Azemax IDE. Reply in 1-2 friendly sentences. Do not mention files, tools, or internal process unless the user asked.' },
+        ...(req.history ?? []).slice(-4),
+        { role: 'user', content: `${workspaceContextBlock}\n\nUser said: "${req.userMessage}"` },
+    ];
+    let acc = '';
+    try {
+        for await (const event of streamChat(messages, { signal: req.signal, task: 'fast_chat', temperature: 0.4, maxTokens: 512 })) {
+            if (event.type === 'delta' && event.content) acc += event.content;
+            if (event.type === 'error') throw new Error(event.message || 'Chat failed');
+        }
+    } catch (e) {
+        if ((e as Error).name === 'AbortError') throw e;
+        return `I couldn't reach the assistant right now. Please try again.`;
+    }
+    const cleaned = acc.trim();
+    if (cleaned) return cleaned;
+    // Deterministic, honest fallback — never an empty assistant turn.
+    void taskContext;
+    return 'Tell me what you would like to build or change, and I will take care of it.';
+}
+
+/** Truthful read-only summary derived only from verified tool results. */
+function buildReadOnlySummary(loop: AgentLoopResult, fileTree: FileNode[]): string {
+    if (loop.stopReason === 'cancelled') {
+        return 'Cancelled — I stopped before finishing. Nothing was changed.';
+    }
+    if (loop.stopReason === 'error') {
+        return `I could not complete the request: ${loop.error ?? 'the assistant request failed'}.`;
+    }
+    const reads = loop.taskContext.operations.filter(o => o.tool === 'read_file' || o.tool === 'search_files' || o.tool === 'list_files');
+    const errors = loop.taskContext.operations.filter(o => o.status === 'error');
+    if (errors.length) {
+        return `I could not read everything needed to answer that: ${errors[0].detail ?? errors[0].tool} failed.`;
+    }
+    if (reads.length > 0) {
+        return `I inspected the workspace (${fileTree.filter(n => n.id !== 'root').length} top-level item(s)) but did not finish the analysis. Try rephrasing what you would like explained.`;
+    }
+    return 'I did not get enough information to answer that. Could you be more specific about which file or part you mean?';
+}
+
+/**
+ * Surface each executed tool as a progress event.
+ *
+ * Rows are keyed by tool so the same tool re-running updates its row instead
+ * of stacking duplicates ("Do not show the same completed status repeatedly").
+ */
+function reportStep(
+    step: AgentStepRecord,
+    push: (a: AgentActivity) => void,
+    progress: (e: { phase: AgentTaskPhase; label: string; detail?: string; tool?: string; status: 'running' | 'done' | 'error' }) => void,
+    current: AgentActivity,
+): void {
+    for (const call of step.requested) {
+        const label = stageLabelForTool(call.tool);
+        current.message = label;
+        current.detail = call.target || undefined;
+        push({ ...current });
+        progress({
+            phase: 'executing',
+            label,
+            tool: call.tool,
+            ...(call.target ? { detail: call.target } : {}),
+            status: call.ok ? 'done' : 'error',
+        });
+    }
+}
+
+/**
+ * Real diagnostics over the files the agent actually changed.
+ *
+ * Validation is a READ operation, so it always runs the real IDE checker
+ * (`diagnosticsService`) against whatever tree is authoritative for this run
+ * (live workspace, or the preview shadow tree). It never fabricates a pass:
+ * a file that cannot be read or checked is reported as unchecked, not clean.
+ */
+async function validateChangedFiles(
+    paths: string[],
+    signal: AbortSignal | undefined,
+    deps: AgentToolDeps,
+): Promise<Array<{ path: string; isError: boolean; markers: Array<{ message: string }>; firstMessage: string | null }>> {
+    const out: Array<{ path: string; isError: boolean; markers: Array<{ message: string }>; firstMessage: string | null }> = [];
+    if (paths.length === 0) return out;
+    const { executeTool } = await import('./agentTools');
+    for (const p of paths.slice(0, 8)) {
+        if (signal?.aborted) break;
+        const res = await executeTool('get_diagnostics', { path: p }, deps);
+        if (!res.ok) {
+            // Unchecked — NOT a pass. Reported as an error entry so the
+            // summary can say "could not validate" rather than "no errors".
+            out.push({ path: p, isError: false, markers: [], firstMessage: null });
+            continue;
+        }
+        const markers = (res.data.markers as Array<{ message?: string }>) ?? [];
+        out.push({
+            path: String(res.data.path ?? p),
+            isError: Boolean(res.data.isError),
+            markers: markers.map(m => ({ message: m.message ?? 'error' })),
+            firstMessage: markers.length ? (markers[0].message ?? 'error') : null,
+        });
+    }
+    return out;
+}
+
+function buildDiffs(
+    taskContext: AgentTaskContext,
+    preview: PreviewWorkspace | null,
+): Array<{ file: string; added: number; removed: number; summary: string }> | undefined {
+    if (preview) {
+        return preview.getChanges().map(c => {
+            const added = c.after ? c.after.split('\n').length : 0;
+            const removed = c.before ? c.before.split('\n').length : 0;
+            return {
+                file: c.path,
+                added,
+                removed,
+                summary: c.kind === 'create' ? `Created · ${added} lines` : `${added} added, ${removed} removed`,
+            };
+        });
+    }
+    if (!taskContext.touchedPaths.length) return undefined;
+    return taskContext.touchedPaths.map(p => ({ file: p, added: 0, removed: 0, summary: 'Modified' }));
+}
+
+/**
+ * Compose the FINAL user-facing response.
+ *
+ * Priority order:
+ *   1. The model's own summary — but only when the loop actually finished
+ *      normally, so a half-finished run is never dressed up as success.
+ *   2. A deterministic summary built ONLY from verified results (real tool
+ *      outcomes, real diagnostics, real file paths).
+ *
+ * It never claims a check passed unless the check ran, never claims a file was
+ * written unless a write succeeded, and never returns empty.
+ */
+function buildFinalResponse(
+    loop: AgentLoopResult,
+    validation: Array<{ path: string; isError: boolean; markers: Array<{ message: string }> }>,
+    hasProposal: boolean,
+    preview: boolean,
+): string {
+    const changed = [...new Set(loop.taskContext.touchedPaths)];
+    const failed = loop.taskContext.operations.filter(o => o.status === 'error');
+    const validationErrors = validation.filter(v => v.isError);
+    const parts: string[] = [];
+
+    // A clean exit means the model produced its own summary.
+    const modelSummary = loop.content?.trim();
+    if (loop.stopReason === 'done' && modelSummary) {
+        parts.push(modelSummary);
+    }
+
+    if (loop.stopReason === 'cancelled') {
+        parts.push(
+            changed.length
+                ? `Cancelled. Partial changes may remain in: ${changed.join(', ')}.`
+                : 'Cancelled. No changes were made.',
+        );
+        return parts.join('\n\n');
+    }
+
+    if (loop.stopReason === 'error') {
+        parts.push(`I couldn't finish this task: ${loop.error ?? 'the assistant request failed'}. No further changes were made.`);
+        if (changed.length) parts.push(`Changes made before the failure: ${changed.join(', ')}.`);
+        return parts.join('\n\n');
+    }
+
+    if (hasProposal) {
+        parts.push(`Prepared ${changed.length} change${changed.length === 1 ? '' : 's'}. Review below and Accept to apply, or Reject to discard.`);
+    } else if (changed.length) {
+        parts.push(`${preview ? 'Prepared changes to' : 'Created/updated'}: ${changed.join(', ')}.`);
+    } else if (loop.toolCallCount > 0) {
+        parts.push('I inspected the workspace and found nothing that needed changing.');
+    }
+
+    // Honest validation reporting — never claim a check passed unless it ran.
+    if (validationErrors.length) {
+        const detail = validationErrors
+            .slice(0, 3)
+            .map(v => `${v.path}: ${v.markers[0]?.message ?? 'error'}`)
+            .join('; ');
+        parts.push(`Checks found ${validationErrors.length} issue(s) — ${detail}.`);
+    } else if (validation.length) {
+        parts.push(`Diagnostics ran on ${validation.length} file(s) — no errors.`);
+    }
+
+    if (failed.length) {
+        parts.push(`${failed.length} operation(s) failed: ${failed.slice(0, 2).map(f => `${f.tool} (${f.detail ?? 'error'})`).join(', ')}.`);
+    }
+
+    if (loop.stopReason === 'approval_required') {
+        parts.push('I stopped because that action needs your approval.');
+    } else if (loop.stopReason === 'repeated_failure') {
+        parts.push('I stopped after the same step failed repeatedly.');
+    } else if (loop.stopReason === 'budget_steps' || loop.stopReason === 'budget_tool_calls' || loop.stopReason === 'budget_time') {
+        parts.push('I stopped before finishing because I reached my execution budget — the work may be incomplete.');
+    }
+
+    // Never end with an empty assistant turn.
+    return parts.join('\n\n').trim() || 'I could not produce a summary for this run.';
+}
+
+/**
+ * Build the ExecutorDeps-compatible surface used by the structured
+ * (non-agent) path. Exported for the chat panel's "accept proposal" flow and
+ * for tests that exercise the legacy pipeline.
+ */
+export async function applyActions(
+    actions: AIAction[],
+    req: AgentControllerRequest,
+): Promise<ExecutionResult> {
+    const deps = createExecutorDeps(req.workspace, req.fileName ?? null, req.fileId ?? null);
+    return executeActionPlan(actions, deps, { language: null });
+}

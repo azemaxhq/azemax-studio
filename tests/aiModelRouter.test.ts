@@ -164,4 +164,29 @@ const { getSmartModel, FAST_EDITOR_MODEL } = await import('../src/core/ai/AICont
     check('clientTaskConfig: unknown falls back to chat (off)', getTaskConfig(undefined).reasoningMode === 'off');
 }
 
+const serverPolicy = await import('../server/services/ai/aiPolicy.cjs');
+
+{
+    // REGRESSION: "Explanation failed — Model not permitted on provider
+    // nvidia". The client sends the canonical ID
+    // 'nvidia/nemotron-3-super-120b-a12b' (with -a12b suffix) while the
+    // server default has no suffix. Both spellings of the same model must
+    // pass policy, or every explicit-model request 403s before any
+    // provider fallback can run.
+    const allowed = serverPolicy.nvidiaAllowed();
+    check('policy: allows suffixed client canonical id', allowed.has('nvidia/nemotron-3-super-120b-a12b'));
+    check('policy: allows unsuffixed server default id', allowed.has('nvidia/nemotron-3-super-120b-a12b'));
+    check(
+        'policy: resolveAllowedModel accepts client canonical id',
+        serverPolicy.resolveAllowedModel('nvidia', 'nvidia/nemotron-3-super-120b-a12b') === 'nvidia/nemotron-3-super-120b-a12b',
+    );
+    let rejected = false;
+    try {
+        serverPolicy.resolveAllowedModel('nvidia', 'nvidia/llama-3.1-405b-instruct');
+    } catch (e) {
+        rejected = e instanceof Error && (e as unknown as { status?: number }).status === 403;
+    }
+    check('policy: still rejects unlisted nvidia models with 403', rejected);
+}
+
 finish('aiModelRouter');

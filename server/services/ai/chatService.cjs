@@ -1,5 +1,5 @@
 const { AI_MODELS } = require('../../config/index.cjs');
-const { chatCompletion, listModels } = require('./aiClient.cjs');
+const { chatCompletion, listModels, providerSupportsTools } = require('./aiClient.cjs');
 const {
     resolveTaskParams,
     cleanResponse,
@@ -10,6 +10,8 @@ const {
     writeSse,
     pipeProviderStream,
     createVisibleContentFilter,
+    normalizeToolCalls,
+    extractToolCallsFromContent,
 } = require('./aiStream.cjs');
 const {
     AIError,
@@ -40,7 +42,12 @@ function toAIError(err, resolved, requestId) {
     });
 }
 
-async function sendChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', task, allowFallback = true, requestId }) {
+/**
+ * Normalize a provider's `message.tool_calls` into the wire shape shared with
+ * the client (canonical implementation lives in aiStream.cjs — malformed
+ * entries with no function name are dropped, never repaired).
+ */
+async function sendChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', task, allowFallback = true, requestId, tools = null, toolChoice = 'auto' }) {
     const params = resolveTaskParams({ task, maxTokens, temperature, top_p, responseLength });
     const plan = buildRoutingPlan(task, model, { allowFallback });
     const attempts = [plan.primary, ...plan.fallbacks];
@@ -92,11 +99,21 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
                 stream: false,
                 requestId: rid,
                 timeoutMs,
+                // Provider-incompatible requests must fail this attempt and
+                // fall through the chain, NOT abort the whole chat.
+                tools: providerSupportsTools(resolved.provider) ? tools : null,
+                toolChoice: providerSupportsTools(resolved.provider) ? toolChoice : 'auto',
             });
 
             const data = await response.json();
-            const content = data.choices?.[0]?.message?.content || '';
-            if (!content) {
+            const rawContent = data.choices?.[0]?.message?.content || '';
+            const nativeToolCalls = normalizeToolCalls(data.choices?.[0]?.message?.tool_calls);
+            const extracted = nativeToolCalls.length ? null : extractToolCallsFromContent(rawContent);
+            const toolCalls = extracted || nativeToolCalls;
+            const content = extracted ? '' : rawContent;
+            // An agent step that only requests tools returns empty content —
+            // that is a valid turn, not an invalid response.
+            if (!content && toolCalls.length === 0) {
                 console.warn(`[AI CHAT] provider=${resolved.provider} returned empty content`);
                 throw invalidResponse({
                     provider: resolved.provider,
@@ -106,9 +123,11 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
                 });
             }
             markHealthy(resolved.provider, resolved.model);
-            console.log(`[AI CHAT] provider=${resolved.provider} model=${resolved.model} success latency=${Date.now() - t0}ms`);
+            console.log(`[AI CHAT] provider=${resolved.provider} model=${resolved.model} success latency=${Date.now() - t0}ms toolCalls=${toolCalls.length}`);
             return {
                 content: cleanResponse(content),
+                toolCalls,
+                finishReason: data.choices?.[0]?.finish_reason || null,
                 model: resolved.model,
                 provider: resolved.provider,
                 usage: data.usage,
@@ -138,7 +157,7 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
     );
 }
 
-async function streamChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', res, req, task, allowFallback = true, userId: _userId = null, onUsage = null }) {
+async function streamChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', res, req, task, allowFallback = true, userId: _userId = null, onUsage = null, tools = null, toolChoice = 'auto' }) {
     const params = resolveTaskParams({ task, maxTokens, temperature, top_p, responseLength });
     const plan = buildRoutingPlan(task, model, { allowFallback });
     const attempts = [plan.primary, ...plan.fallbacks];
@@ -234,6 +253,9 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
 
                 // Non-streaming providers (HuggingFace) complete in one shot and
                 // emit the finished answer as a single SSE payload.
+                const attemptTools = providerSupportsTools(resolved.provider) ? tools : null;
+                const attemptToolChoice = attemptTools ? (toolChoice || 'auto') : 'auto';
+
                 if (!resolved.capabilities.supportsStreaming) {
                     const response = await chatCompletion({
                         provider: resolved.provider,
@@ -247,10 +269,17 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                         stream: false,
                         requestId,
                         timeoutMs: streamTimeoutMs,
+                        tools: attemptTools,
+                        toolChoice: attemptToolChoice,
                     });
                     const data = await response.json();
-                    const content = data.choices?.[0]?.message?.content || '';
-                    if (!content) {
+                    const rawContentS = data.choices?.[0]?.message?.content || '';
+                    const nativeToolCallsS = normalizeToolCalls(data.choices?.[0]?.message?.tool_calls);
+                    const extractedS = nativeToolCallsS.length ? null : extractToolCallsFromContent(rawContentS);
+                    const toolCalls = extractedS || nativeToolCallsS;
+                    const content = extractedS ? '' : rawContentS;
+                    // A tool-call-only turn is a valid, non-empty response.
+                    if (!content && toolCalls.length === 0) {
                         throw invalidResponse({
                             provider: resolved.provider,
                             model: resolved.model,
@@ -260,7 +289,8 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                     }
                     sawToken = true;
                     markHealthy(resolved.provider, resolved.model);
-                    writeSse(res, { type: 'token', content: cleanResponse(content) });
+                    if (content) writeSse(res, { type: 'token', content: cleanResponse(content) });
+                    if (toolCalls.length) writeSse(res, { type: 'tool_calls', tool_calls: toolCalls });
                     if (!res.writableEnded && !res.destroyed) {
                         writeSse(res, { type: 'done', model: resolved.model, usage: data.usage });
                         if (typeof onUsage === 'function') {
@@ -286,9 +316,11 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                     signal: attemptController.signal,
                     requestId,
                     timeoutMs: streamTimeoutMs,
+                    tools: attemptTools,
+                    toolChoice: attemptToolChoice,
                 });
 
-                const { tokenCount, usage, reasoningChars } = await pipeProviderStream(
+                const { tokenCount, usage, reasoningChars, toolCallCount } = await pipeProviderStream(
                     response,
                     res,
                     () => aiRequestManager.touch(requestId),
@@ -310,7 +342,14 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                         if (perfLogEnabled) console.log('[AI reasoning]', resolved.model, reasoningDelta.length, 'chars');
                     },
                 );
-                if (tokenCount > 0) {
+                // A turn with tool calls but no visible tokens is a SUCCESSFUL agent step —
+                // treating it as an empty stream would trigger a pointless
+                // provider fallback and lose the tool calls.
+                if (tokenCount > 0 || toolCallCount > 0) {
+                    if (tokenCount > 0) {
+                        sawToken = true;
+                        markHealthy(resolved.provider, resolved.model);
+                    }
                     if (!res.writableEnded && !res.destroyed) {
                         writeSse(res, { type: 'done', model: resolved.model, usage });
                         if (typeof onUsage === 'function') {
@@ -324,7 +363,7 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                     const usageLine = usage
                         ? ` usage=${usage.total_tokens ?? '?'}tok (prompt=${usage.prompt_tokens ?? '?'}, completion=${usage.completion_tokens ?? '?'}${usage.completion_tokens_details?.reasoning_tokens != null ? `, reasoning=${usage.completion_tokens_details.reasoning_tokens}` : ''})`
                         : '';
-                    perfLog(`task=${params.task} model=${resolved.model} stream done in ${duration}ms input=${_inputSize}chars tokens=${tokenCount} tok/s=${tps} reasoningChars=${reasoningChars}${usageLine}`);
+                    perfLog(`task=${params.task} model=${resolved.model} stream done in ${duration}ms input=${_inputSize}chars tokens=${tokenCount} toolCalls=${toolCallCount} tok/s=${tps} reasoningChars=${reasoningChars}${usageLine}`);
                     return;
                 }
 

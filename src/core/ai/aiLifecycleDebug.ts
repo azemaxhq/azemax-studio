@@ -15,7 +15,9 @@ export type AILifecycleEvent =
     | 'ERROR'
     | 'CANCEL'
     | 'ABORT'
-    | 'EMPTY_RESPONSE';
+    | 'EMPTY_RESPONSE'
+    /** Explicit agent lifecycle phase transition (see AgentTaskPhase). */
+    | 'PHASE';
 
 interface TraceData {
     operation: AILifecycleOperation;
