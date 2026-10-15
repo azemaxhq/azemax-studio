@@ -10,7 +10,7 @@
  *    model never sees the instruction as code and never hallucinates duplicate #include.
  *  - Inline-aware: `code ///cmd;` → replace `code` on that line; standalone `///cmd;` → replace that line.
  *  - Atomic: single `replace_code` via `executeActionPlan` (resolve→compose→validate→apply→verify→rollback).
- *  - Verified: executable preservation & duplicate checks via AIEditVerifier; trigger line removed atomically.
+ *  - Verified: executable preservation & duplicate checks via the validate→apply→verify→rollback chain in `executeActionPlan`; trigger line removed atomically.
  */
 
 import { getActiveEditorContext } from '../editor/activeEditorStore';

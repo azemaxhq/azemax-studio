@@ -365,7 +365,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                 diagnosticRequestIdRef.current !== requestId
             ) {
                 // Stale result — discard silently, do not overwrite newer state
-                console.log('Diagnostics: discarding stale result (file/version/request mismatch)');
                 return;
             }
 
@@ -1002,7 +1001,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
 
         const fileIdAtStart = activeFileRef.current?.id ?? null;
         const intent = match[2].trim();
-        console.log('[AI Auto-Replace] Detected command:', intent, 'on line:', lineNumber);
         setIsAiProcessing(true);
         setActiveAiLine(lineNumber);
         setActiveAiIntent(intent);
@@ -1038,7 +1036,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
             // version mismatch here is EXPECTED after success — it must not
             // be treated as stale. Only file-switch/dispose discards the result.
             if (model.isDisposed() || activeFileRef.current?.id !== fileIdAtStart) {
-                console.log('[AI Auto-Replace] Skipping stale post-check (file switch or disposed)');
                 return;
             }
 
@@ -1051,7 +1048,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
             if (reqId) { try { AIRequestStore.updateRequest(reqId, 'success'); } catch {} }
             // Keep completion visible briefly: "Comments added ✓" then fade
             setTimeout(() => { try { if (reqId) AIRequestStore.completeRequest(reqId); } catch {} }, 1200);
-            console.log('[AI Auto-Replace] Premium edit applied:', result.message);
 
             // Reposition only when nothing else landed after our own apply —
             // otherwise we'd yank the cursor away from the user's newer edit.
@@ -1157,7 +1153,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
             if (e.key === 'Escape' && isProcessingAiCommandRef.current) {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('[AI] ESC pressed - cancelling request');
 
                 // Cancel the AI request first
                 cancelPendingRequest();

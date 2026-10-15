@@ -67,8 +67,6 @@ export const getCodeSuggestion = async (context: SuggestionContext): Promise<Sug
     // auto-replace vanish mid-flight when the user keeps typing).
     const controller = aiAbortManager.get(COMMENT_SUGGESTION_KEY);
 
-    console.log('[AI] getCodeSuggestion called. Cursor at:', context.cursorPosition);
-
     // Get text before cursor
     const textBeforeCursor = context.code.substring(
         Math.max(0, context.cursorPosition - 500),
@@ -78,14 +76,11 @@ export const getCodeSuggestion = async (context: SuggestionContext): Promise<Sug
     const lines = textBeforeCursor.split('\n');
     const currentLine = lines[lines.length - 1];
 
-    console.log('[AI] Current line:', currentLine);
-
     // Pattern: Current line has `/// command;`
     // Modified to support inline comments: [code prefix] /// [command];
     const sameLineMatch = currentLine.match(/^(.*?)\/\/\/\s*(.+);$/);
 
     if (!sameLineMatch) {
-        console.log('[AI] No /// command detected. Exiting.');
         aiAbortManager.release(COMMENT_SUGGESTION_KEY);
         return null;
     }
@@ -103,8 +98,6 @@ export const getCodeSuggestion = async (context: SuggestionContext): Promise<Sug
     const lineStartInPrefix = textBeforeCursor.lastIndexOf('\n') + 1;
     const prefixStartOffset = Math.max(0, context.cursorPosition - 500);
     const replaceStartOffset = prefixStartOffset + lineStartInPrefix;
-
-    console.log('[AI] Processing command:', commandText, 'with prefix:', prefix.trim());
 
     // Get context code for better suggestions
     const contextCode = context.code.substring(
@@ -159,8 +152,6 @@ export const getCodeSuggestion = async (context: SuggestionContext): Promise<Sug
                 return shiftReplacementIndent(finalCode, indentation.length - firstIndent.length);
             })()
             : finalCode;
-
-        console.log('[AI] Generated code length:', indented.length);
 
         // Try to parse structured edits from the generated code for multi-line support
         let structuredEdits: { startLine: number; endLine: number; replacement: string }[] | undefined;

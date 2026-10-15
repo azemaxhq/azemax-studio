@@ -921,7 +921,6 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
 .perf-virtualized-container{contain:layout paint size; overflow:hidden} .perf-virtualized-item{contain:layout paint}
 .perf-reduce-motion{animation:none !important; transition:none !important}
 @media (prefers-reduced-motion: reduce){ .perf-respect-reduced-motion{animation:none !important; transition:none !important} }
-@keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important}
 }
@@ -949,14 +948,12 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
   box-shadow: 0 12px 32px rgba(0,0,0,0.5);
   animation: fade-in 140ms var(--az-ease-out) forwards;
 }
-@keyframes tooltip-enter{ from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:translateY(0)} }
 .file-explorer-breadcrumb{
   position:sticky; top:0; z-index:20;
   background: var(--az-surface);
   border-bottom:1px solid var(--az-border);
   padding:6px 12px 8px;
 }
-@keyframes breadcrumb-slide{ from{opacity:0; transform:translateY(-4px)} to{opacity:1; transform:translateY(0)} }
 .file-explorer-node{ transition: background 120ms var(--az-ease), color 120ms var(--az-ease)}
 .file-explorer-node:hover{ transform:none}
 .file-explorer-node:active{ transform:none}

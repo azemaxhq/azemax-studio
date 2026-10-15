@@ -31,6 +31,8 @@ import performanceService from '../../utils/performanceService';
 import {
   generatePerformanceAlerts,
   PerformanceAlertManager,
+  formatTime,
+  formatMemory,
   type PerformanceAlert
 } from '../../utils/performanceAlerts';
 import { getLanguageFromFilename } from '../../utils/language';
@@ -124,17 +126,6 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
       }
     }
   }, [executionData, isRunning, getActiveFile]);
-
-  const formatTime = (ms: number): string => {
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
-    return `${(ms / 60000).toFixed(2)}m`;
-  };
-
-  const formatMemory = (mb: number): string => {
-    if (mb < 1024) return `${mb.toFixed(1)}MB`;
-    return `${(mb / 1024).toFixed(2)}GB`;
-  };
 
   const exportReport = () => {
     if (!currentReport) return;
@@ -824,11 +815,6 @@ const BottleneckCard: React.FC<{
       )}
     </div>
   );
-};
-
-const formatMemory = (mb: number): string => {
-  if (mb < 1024) return `${mb.toFixed(1)}MB`;
-  return `${(mb / 1024).toFixed(2)}GB`;
 };
 
 // Comparison Metric Component

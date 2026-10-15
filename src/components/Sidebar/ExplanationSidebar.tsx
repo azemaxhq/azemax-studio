@@ -49,11 +49,11 @@ export const ExplanationSidebar: React.FC = () => {
     } : undefined;
 
     const handleExport = () => {
-        console.log('Export explanation');
+        // TODO: wire explanation export once the explanation service exposes it.
     };
 
     const handleShare = () => {
-        console.log('Share explanation');
+        // TODO: wire explanation sharing once the explanation service exposes it.
     };
 
     return (

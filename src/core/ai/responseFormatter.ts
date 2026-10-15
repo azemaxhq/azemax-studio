@@ -84,15 +84,3 @@ export function formatNaturalResponse(
     }).join(', ');
     return `Applied ${appliedCount} changes: ${summary}.`;
 }
-
-export function formatClarificationQuestion(intentSummary?: string): string {
-    if (intentSummary && intentSummary.trim()) {
-        return `I want to make sure I understand: you want to "${intentSummary}" — could you clarify which part or file you mean?`;
-    }
-    return 'Could you clarify what you want to do? For example, tell me the file, line, or whether you want comments, code change, or an explanation.';
-}
-
-export function formatNoChangeNeeded(fileName: string | null, reason?: string): string {
-    if (reason) return reason;
-    return `No changes were necessary in \`${fileName || 'the file'}\` — the requested change already exists.`;
-}

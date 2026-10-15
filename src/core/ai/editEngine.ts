@@ -35,12 +35,6 @@ function extractJavaPublicTypes(code: string): string[] {
     while ((m = JAVA_PUBLIC_TYPE_RE.exec(code)) !== null) out.push(m[1]);
     return out;
 }
-function extractJavaPublicType(code: string): string | null {
-    JAVA_PUBLIC_TYPE_RE.lastIndex = 0;
-    const m = JAVA_PUBLIC_TYPE_RE.exec(code);
-    return m ? m[1] : null;
-}
-void extractJavaPublicType;
 
 export interface FileSnapshot {
     filePath: string;

@@ -13,6 +13,8 @@ import { buildWorkspaceSnapshot } from '../../core/workspace/workspaceContext';
 import { buildDynamicWorkspaceContext } from '../../core/workspace/dynamicContext';
 import { useAILoading } from '../../hooks/useAILoading';
 import { AILoadingIndicator } from '../AI/AILoadingIndicator';
+import { AIActivityIndicator } from '../AI/AIActivityIndicator';
+import { formatAgentActivity } from '../AI/aiActivityLabel';
 import { SmoothStreamingBubble } from '../AI/SmoothStreamingBubble';
 import { AIComposer } from './AIComposer';
 import '../AI/ai-loading.css';
@@ -2243,37 +2245,42 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         </>
                     )}
 
-                    {/* Azemax processing — cohesive inline Azemaxing · · · */}
+                    {/* Azemax processing — ONE stable mark + ONE truthful label.
+                        The mark never restarts on label updates; the label is
+                        derived from the latest running execution event via the
+                        centralized formatter (never invented). Hidden on all
+                        terminal states because isLoading is false there. */}
                     {!streamingText && isLoading && (
                         <div className="flex w-full justify-start" style={{ marginTop: '0px', marginBottom: '0px', contain: 'layout paint' }}>
                             <div className="min-w-0">
-                                {agentActivities.length > 0 ? (
-                                    <div className="space-y-0">
-                                        {agentActivities.slice(-4).map(act => (
-                                            <div key={act.id} className="ai-loading-minimal" style={{ minHeight: '20px', padding: '4px 0 2px', gap: '6px' } as React.CSSProperties}>
-                                                <span className="ai-loading-minimal-text truncate" style={{ fontSize: '12.5px', maxWidth: '200px' }}>{act.message.replace(/…+$|\.\.\.+$/,'').trim()}</span>
-                                                <span className="ai-loading-dots-subtle ai-dots-fixed shrink-0" aria-hidden="true" style={{ display: act.status === 'running' ? 'inline-flex' : 'none', opacity: act.status === 'running' ? 1 : 0 }}>
-                                                    <span className="ai-dot-subtle" />
-                                                    <span className="ai-dot-subtle" />
-                                                    <span className="ai-dot-subtle" />
-                                                </span>
-                                                <span className={`shrink-0 text-[10px] leading-none ${act.status === 'running' ? 'text-transparent' : act.status === 'done' ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
-                                                    {act.status === 'running' ? '' : act.status === 'done' ? '✓' : '✕'}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <AILoadingIndicator
-                                        status={aiLoading.status}
-                                        operation={currentOperation}
-                                        prompt={lastUserMessage || undefined}
-                                        fileName={activeFileMeta?.name || undefined}
-                                        activeTool={(() => { const a = agentActivities.find(x => x.status === 'running'); return a ? { name: a.tool, target: a.path, label: a.message } as any : null; })()}
-                                        hasSelection={!!getActiveEditorContext()?.selectionText}
-                                        variant="chat"
-                                    />
-                                )}
+                                {(() => {
+                                    const current = [...agentActivities].reverse().find(x => x.status === 'running') ?? agentActivities[agentActivities.length - 1];
+                                    if (!current) {
+                                        return (
+                                            <AILoadingIndicator
+                                                status={aiLoading.status}
+                                                phase={aiLoading.phase}
+                                                operation={currentOperation}
+                                                prompt={lastUserMessage || undefined}
+                                                fileName={activeFileMeta?.name || undefined}
+                                                activeTool={null}
+                                                hasSelection={!!getActiveEditorContext()?.selectionText}
+                                                variant="chat"
+                                            />
+                                        );
+                                    }
+                                    const formatted = formatAgentActivity({ tool: current.tool, status: current.status, message: current.message, path: current.path, detail: current.detail });
+                                    const fullText = formatted.file ? `${formatted.label} ${formatted.file}` : formatted.label;
+                                    return (
+                                        <div className="agent-activity-row" role="status" aria-live="polite" aria-busy="true" title={fullText}>
+                                            <AIActivityIndicator size={22} />
+                                            <span className="agent-activity-label">{formatted.label}</span>
+                                            {formatted.file ? (
+                                                <span className="agent-activity-path">{formatted.file}</span>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     )}

@@ -264,7 +264,7 @@ export const generatePerformanceAlerts = (
 /**
  * Format time for display
  */
-const formatTime = (ms: number): string => {
+export const formatTime = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
   return `${(ms / 60000).toFixed(2)}m`;
@@ -273,7 +273,7 @@ const formatTime = (ms: number): string => {
 /**
  * Format memory for display
  */
-const formatMemory = (mb: number): string => {
+export const formatMemory = (mb: number): string => {
   if (mb < 1024) return `${mb.toFixed(1)}MB`;
   return `${(mb / 1024).toFixed(2)}GB`;
 };

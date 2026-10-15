@@ -1241,7 +1241,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
             const files = collectFilesInFolder(node);
 
             if (files.length === 0) {
-                console.log('No files to download in this folder');
                 return;
             }
 

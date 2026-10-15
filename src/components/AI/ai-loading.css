@@ -2,9 +2,10 @@
 .ai-loading-minimal {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 10px;
     padding: 4px 0 2px;
-    min-height: 20px;
+    min-height: 24px;
+    min-width: 0;
     will-change: opacity, transform;
     contain: layout;
 }
@@ -13,81 +14,26 @@
     to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ── Label text: subtle gradient shimmer during processing ── */
+/* ── Label text: quiet secondary tone; the mark carries the motion ── */
 .ai-loading-minimal-text {
-    display: inline-flex;
-    align-items: center;
+    display: inline-block;
     min-height: 16px;
+    min-width: 48px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+    flex-shrink: 1;
     font-size: 12.5px;
     font-weight: 500;
     letter-spacing: 0.005em;
     line-height: 1.5;
-    white-space: nowrap;
-    /* Gradient text: neutral → accent → neutral sweep */
-    background: linear-gradient(
-        90deg,
-        var(--az-text-secondary, #A7B0BF) 0%,
-        var(--az-accent-bright, #78A7FF) 45%,
-        var(--az-text-secondary, #A7B0BF) 90%
-    );
-    background-size: 220% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: ai-label-shimmer 3.8s ease-in-out infinite;
-    will-change: background-position;
-}
-@keyframes ai-label-shimmer {
-    0%   { background-position: 220% center; }
-    50%  { background-position: -50% center; }
-    100% { background-position: 220% center; }
+    color: var(--az-text-secondary, #A7B0BF);
+    transition: opacity 220ms ease;
 }
 
-/* ── Dots: accent-colored wave, staggered and size-scaled ── */
-.ai-dots-fixed {
-    width: 22px;
-    justify-content: flex-start;
-    flex-shrink: 0;
-}
-.ai-loading-dots-subtle {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 0;
-    width: 22px;
-    justify-content: flex-start;
-    flex-shrink: 0;
-}
-.ai-dot-subtle {
-    width: 3.5px;
-    height: 3.5px;
-    border-radius: 999px;
-    background: var(--az-accent, #5B8CFF);
-    opacity: 0.22;
-    animation: ai-dot-wave 1300ms cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    will-change: opacity, transform;
-}
-.ai-dot-subtle:nth-child(1) { animation-delay: 0ms; }
-.ai-dot-subtle:nth-child(2) { animation-delay: 160ms; }
-.ai-dot-subtle:nth-child(3) { animation-delay: 320ms; }
-@keyframes ai-dot-wave {
-    0%, 100% {
-        opacity: 0.22;
-        transform: scale(0.88) translateY(0);
-        background: var(--az-accent, #5B8CFF);
-        box-shadow: none;
-    }
-    45% {
-        opacity: 1;
-        transform: scale(1.18) translateY(-1px);
-        background: var(--az-accent-bright, #78A7FF);
-        box-shadow: 0 0 6px 1px rgba(91,140,255,0.45);
-    }
-    65% {
-        opacity: 0.72;
-        transform: scale(1.05) translateY(0);
-    }
-}
+/* ── (Three-dot wave removed: the active agent path now uses AIActivityIndicator) ── */
 
 /* ── Response container entrance ── */
 .ai-response-container {
@@ -124,14 +70,12 @@
 
 /* ── Reduced motion: static, no pulse, minimal ── */
 @media (prefers-reduced-motion: reduce) {
-    .streaming-caret-premium,
-    .ai-dot-subtle { animation: none !important; }
+    .streaming-caret-premium { animation: none !important; }
     .ai-loading-minimal,
     .ai-response-container,
     .smooth-streaming-content { transition: opacity 120ms ease !important; animation: none !important; }
-    .ai-dot-subtle { opacity: 0.42; transform: none !important; box-shadow: none !important; }
     .ai-loading-minimal { animation: none !important; opacity: 1 !important; }
-    .ai-loading-minimal-text { animation: none !important; background: none; -webkit-text-fill-color: var(--az-text-secondary, #A7B0BF); }
+    .ai-loading-minimal-text { animation: none !important; color: var(--az-text-secondary, #A7B0BF); }
     .streaming-caret-premium { box-shadow: none; }
 }
 
@@ -204,4 +148,178 @@
 @keyframes ai-pulse-dot {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+/* ── Azemax activity visualization (custom inline SVG — no GIF, no orb, no library icon) ──
+    One fluid computational signal: a single continuous open path (a smooth
+    current with one S-inflection, rounded caps). A muted full-path base
+    defines the static form; a short luminous segment travels it via a
+    seamless 2.2s dash-offset cycle. No rotation, no scaling, no bounce,
+    no glow, no filters, no layout. */
+.ai-activity-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+  color: var(--az-accent-bright, #78A7FF);
+}
+.ai-activity-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+/* Static form — the full current at muted illumination. */
+.ai-activity-mark .az-track {
+  opacity: 0.3;
+}
+/* Travelling highlight — same path, one short segment in continuous motion. */
+.ai-activity-mark .az-sweep {
+  stroke-dasharray: 20 80;
+  animation: ai-mark-flow 3s ease-in-out infinite;
+  will-change: stroke-dashoffset, opacity;
+}
+
+@keyframes ai-mark-flow {
+  0% { stroke-dashoffset: 100; opacity: 0.55; }
+  35% { opacity: 1; }
+  65% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0.55; }
+}
+
+/* ── Unified agent activity row — ONE mark + ONE label, no duplicates ──
+    The mark is stable across consecutive operations; only the text updates.
+    A fixed min-width on the label prevents layout shifts on label change. */
+.agent-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 2px 0;
+  contain: layout;
+}
+.agent-activity-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 48px;
+  max-width: 220px;
+  flex-shrink: 1;
+  color: var(--az-text-secondary, #A7B0BF);
+}
+.agent-activity-path {
+  font-size: 11px;
+  color: var(--az-text-faint, #6B7484);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  flex-shrink: 1;
+}
+
+/* ── Connected composition: a subtle light trail flowing from the signal
+    toward the label, living in the gap between them. Implemented as a    positioned pseudo-element on the mark (no DOM changes, no layout shift,
+    nothing painted over the text): a short horizontal gradient whose bright
+    head sits at the label side and whose tail fades into the background,
+    drifting gently toward the text on the same 3s cycle as the signal sweep.
+    Anchored to the mark rather than the label so label ellipsis clipping
+    can never cut it off. The trail ends at the label's edge — it never
+    crosses the text, and text contrast is untouched. */
+.ai-activity-mark {
+  position: relative;
+}
+.ai-activity-mark::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 0px);
+  width: 13px;
+  height: 2px;
+  border-radius: 2px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(120, 167, 255, 0) 0%,
+    rgba(120, 167, 255, 0.55) 100%
+  );
+  animation: ai-trail-flow 3s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+@keyframes ai-trail-flow {
+  0%   { transform: translate(-4px, -50%); opacity: 0; }
+  35%  { opacity: 0.55; }
+  65%  { opacity: 0.5; }
+  100% { transform: translate(1px, -50%); opacity: 0; }
+}
+
+/* ── Text illumination: a restrained left-to-right highlight travelling
+    across the label on the SAME 3s cycle as the signal sweep and trail, so
+    signal → trail → text read as one continuous current. A narrow soft-blue
+    band moves over the muted base; the word rests at its base appearance
+    for most of each cycle. Letters never move, blur, or flash.
+    Pure CSS on the stable label element, so React text updates (reading →
+    editing → verifying) never restart it. */
+.agent-activity-label,
+.ai-loading-minimal-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--az-text-secondary, #A7B0BF) 45%,
+    #B9CFFF 50%,
+    var(--az-text-secondary, #A7B0BF) 55%
+  );
+  background-size: 300% 100%;
+  animation: ai-text-flow 3s ease-in-out infinite;
+}
+@keyframes ai-text-flow {
+  /* The 300%-wide gradient parks the narrow band off-canvas at both ends
+     (100% → band off the left edge, 0% → off the right edge), so the
+     highlight crosses every letter left-to-right once per cycle while both
+     endpoints render pure base color → seamless loop. */
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+/* Clip the illumination to the glyphs only where supported; elsewhere the
+   animated background sits harmlessly behind the normal base text color. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .agent-activity-label,
+  .ai-loading-minimal-text {
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+}
+
+/* ── Reduced motion: static mark, no continuous movement ── */
+@media (prefers-reduced-motion: reduce) {
+  .ai-activity-mark .az-sweep {
+    animation: none;
+    stroke-dasharray: none;
+    opacity: 0.85;
+  }
+  .ai-activity-mark .az-track {
+    opacity: 0.5;
+  }
+  .agent-activity-label::before,
+  .ai-loading-minimal-text::before {
+    animation: none;
+    display: none;
+  }
+  .ai-activity-mark::after {
+    animation: none;
+    display: none;
+  }
+  .agent-activity-label,
+  .ai-loading-minimal-text {
+    animation: none !important;
+    background: none !important;
+    color: var(--az-text-secondary, #A7B0BF) !important;
+    -webkit-text-fill-color: var(--az-text-secondary, #A7B0BF) !important;
+  }
 }
