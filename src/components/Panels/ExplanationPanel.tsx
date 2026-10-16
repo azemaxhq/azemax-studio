@@ -92,8 +92,8 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                             <span className="font-semibold text-white text-sm block leading-tight truncate">Code Explanation</span>
                             {explanationStats && (
                                 <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                                    <span className="text-xs text-gray-400">{explanationStats.wordCount} words</span>
-                                    <span className="text-xs text-gray-400">{explanationStats.readingTime} min read</span>
+                                    <span className="text-xs text-[var(--az-text-muted)]">{explanationStats.wordCount} words</span>
+                                    <span className="text-xs text-[var(--az-text-muted)]">{explanationStats.readingTime} min read</span>
                                 </div>
                             )}
                         </div>
@@ -103,14 +103,14 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                             <>
                                 <button
                                     onClick={handleExport}
-                                    className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                                    className="p-1.5 rounded-lg text-[var(--az-text-muted)] hover:text-white hover:bg-white/5 transition-colors"
                                     title="Export explanation"
                                 >
                                     <Download size={13} />
                                 </button>
                                 <button
                                     onClick={handleShare}
-                                    className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                                    className="p-1.5 rounded-lg text-[var(--az-text-muted)] hover:text-white hover:bg-white/5 transition-colors"
                                     title="Share explanation"
                                 >
                                     <Share2 size={13} />
@@ -128,12 +128,12 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                         <AILoadingIndicator status={explanationStatus as any} operation={explanationOperation} variant="compact" size="sm" />
                     </div>
                 ) : error ? (
-                    <div className="glass-analysis-card animate-fade-in-up rounded-xl border border-[#FF647C]/30 bg-[#FF647C]/5 p-4">
+                    <div className="glass-analysis-card animate-fade-in-up rounded-xl border border-[#FF7D8B]/30 bg-[#FF7D8B]/5 p-4">
                         <div className="flex items-start gap-3">
-                            <AlertCircle size={20} className="text-[#FF647C] shrink-0 mt-0.5" />
+                            <AlertCircle size={20} className="text-[#FF7D8B] shrink-0 mt-0.5" />
                             <div className="flex-1 min-w-0">
-                                <h3 className="text-[#FF647C] font-medium text-sm mb-1">Explanation failed</h3>
-                                <p className="text-[#7F8A9A] text-xs leading-relaxed mb-3">{error}</p>
+                                <h3 className="text-[#FF7D8B] font-medium text-sm mb-1">Explanation failed</h3>
+                                <p className="text-[#8296B4] text-xs leading-relaxed mb-3">{error}</p>
                                 <div className="flex gap-2 flex-wrap">
                                     {onRetry && (
                                         <button
@@ -146,7 +146,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                     )}
                                     <button
                                         onClick={handleCopy}
-                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 hover:bg-white/20 text-xs font-medium transition-colors"
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 text-[var(--az-text-secondary)] hover:bg-white/20 text-xs font-medium transition-colors"
                                     >
                                         <Copy size={12} />
                                         Copy error
@@ -161,14 +161,14 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                         {explanationStats?.topics && explanationStats.topics.length > 0 && (
                             <div className="glass-analysis-card info">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <Target size={16} className="text-blue-400 shrink-0" />
+                                    <Target size={16} className="text-[var(--az-accent)] shrink-0" />
                                     <span className="text-white font-medium text-sm">Key Topics</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     {explanationStats.topics.map((topic, index) => (
                                         <span
                                             key={index}
-                                            className="px-2 py-1 bg-blue-500/20 text-[var(--az-text)] text-xs rounded-md border border-[var(--az-border)]"
+                                            className="px-2 py-1 bg-[rgba(91,140,255,0.2)] text-[var(--az-text)] text-xs rounded-md border border-[var(--az-border)]"
                                         >
                                             {topic}
                                         </span>
@@ -186,13 +186,13 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                     </div>
                                     <div className="min-w-0">
                                         <h3 className="text-white font-medium text-sm mb-0.5 truncate">Analysis</h3>
-                                        <p className="text-[#7F8A9A] text-xs truncate">Understanding your code</p>
+                                        <p className="text-[#8296B4] text-xs truncate">Understanding your code</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                     <button
                                         onClick={handleCopy}
-                                        className="p-1.5 rounded-lg text-[#7F8A9A] hover:text-[#A7B0BF] hover:bg-white/5 transition-colors flex-shrink-0"
+                                        className="p-1.5 rounded-lg text-[#8296B4] hover:text-[#A5B5CD] hover:bg-white/5 transition-colors flex-shrink-0"
                                         title="Copy explanation"
                                     >
                                         <Copy size={13} />
@@ -200,7 +200,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                     {onClear && (
                                         <button
                                             onClick={onClear}
-                                            className="p-1.5 rounded-lg text-[#7F8A9A] hover:text-[#FF647C] hover:bg-[#FF647C]/10 transition-colors flex-shrink-0"
+                                            className="p-1.5 rounded-lg text-[#8296B4] hover:text-[#FF7D8B] hover:bg-[#FF7D8B]/10 transition-colors flex-shrink-0"
                                             title="Clear"
                                         >
                                             <Trash2 size={13} />
@@ -209,7 +209,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                     {onRetry && (
                                         <button
                                             onClick={onRetry}
-                                            className="p-1.5 rounded-lg text-[#7F8A9A] hover:text-[#5B8CFF] hover:bg-[#5B8CFF]/10 transition-colors flex-shrink-0"
+                                            className="p-1.5 rounded-lg text-[#8296B4] hover:text-[#5B8CFF] hover:bg-[#5B8CFF]/10 transition-colors flex-shrink-0"
                                             title="Regenerate"
                                         >
                                             <RefreshCw size={13} />
@@ -218,22 +218,22 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                 </div>
                             </div>
                             {copied && (
-                                <p className="text-[10px] text-[#35D399] mb-2 flex items-center gap-1">
+                                <p className="text-[10px] text-[#67D6A0] mb-2 flex items-center gap-1">
                                     <Star size={10} className="fill-current" />
                                     Copied to clipboard
                                 </p>
                             )}
                             <div className="glass-divider" />
-                            <div className="explanation-markdown text-[#A7B0BF] text-sm leading-relaxed overflow-x-auto">
+                            <div className="explanation-markdown text-[#A5B5CD] text-sm leading-relaxed overflow-x-auto">
                                 <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
                                     // Security: no rehype-raw. Raw HTML in AI output is
                                     // skipped, never parsed into live DOM (stored-XSS fix).
                                     skipHtml
                                     components={{
-                                        h1: ({ children }) => <h1 className="text-lg font-semibold text-white mt-4 mb-2 first:mt-0 flex items-center gap-2 flex-wrap"><Zap size={16} className="text-yellow-400 shrink-0" />{children}</h1>,
-                                        h2: ({ children }) => <h2 className="text-base font-semibold text-white mt-4 mb-2 flex items-center gap-2 flex-wrap"><Layers size={14} className="text-blue-400 shrink-0" />{children}</h2>,
-                                        h3: ({ children }) => <h3 className="text-sm font-medium text-white mt-3 mb-1.5 flex items-center gap-2 flex-wrap"><Target size={12} className="text-green-400 shrink-0" />{children}</h3>,
+                                        h1: ({ children }) => <h1 className="text-lg font-semibold text-white mt-4 mb-2 first:mt-0 flex items-center gap-2 flex-wrap"><Zap size={16} className="text-[var(--az-warning)] shrink-0" />{children}</h1>,
+                                        h2: ({ children }) => <h2 className="text-base font-semibold text-white mt-4 mb-2 flex items-center gap-2 flex-wrap"><Layers size={14} className="text-[var(--az-accent)] shrink-0" />{children}</h2>,
+                                        h3: ({ children }) => <h3 className="text-sm font-medium text-white mt-3 mb-1.5 flex items-center gap-2 flex-wrap"><Target size={12} className="text-[var(--az-success)] shrink-0" />{children}</h3>,
                                         p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed break-words">{children}</p>,
                                         ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1">{children}</ul>,
                                         ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1">{children}</ol>,
@@ -241,16 +241,16 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                         code: ({ inline, children, ...props }: any) => {
                                             const content = String(children).replace(/\n$/, '');
                                             if (inline) {
-                                                return <code className="px-1.5 py-0.5 rounded bg-white/10 text-[#E7ECF3] font-mono text-xs break-all" {...props}>{content}</code>;
+                                                return <code className="px-1.5 py-0.5 rounded bg-white/10 text-[#E6EDF8] font-mono text-xs break-all" {...props}>{content}</code>;
                                             }
                                             return (
-                                                <pre className="my-2 p-3 rounded-lg bg-[#0B0E13] border border-white/10 overflow-x-auto text-xs font-mono text-[#E7ECF3] max-w-full">
+                                                <pre className="my-2 p-3 rounded-lg bg-[#080F1C] border border-white/10 overflow-x-auto text-xs font-mono text-[#E6EDF8] max-w-full">
                                                     <code {...props}>{content}</code>
                                                 </pre>
                                             );
                                         },
                                         blockquote: ({ children }) => (
-                                            <blockquote className="border-l-2 border-[#5B8CFF] pl-3 py-1 my-2 text-[#7F8A9A] text-xs bg-[var(--az-accent-soft)] rounded-r break-words">
+                                            <blockquote className="border-l-2 border-[#5B8CFF] pl-3 py-1 my-2 text-[#8296B4] text-xs bg-[var(--az-accent-soft)] rounded-r break-words">
                                                 {children}
                                             </blockquote>
                                         ),
@@ -279,7 +279,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                             </button>
                             <button
                                 onClick={handleShare}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 border border-[var(--az-border)] rounded-lg text-[var(--az-text)] hover:bg-blue-500/30 transition-colors text-sm"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[rgba(91,140,255,0.2)] border border-[var(--az-border)] rounded-lg text-[var(--az-text)] hover:bg-[rgba(91,140,255,0.3)] transition-colors text-sm"
                             >
                                 <Share2 size={13} />
                                 Share
@@ -292,7 +292,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                             <BookOpen size={28} className="text-[#5B8CFF]/90" />
                         </div>
                         <h3 className="text-white/90 font-semibold text-base mb-1.5">No explanation yet</h3>
-                        <p className="text-[#7F8A9A] text-sm text-center max-w-[260px] mb-6">
+                        <p className="text-[#8296B4] text-sm text-center max-w-[260px] mb-6">
                             Use the buttons above to explain the active file or a selection.
                         </p>
                         <div className="w-full max-w-[280px] space-y-2.5">
@@ -302,7 +302,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                 </div>
                                 <div className="min-w-0">
                                     <span className="text-xs font-medium text-white/90 block">Explain File</span>
-                                    <span className="text-[11px] text-[#7F8A9A]">Analyzes the whole file</span>
+                                    <span className="text-[11px] text-[#8296B4]">Analyzes the whole file</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:border-[#5B8CFF]/20 hover:bg-white/[0.06] transition-colors">
@@ -311,24 +311,24 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                                 </div>
                                 <div className="min-w-0">
                                     <span className="text-xs font-medium text-white/90 block">Explain Selection</span>
-                                    <span className="text-[11px] text-[#7F8A9A]">Select code first, then click above</span>
+                                    <span className="text-[11px] text-[#8296B4]">Select code first, then click above</span>
                                 </div>
                             </div>
                         </div>
                         
                         {/* Feature Highlights */}
                         <div className="mt-6 text-center">
-                            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+                            <div className="flex items-center justify-center gap-4 text-xs text-[var(--az-text-faint)]">
                                 <div className="flex items-center gap-1">
-                                    <Zap size={12} className="text-yellow-400" />
+                                    <Zap size={12} className="text-[var(--az-warning)]" />
                                     <span>Smart Analysis</span>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <Target size={12} className="text-blue-400" />
+                                    <Target size={12} className="text-[var(--az-accent)]" />
                                     <span>Key Topics</span>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <MessageSquare size={12} className="text-green-400" />
+                                    <MessageSquare size={12} className="text-[var(--az-success)]" />
                                     <span>Clear Explanations</span>
                                 </div>
                             </div>

@@ -20,8 +20,8 @@ export function BackendStatusIndicator() {
             className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium tracking-tight shadow-lg backdrop-blur-md"
             style={{
                 background: 'rgba(14, 17, 22, 0.82)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.62)',
+                border: '1px solid rgba(230,237,248,0.08)',
+                color: 'rgba(230,237,248,0.62)',
             }}
         >
             <span

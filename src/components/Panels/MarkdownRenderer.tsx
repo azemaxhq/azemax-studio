@@ -93,7 +93,7 @@ function lightweightParse(markdown: string, appendCaret = false): ReactNode {
     return parts.map((part, i) => {
       if (!part) return null;
       if (part.startsWith('`') && part.endsWith('`')) {
-        return React.createElement('code', { key: i, className: 'bg-[#343541] text-[#ececec] px-1 py-0.5 rounded text-sm' }, part.slice(1, -1));
+        return React.createElement('code', { key: i, className: 'bg-[var(--az-surface-2)] text-[var(--az-text)] px-1 py-0.5 rounded text-sm' }, part.slice(1, -1));
       }
       if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
         return React.createElement('strong', { key: i, className: 'font-semibold' }, part.slice(2, -2));
@@ -103,7 +103,7 @@ function lightweightParse(markdown: string, appendCaret = false): ReactNode {
       }
       const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       if (linkMatch) {
-        return React.createElement('a', { key: i, href: linkMatch[2], target: '_blank', rel: 'noopener noreferrer', className: 'text-blue-400 hover:underline' }, linkMatch[1]);
+        return React.createElement('a', { key: i, href: linkMatch[2], target: '_blank', rel: 'noopener noreferrer', className: 'text-[var(--az-accent)] hover:underline' }, linkMatch[1]);
       }
       return part;
     }).filter(Boolean);
@@ -166,7 +166,7 @@ function lightweightParse(markdown: string, appendCaret = false): ReactNode {
 
     if (trimmed.startsWith('> ')) {
       result.push(
-        React.createElement('blockquote', { key: `quote-${result.length}`, className: 'border-l-3 border-[#5B8CFF] bg-[#141923] pl-4 py-2 my-3 text-[#7F8A9A]' },
+        React.createElement('blockquote', { key: `quote-${result.length}`, className: 'border-l-3 border-[#5B8CFF] bg-[#0D192B] pl-4 py-2 my-3 text-[#8296B4]' },
           parseInline(trimmed.slice(2))
         )
       );
@@ -314,17 +314,17 @@ export const CodeBlockRenderer: React.FC<{
   }, [code, onCopy]);
 
   return (
-    <div className="my-4 rounded-lg overflow-hidden border border-[#2E3746] bg-[#141923]">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#0B0E13] border-b border-[#2E3746]">
-        <span className="text-xs text-[#7F8A9A] font-mono">{language}</span>
+    <div className="my-4 rounded-lg overflow-hidden border border-[#2A4164] bg-[#0D192B]">
+      <div className="flex items-center justify-between px-4 py-2 bg-[#080F1C] border-b border-[#2A4164]">
+        <span className="text-xs text-[#8296B4] font-mono">{language}</span>
         {onCopy && (
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 text-xs text-[#7F8A9A] hover:text-[#A7B0BF] transition-colors"
+            className="flex items-center gap-1.5 text-xs text-[#8296B4] hover:text-[#A5B5CD] transition-colors"
             title="Copy Code"
           >
             {isCopied || copiedId === id ? (
-              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-[#3fb950]">
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-[var(--az-success)]">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             ) : (
@@ -337,7 +337,7 @@ export const CodeBlockRenderer: React.FC<{
           </button>
         )}
       </div>
-      <pre className="p-4 text-sm font-mono overflow-x-auto text-[#e6edf3] leading-relaxed bg-[#0B0E13]">
+      <pre className="p-4 text-sm font-mono overflow-x-auto text-[var(--az-text)] leading-relaxed bg-[var(--az-surface-input)]">
         <code className={`language-${language}`}>{code}</code>
       </pre>
     </div>

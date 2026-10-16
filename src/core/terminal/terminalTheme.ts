@@ -20,24 +20,24 @@ import { subscribe } from '../../settings/settingsStore';
 
 type XtermTheme = Record<string, string | undefined>;
 
-// Azemax terminal ANSI — calibrated for contrast and readability
+// Azemax terminal ANSI — calibrated for contrast against the midnight-navy shell
 const FALLBACK_ANSI = {
-  black: '#0C1118',
-  red: '#F47A85',          // error messages
-  green: '#4EC994',         // exit code 0 / success
-  yellow: '#E5C07B',        // warnings / stdin prompts
+  black: '#070D17',
+  red: '#FF7D8B',           // error messages
+  green: '#67D6A0',         // exit code 0 / success
+  yellow: '#F0C674',        // warnings / stdin prompts
   blue: '#5B8CFF',          // links / info
-  magenta: '#C678DD',       // special
-  cyan: '#56D4E8',          // status lines ("Running...")
-  white: '#ABB2BF',         // dim output / secondary text (distinct from foreground)
-  brightBlack: '#5C6370',   // comments / muted
-  brightRed: '#F28B82',
-  brightGreen: '#66D9A6',
-  brightYellow: '#ECD289',
-  brightBlue: '#7FA9FF',
-  brightMagenta: '#D19FFF',
-  brightCyan: '#7EE8F5',    // bright status / highlights
-  brightWhite: '#EAEEF4',   // primary foreground (used by bold text)
+  magenta: '#C9A8F0',       // special
+  cyan: '#7FA8F0',          // status lines ("Running...")
+  white: '#A5B5CD',         // dim output / secondary text (distinct from foreground)
+  brightBlack: '#62748F',   // comments / muted
+  brightRed: '#FF9AA5',
+  brightGreen: '#8FE2B4',
+  brightYellow: '#F5D79A',
+  brightBlue: '#79A3FF',
+  brightMagenta: '#DCBDFF',
+  brightCyan: '#A9C4F5',    // bright status / highlights
+  brightWhite: '#E6EDF8',   // primary foreground (used by bold text)
 } as const;
 
 function cssVar(name: string, fallback: string): string {
@@ -52,13 +52,13 @@ export function getXtermTheme(): XtermTheme {
   const settingsTheme = getSettings().general.theme;
   // Prefer CSS variables (live theme), fall back to settings-driven palette
   const isDark = settingsTheme === 'dark' || (settingsTheme === 'auto' && (typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)').matches : true));
-  // Terminal lives on its own layer: #0C1118, never pure black
-  const background = cssVar('--az-terminal-bg', isDark ? '#0C1118' : '#f8f9fa');
+  // Terminal lives on its own layer: #070D17, never pure black
+  const background = cssVar('--az-terminal-bg', isDark ? '#070D17' : '#f8f9fa');
   // Foreground: bright enough to be clearly readable against the dark terminal bg
-  const foreground = cssVar('--az-terminal-fg', isDark ? '#CDD6E0' : '#24292e');
-  const selectionBackground = cssVar('--az-selection-bg', 'rgba(91,140,255,0.28)');
+  const foreground = cssVar('--az-terminal-fg', isDark ? '#C6D3E6' : '#24292e');
+  const selectionBackground = cssVar('--az-selection-bg', 'rgba(91,140,255,0.26)');
   // Cursor: Azemax bright accent for visibility
-  const cursor = cssVar('--az-terminal-cursor', '#78A7FF');
+  const cursor = cssVar('--az-terminal-cursor', '#79A3FF');
   const cursorAccent = cssVar('--az-terminal-cursor-accent', background);
 
   return {

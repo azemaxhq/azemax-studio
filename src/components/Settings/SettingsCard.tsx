@@ -39,7 +39,7 @@ export const SettingsCard: React.FC<SettingsCardProps> = memo(({ def, highlighte
 
   const cardClass = `rounded-xl border px-4 py-3 flex items-center justify-between gap-4 flex-wrap transition-colors ${
     highlighted
-      ? 'border-blue-400/50 bg-blue-500/[0.07]'
+      ? 'border-[rgba(91,140,255,0.5)] bg-[var(--az-accent)]/[0.07]'
       : 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.05] hover:border-white/[0.13]'
   }`;
 
@@ -52,7 +52,7 @@ export const SettingsCard: React.FC<SettingsCardProps> = memo(({ def, highlighte
             <div className="flex items-center gap-1.5">
               <span className="text-[13px] font-medium text-white/85">{def.label}</span>
               {def.requiresRestart && (
-                <span className="text-[9px] font-medium text-amber-400/90 bg-amber-400/10 border border-amber-400/20 rounded px-1 py-px uppercase tracking-wide">
+                <span className="text-[9px] font-medium text-[rgba(240,198,116,0.9)] bg-[rgba(240,198,116,0.1)] border border-[rgba(240,198,116,0.2)] rounded px-1 py-px uppercase tracking-wide">
                   Reload
                 </span>
               )}
@@ -68,8 +68,8 @@ export const SettingsCard: React.FC<SettingsCardProps> = memo(({ def, highlighte
             aria-describedby={describedBy}
             className={`shrink-0 px-3 py-1.5 text-[11px] font-medium rounded-lg border focus:outline-none focus-visible:ring-2 transition-colors ${
               needsConfirm
-                ? 'bg-red-500/10 border-red-500/20 text-red-300 hover:bg-red-500/20 focus-visible:ring-red-400/40'
-                : 'bg-white/[0.06] border-white/10 text-white/70 hover:text-white hover:bg-white/10 focus-visible:ring-blue-400/40'
+                ? 'bg-[rgba(255,125,139,0.1)] border-[rgba(255,125,139,0.2)] text-[var(--az-error)] hover:bg-[rgba(255,125,139,0.2)] focus-visible:ring-[rgba(255,125,139,0.4)]'
+                : 'bg-white/[0.06] border-white/10 text-white/70 hover:text-white hover:bg-white/10 focus-visible:ring-[rgba(91,140,255,0.4)]'
             }`}
           >
             {def.actionLabel}
@@ -98,7 +98,7 @@ export const SettingsCard: React.FC<SettingsCardProps> = memo(({ def, highlighte
         <div className="flex items-center gap-1.5">
           <span className="text-[13px] font-medium text-white/85">{def.label}</span>
           {def.requiresRestart && (
-            <span className="text-[9px] font-medium text-amber-400/90 bg-amber-400/10 border border-amber-400/20 rounded px-1 py-px uppercase tracking-wide">
+            <span className="text-[9px] font-medium text-[rgba(240,198,116,0.9)] bg-[rgba(240,198,116,0.1)] border border-[rgba(240,198,116,0.2)] rounded px-1 py-px uppercase tracking-wide">
               Reload
             </span>
           )}
@@ -112,7 +112,7 @@ export const SettingsCard: React.FC<SettingsCardProps> = memo(({ def, highlighte
             onClick={handleReset}
             title="Reset to default"
             aria-label={`Reset ${def.label} to default`}
-            className="p-1.5 rounded-md text-white/30 hover:text-white/80 hover:bg-white/[0.07] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
+            className="p-1.5 rounded-md text-white/30 hover:text-white/80 hover:bg-white/[0.07] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] transition-colors"
           >
             <RotateCcw size={12} />
           </button>

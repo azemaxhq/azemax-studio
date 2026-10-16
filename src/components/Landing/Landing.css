@@ -3,7 +3,9 @@
    "An advanced developer environment emerging from a dark planetary world"
    ============================================================ */
 
-:root {
+/* Scoped to the landing root so these tokens never leak into the IDE shell
+   (the IDE owns the global --az-surface/--az-* design system in index.css). */
+.az-landing-root {
   /* Color Palette */
   --az-void: #000204;
   --az-space: #020307;

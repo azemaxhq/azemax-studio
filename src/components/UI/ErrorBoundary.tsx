@@ -40,7 +40,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <div
                     style={{
                         padding: '16px 20px',
-                        color: '#e2e8f0',
+                        color: '#DCE6F5',
                         fontFamily: 'ui-monospace, SFMono-Regular, monospace',
                         fontSize: '12px',
                         background: 'rgba(248,113,113,0.05)',
@@ -49,10 +49,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                         margin: '8px',
                     }}
                 >
-                    <div style={{ color: '#f87171', fontWeight: 600, marginBottom: 6 }}>
+                    <div style={{ color: '#FF7D8B', fontWeight: 600, marginBottom: 6 }}>
                         Something went wrong in this section
                     </div>
-                    <div style={{ color: '#94a3b8' }}>{error.message || String(error)}</div>
+                    <div style={{ color: 'var(--az-text-muted)' }}>{error.message || String(error)}</div>
                 </div>
             );
         }

@@ -131,7 +131,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                         aria-label={isRunning ? 'Stop execution' : 'Run code'}
                         className={`h-9 min-w-9 px-2 rounded-md font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all active:scale-95 border
                             ${isRunning
-                                ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                                ? 'bg-[rgba(255,125,139,0.15)] text-[var(--az-error)] border-[rgba(255,125,139,0.3)]'
                                 : !activeFile
                                     ? 'bg-white/[0.04] text-white/30 border-white/[0.06]'
                                     : 'bg-[var(--az-accent)] text-white border-[var(--az-accent-bright)]'

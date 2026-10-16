@@ -99,7 +99,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, items }
                         }}
                         className={`w-full text-left px-2.5 h-[28px] text-[12.5px] flex items-center justify-between transition-colors rounded-[5px] mx-1 select-none leading-none
                         ${item.danger
-                                ? 'text-red-400 hover:text-white hover:bg-red-500/80'
+                                ? 'text-[var(--az-error)] hover:text-white hover:bg-[rgba(255,125,139,0.8)]'
                                 : 'text-white/75 hover:text-white hover:bg-white/[0.07]'
                             }`}
                         style={{ width: 'calc(100% - 8px)' }}

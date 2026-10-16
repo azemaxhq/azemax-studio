@@ -82,7 +82,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
     // Premium artifact / document card — Azemax workspace resource
     const preview = content.slice(0, 120).replace(/\s+/g, ' ').trim();
     return (
-        <div className="my-3 rounded-[10px] border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset] hover:border-[var(--az-border-strong)] transition-colors">
+        <div className="my-3 rounded-[10px] border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden shadow-[0_1px_0_rgba(230,237,248,0.02)_inset] hover:border-[var(--az-border-strong)] transition-colors">
             <div
                 className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.02] cursor-pointer transition-colors gap-3"
                 onClick={() => setIsExpanded(!isExpanded)}
@@ -114,7 +114,7 @@ const ArtifactBlock: React.FC<ArtifactProps> = ({ title, type, language, content
                 </div>
             </div>
             {isExpanded && (
-                <div className="border-t border-[var(--az-border)] bg-[#0C1118]">
+                <div className="border-t border-[var(--az-border)] bg-[#070D17]">
                     <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] max-h-[320px] overflow-y-auto">
                         {highlightedCode
                             ? <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
@@ -200,7 +200,7 @@ const MessageCodeBlock = ({
                                 }
                             }}
                             disabled={applyState === 'applying'}
-                            className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${applyState === 'applied' ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-300' : applyState === 'failed' ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border-[var(--az-accent)]'} ${applyState === 'applying' ? 'opacity-70 cursor-wait' : ''}`}
+                            className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${applyState === 'applied' ? 'bg-[rgba(103,214,160,0.15)] border-[rgba(103,214,160,0.25)] text-[var(--az-success)]' : applyState === 'failed' ? 'bg-[rgba(255,125,139,0.1)] border-[rgba(255,125,139,0.2)] text-[var(--az-error)]' : 'bg-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] border-[var(--az-accent)]'} ${applyState === 'applying' ? 'opacity-70 cursor-wait' : ''}`}
                             title={applyState === 'failed' ? 'Apply failed — retry' : applyState === 'applied' ? 'Applied' : 'Apply to editor'}
                         >
                             {applyState === 'idle' && 'Apply'}
@@ -212,13 +212,13 @@ const MessageCodeBlock = ({
                 </div>
             </div>
             <div className="relative">
-                <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] bg-[#0C1118] max-h-[360px] overflow-y-auto">
+                <pre className="p-3.5 text-[12.5px] font-mono overflow-x-auto ai-chat-scroll text-[var(--az-text-secondary)] leading-[1.65] bg-[#070D17] max-h-[360px] overflow-y-auto">
                     {highlightedCode && expanded
                         ? <code dangerouslySetInnerHTML={{ __html: isLongBlock && !expanded ? tryHighlight(displayCode, language) || '' : highlightedCode }} />
                         : <code>{displayCode}</code>}
                 </pre>
                 {isLongBlock && !expanded && (
-                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#0C1118] to-transparent pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#070D17] to-transparent pointer-events-none" />
                 )}
             </div>
             {isLongBlock && (
@@ -380,25 +380,25 @@ const MessageItem = React.memo(({
         <div className={`ai-message flex w-full ${msg.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
             <div className={`flex flex-col min-w-0 ${msg.role === 'ai' ? 'w-full max-w-full' : 'items-end max-w-[62%] ml-auto'}`}>
                 {isEditing ? (
-                    <div className="w-full space-y-3 p-3 rounded-[10px] border" style={{ background: '#171A20', borderColor: 'rgba(255,255,255,0.07)' }}>
+                    <div className="w-full space-y-3 p-3 rounded-[10px] border" style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
                         <textarea
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
                             className="w-full p-2.5 rounded-[8px] text-[13px] leading-relaxed resize-none focus:outline-none focus-visible:outline-none placeholder:text-white/30"
-                            style={{ background: '#101215', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text)', boxShadow: 'none', outline: 'none' }}
+                            style={{ background: '#070D17', border: '1px solid rgba(230,237,248,0.07)', color: 'var(--az-text)', boxShadow: 'none', outline: 'none' }}
                             rows={3}
                         />
                         <div className="flex gap-1.5 justify-end">
                             <button onClick={onCancelEdit} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ color: 'var(--az-text-muted)' }}>Cancel</button>
-                            <button onClick={() => onSaveEdit(msg.id)} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ background: 'var(--az-text)', color: '#0B0E13' }}>Save</button>
+                            <button onClick={() => onSaveEdit(msg.id)} className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15" style={{ background: 'var(--az-text)', color: '#080F1C' }}>Save</button>
                         </div>
                     </div>
                 ) : (
                     <>
                         <div className={`group relative break-words ${msg.role === 'ai'
                             ? 'w-full bg-transparent'
-                            : 'px-[13px] py-[7px] rounded-[16px] rounded-br-[5px] border max-w-full transition-all duration-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_1px_2px_rgba(0,0,0,0.14),0_4px_12px_rgba(0,0,0,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_2px_6px_rgba(0,0,0,0.16),0_4px_16px_rgba(0,0,0,0.08)]'
-                            }`} style={msg.role !== 'ai' ? { background: '#181E29', borderColor: 'rgba(91,140,255,0.18)', color: 'var(--az-text)' } : undefined} onMouseEnter={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = '#1D2430'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(91,140,255,0.26)'; } : undefined} onMouseLeave={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = '#181E29'; (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(91,140,255,0.18)'; } : undefined}>
+                            : 'px-[13px] py-[7px] rounded-[14px] rounded-br-[4px] max-w-full transition-colors duration-150'
+                            }`} style={msg.role !== 'ai' ? { background: '#112039', color: 'var(--az-text)' } : undefined} onMouseEnter={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = '#152744'; } : undefined} onMouseLeave={msg.role !== 'ai' ? e => { (e.currentTarget as HTMLDivElement).style.background = '#112039'; } : undefined}>
 
                             {msg.role === 'ai' && (
                                 <div className="flex items-center gap-2 mb-1.5 select-none">
@@ -452,7 +452,7 @@ const MessageItem = React.memo(({
                                         title={copiedId === `msg-${msg.id}` ? 'Copied' : 'Copy'}
                                         aria-label="Copy response"
                                     >
-                                        {copiedId === `msg-${msg.id}` ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} strokeWidth={1.75} />}
+                                        {copiedId === `msg-${msg.id}` ? <Check size={12} className="text-[var(--az-success)]" /> : <Copy size={12} strokeWidth={1.75} />}
                                     </button>
                                     {onRegenerate && (
                                         <button
@@ -467,10 +467,10 @@ const MessageItem = React.memo(({
                                     )}
                                     {onReaction && (
                                         <>
-                                            <div className="w-px h-3.5 mx-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                                            <div className="w-px h-3.5 mx-1" style={{ background: 'rgba(230,237,248,0.07)' }} />
                                             <button
                                                 onClick={() => onReaction(msg.id, 'up')}
-                                                className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'up' ? 'text-emerald-400 bg-white/[0.06]' : ''}`}
+                                                className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'up' ? 'text-[var(--az-success)] bg-white/[0.06]' : ''}`}
                                                 style={{ color: reaction === 'up' ? undefined : 'var(--az-text-secondary)' }}
                                                 title="Like"
                                                 aria-label="Like"
@@ -479,7 +479,7 @@ const MessageItem = React.memo(({
                                             </button>
                                             <button
                                                 onClick={() => onReaction(msg.id, 'down')}
-                                                className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'down' ? 'text-red-400 bg-white/[0.06]' : ''}`}
+                                                className={`w-[26px] h-[26px] rounded-[6px] flex items-center justify-center transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${reaction === 'down' ? 'text-[var(--az-error)] bg-white/[0.06]' : ''}`}
                                                 style={{ color: reaction === 'down' ? undefined : 'var(--az-text-secondary)' }}
                                                 title="Dislike"
                                                 aria-label="Dislike"
@@ -500,7 +500,7 @@ const MessageItem = React.memo(({
                                         title="Copy"
                                     >
                                         {copiedId === `msg-${msg.id}` ? (
-                                            <Check size={12} className="text-emerald-400" />
+                                            <Check size={12} className="text-[var(--az-success)]" />
                                         ) : (
                                             <Copy size={12} className="group-hover/btn:scale-110 transition-transform" />
                                         )}
@@ -1845,10 +1845,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
 
 
     return (
-        <div className="ai-chat-root flex flex-col h-full w-full relative overflow-hidden min-h-0" style={{ background: "#101215" }}>
+        <div className="ai-chat-root flex flex-col h-full w-full relative overflow-hidden min-h-0" style={{ background: "var(--az-surface)" }}>
 
             {/* Subtle depth — hairline, no gradients, no blue */}
-            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0.01), transparent 22%), transparent' }} />
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to bottom, rgba(230,237,248,0.01), transparent 22%), transparent' }} />
 
             {/* Sidebar (History) — premium minimal */}
             <div
@@ -1864,15 +1864,15 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     transformOrigin: 'left center'
                 }}
             >
-                <div className="flex flex-col h-full border-r shadow-[4px_0_24px_rgba(0,0,0,0.32)]" style={{ background: "#0E1116", borderColor: "rgba(255,255,255,0.06)" }}>
+                <div className="flex flex-col h-full border-r shadow-[4px_0_24px_rgba(0,0,0,0.32)]" style={{ background: "var(--az-bg-subtle)", borderColor: "var(--az-border-subtle)" }}>
                     {/* Sidebar Header — premium, balanced, neutral */}
-                    <div className="h-[48px] shrink-0 flex items-center justify-between px-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div className="h-[48px] shrink-0 flex items-center justify-between px-3" style={{ borderBottom: '1px solid rgba(230,237,248,0.05)' }}>
                         <button
                             onClick={() => { handleNewChat(); setShowSidebar(false); }}
                             className="inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-[8px] text-[13px] font-medium tracking-tight transition-colors duration-150 hover:bg-white/[0.06] active:bg-white/[0.08] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
                             style={{ color: 'var(--az-text)' }}
                         >
-                            <Plus size={14} strokeWidth={2} style={{ color: 'rgba(255,255,255,0.72)' }} />
+                            <Plus size={14} strokeWidth={2} style={{ color: 'rgba(230,237,248,0.72)' }} />
                             New chat
                         </button>
                         <button
@@ -1894,20 +1894,20 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 aria-label="Search conversations"
                                 className="w-full h-8 pl-8 pr-3 text-[13px] rounded-[8px] outline-none transition-all duration-150 placeholder:text-white/30 focus:outline-none focus-visible:outline-none"
                                 style={{
-                                    background: 'rgba(255,255,255,0.04)',
-                                    border: '1px solid rgba(255,255,255,0.07)',
+                                    background: 'var(--az-surface-input)',
+                                    border: '1px solid var(--az-border)',
                                     color: 'var(--az-text)',
                                     boxShadow: 'none',
                                 }}
                                 onFocus={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)';
-                                    e.currentTarget.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.04)';
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                    e.currentTarget.style.borderColor = 'var(--az-accent-border)';
+                                    e.currentTarget.style.boxShadow = 'var(--az-focus-ring)';
+                                    e.currentTarget.style.background = 'var(--az-surface-input)';
                                 }}
                                 onBlur={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
+                                    e.currentTarget.style.borderColor = 'var(--az-border)';
                                     e.currentTarget.style.boxShadow = 'none';
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                    e.currentTarget.style.background = 'var(--az-surface-input)';
                                 }}
                                 onChange={(e) => {
                                     const searchTerm = e.target.value.toLowerCase();
@@ -1917,7 +1917,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     });
                                 }}
                             />
-                            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: 'rgba(255,255,255,0.32)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: 'rgba(230,237,248,0.32)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                         </div>
@@ -1927,11 +1927,11 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-2 py-1">
                         {sessions.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center px-4 py-12">
-                                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center mb-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                                    <MessageSquare size={16} style={{ color: 'rgba(255,255,255,0.28)' }} />
+                                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center mb-3" style={{ background: 'rgba(230,237,248,0.04)', border: '1px solid rgba(230,237,248,0.06)' }}>
+                                    <MessageSquare size={16} style={{ color: 'rgba(230,237,248,0.28)' }} />
                                 </div>
-                                <p className="text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.55)' }}>No conversations yet</p>
-                                <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.30)' }}>Your chats will appear here</p>
+                                <p className="text-[13px] font-medium" style={{ color: 'rgba(230,237,248,0.55)' }}>No conversations yet</p>
+                                <p className="text-[11px] mt-1" style={{ color: 'rgba(230,237,248,0.30)' }}>Your chats will appear here</p>
                             </div>
                         ) : (() => {
                             const today = new Date();
@@ -1968,7 +1968,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 <div key={group.label} className="mb-5">
                                     {/* Group Label — secondary */}
                                     <div className="px-2.5 pt-2 pb-1.5">
-                                        <span className="text-[10px] font-medium uppercase" style={{ color: 'rgba(255,255,255,0.32)', letterSpacing: '0.08em' }}>{group.label}</span>
+                                        <span className="text-[10px] font-medium uppercase" style={{ color: 'rgba(230,237,248,0.32)', letterSpacing: '0.08em' }}>{group.label}</span>
                                     </div>
 
                                     {/* Sessions in Group — compact list */}
@@ -1983,20 +1983,20 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                 onClick={() => handleSelectSession(session.id)}
                                                 className={`group relative flex items-center gap-2.5 pl-2.5 pr-2 py-2 rounded-[8px] cursor-pointer transition-colors duration-150 ${isActive ? 'is-active' : ''}`}
                                                 style={{
-                                                    background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent',
-                                                    border: isActive ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+                                                    background: isActive ? 'var(--az-accent-soft)' : 'transparent',
+                                                    border: isActive ? '1px solid var(--az-accent-border)' : '1px solid transparent',
                                                 }}
                                             >
                                                 {isActive && (
-                                                    <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.18)' }} />
+                                                    <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full" style={{ background: 'var(--az-accent)' }} />
                                                 )}
-                                                <MessageSquare size={14} className="shrink-0 transition-colors duration-150" style={{ color: isActive ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.28)' }} />
-                                                <span className="text-[13px] leading-none truncate pr-14 flex-1 min-w-0 transition-colors duration-150" style={{ color: isActive ? '#F1F3F5' : 'rgba(255,255,255,0.62)', fontWeight: isActive ? 500 : 400 }}>
+                                                <MessageSquare size={14} className="shrink-0 transition-colors duration-150" style={{ color: isActive ? 'var(--az-text)' : 'var(--az-text-muted)' }} />
+                                                <span className="text-[13px] leading-none truncate pr-14 flex-1 min-w-0 transition-colors duration-150" style={{ color: isActive ? 'var(--az-text)' : 'var(--az-text-secondary)', fontWeight: isActive ? 500 : 400 }}>
                                                     {session.title || 'New Chat'}
                                                 </span>
 
                                                 {/* Hover Actions — reveal on hover/focus */}
-                                                <div className={`absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-[6px] p-0.5 transition-all duration-150 ${isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0'}`} style={{ background: isActive ? 'rgba(19,27,42,0.96)' : 'rgba(20,23,28,0.96)', border: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(6px)' }}>
+                                                <div className={`absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-[6px] p-0.5 transition-all duration-150 ${isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0'}`} style={{ background: isActive ? 'var(--az-surface-2)' : 'var(--az-surface-2)', border: '1px solid var(--az-border-subtle)', backdropFilter: 'blur(6px)' }}>
                                                     <button
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
@@ -2016,7 +2016,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                         }}
                                                         aria-label="Rename conversation"
                                                         className="w-6 h-6 inline-flex items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-white/[0.08]"
-                                                        style={{ color: 'rgba(255,255,255,0.55)' }}
+                                                        style={{ color: 'rgba(230,237,248,0.55)' }}
                                                         title="Rename"
                                                     >
                                                         <Edit3 size={12} strokeWidth={1.75} />
@@ -2024,10 +2024,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                     <button
                                                         onClick={(e) => handleDeleteSession(e, session.id)}
                                                         aria-label="Delete conversation"
-                                                        className="w-6 h-6 inline-flex items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-red-500/10"
-                                                        style={{ color: 'rgba(255,255,255,0.45)' }}
-                                                        onMouseEnter={(e) => (e.currentTarget.style.color = '#F87171')}
-                                                        onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,255,255,0.45)')}
+                                                        className="w-6 h-6 inline-flex items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-[rgba(255,125,139,0.1)]"
+                                                        style={{ color: 'rgba(230,237,248,0.45)' }}
+                                                        onMouseEnter={(e) => (e.currentTarget.style.color = '#FF7D8B')}
+                                                        onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(230,237,248,0.45)')}
                                                         title="Delete"
                                                     >
                                                         <Trash2 size={12} strokeWidth={1.75} />
@@ -2043,8 +2043,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     </div>
 
                     {/* Sidebar Footer — pinned, subtle */}
-                    <div className="shrink-0 px-3 py-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.01)' }}>
-                        <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.32)' }}>{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
+                    <div className="shrink-0 px-3 py-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(230,237,248,0.06)', background: 'rgba(230,237,248,0.01)' }}>
+                        <span className="text-[11px]" style={{ color: 'rgba(230,237,248,0.32)' }}>{sessions.length} conversation{sessions.length !== 1 ? 's' : ''}</span>
                         <button
                             onClick={async () => {
                                 const doClear = () => {
@@ -2066,7 +2066,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 }
                             }}
                             className="text-[11px] font-medium transition-colors duration-150 hover:text-white/80"
-                            style={{ color: 'rgba(255,255,255,0.38)' }}
+                            style={{ color: 'rgba(230,237,248,0.38)' }}
                         >
                             Clear all
                         </button>
@@ -2093,15 +2093,15 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         <button
                             onClick={() => setShowSidebar(!showSidebar)}
                             className="w-[28px] h-[28px] rounded-[7px] flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15"
-                            style={{ color: showSidebar ? 'var(--az-text-secondary)' : 'var(--az-text-muted)', background: showSidebar ? 'rgba(255,255,255,0.06)' : 'transparent', border: showSidebar ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent' }}
+                            style={{ color: showSidebar ? 'var(--az-text-secondary)' : 'var(--az-text-muted)', background: showSidebar ? 'rgba(230,237,248,0.06)' : 'transparent', border: showSidebar ? '1px solid rgba(230,237,248,0.06)' : '1px solid transparent' }}
                             title="Chat history"
                             aria-label="Toggle history"
                         >
                             <History size={13} strokeWidth={1.75} />
                         </button>
                         <div className="w-px h-[14px] mx-0.5 hidden sm:block" style={{ background: 'var(--az-divider-strong)' }} />
-                        <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.09em] uppercase select-none" style={{ color: '#AEB8C6', letterSpacing: '0.09em' }}>
-                          <span className={`w-[5px] h-[5px] rounded-full shrink-0 ${isLoading ? 'az-loading-pulse' : ''}`} style={{ background: isLoading ? 'var(--az-accent)' : '#62D6A7', opacity: isLoading ? 1 : 0.85 }} title={isLoading ? 'Working' : 'Ready'} />
+                        <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.09em] uppercase select-none" style={{ color: 'var(--az-text-secondary)', letterSpacing: '0.09em' }}>
+                          <span className={`w-[5px] h-[5px] rounded-full shrink-0 ${isLoading ? 'az-loading-pulse' : ''}`} style={{ background: isLoading ? 'var(--az-accent)' : 'var(--az-success)', opacity: isLoading ? 1 : 0.85 }} title={isLoading ? 'Working' : 'Ready'} />
                           AZEMAX
                         </span>
                     </div>
@@ -2172,7 +2172,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             <div className="mb-3 opacity-[0.88]">
                                 <AzemaxLogo size={22} />
                             </div>
-                            <div className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: '#AEB8C6' }}>Azemax</div>
+                            <div className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: 'var(--az-text-secondary)' }}>Azemax</div>
                             <h3 className="text-[14px] font-semibold tracking-tight leading-tight mt-1" style={{ color: 'var(--az-text)' }}>What are you building?</h3>
                             <p className="text-[12px] leading-[1.5] mt-1.5 max-w-[280px] tracking-tight" style={{ color: 'var(--az-text-secondary)' }}>
                                 Ask about your code, files, or let Azemax make changes directly.
@@ -2196,10 +2196,10 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 const isError = msg.role === 'ai' && /^(No AI providers|AI is|Verification failed|Edit failed|Could not|Failed to|The file changed)/i.test(msg.text);
                                 if (isError) {
                                     return (
-                                        <div key={msg.id || index} className="w-full rounded-xl border border-amber-500/15 bg-amber-500/[0.06] px-3 py-2.5 flex items-start gap-2.5 message-appear">
+                                        <div key={msg.id || index} className="w-full rounded-xl border border-[rgba(240,198,116,0.15)] bg-[var(--az-warning)]/[0.06] px-3 py-2.5 flex items-start gap-2.5 message-appear">
                                             <span className="mt-0.5 text-[var(--az-text-muted)] text-[13px]">⚠</span>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-[13px] leading-[1.5] text-amber-100/80 whitespace-pre-wrap break-words">{msg.text.slice(0, 400)}</div>
+                                                <div className="text-[13px] leading-[1.5] text-[rgba(240,198,116,0.8)] whitespace-pre-wrap break-words">{msg.text.slice(0, 400)}</div>
                                                 <div className="flex gap-2 mt-2">
                                                     <button onClick={() => handleSend(lastUserMessage)} className="px-2.5 py-1 rounded-md bg-white text-black text-[11px] font-medium hover:bg-white/90 transition-colors">Retry</button>
                                                     <button onClick={() => navigator.clipboard.writeText(msg.text)} className="px-2.5 py-1 rounded-md bg-[var(--az-surface-3)] border border-[var(--az-border)] text-[11px] text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] transition-colors">Copy details</button>
@@ -2293,7 +2293,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                             <div className="flex items-center justify-between px-3 py-2.5 gap-3">
                                 <div className="flex items-center gap-2.5 min-w-0">
                                     <span className="w-7 h-7 rounded-[7px] bg-[rgba(91,140,255,0.10)] border border-[rgba(91,140,255,0.20)] flex items-center justify-center shrink-0">
-                                        <Eye size={13} strokeWidth={1.75} className="text-[#8FADFF]" />
+                                        <Eye size={13} strokeWidth={1.75} className="text-[#8FB0FF]" />
                                     </span>
                                     <div className="min-w-0">
                                         <div className="text-[12.5px] font-medium tracking-tight leading-none" style={{ color: 'var(--az-text)' }}>
@@ -2316,14 +2316,14 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                     <button
                                         onClick={handleAcceptProposal}
                                         aria-label="Accept and apply proposed changes"
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[7px] text-[11px] font-semibold bg-[rgba(46,160,67,0.16)] border border-[rgba(46,160,67,0.30)] text-emerald-200 hover:bg-[rgba(46,160,67,0.24)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-300/30"
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[7px] text-[11px] font-semibold bg-[rgba(103,214,160,0.16)] border border-[rgba(103,214,160,0.30)] text-[var(--az-success)] hover:bg-[rgba(103,214,160,0.24)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[rgba(103,214,160,0.3)]"
                                     >
                                         <Check size={11} strokeWidth={2.25} />
                                         Accept
                                     </button>
                                 </div>
                             </div>
-                            <div className="border-t border-white/[0.05] bg-[rgba(255,255,255,0.01)]">
+                            <div className="border-t border-white/[0.05] bg-[rgba(230,237,248,0.01)]">
                                 {pendingProposal.changes.map((c, i) => {
                                     const beforeLines = c.before ? c.before.split('\n').length : 0;
                                     const afterLines = c.after ? c.after.split('\n').length : 0;
@@ -2331,7 +2331,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                         <details key={`${c.kind}-${c.path}-${i}`} className="border-b last:border-b-0 border-white/[0.04]">
                                             <summary className="flex items-center justify-between gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.02] transition-colors list-none">
                                                 <div className="flex items-center gap-2 min-w-0">
-                                                    <span className="text-[10px] font-mono font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.07]" style={{ color: c.kind === 'delete' ? '#FF8A9D' : c.kind === 'create' ? '#7EE2A8' : '#8FADFF' }}>
+                                                    <span className="text-[10px] font-mono font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.07]" style={{ color: c.kind === 'delete' ? 'var(--az-error)' : c.kind === 'create' ? 'var(--az-success)' : 'var(--az-accent-bright)' }}>
                                                         {c.kind}
                                                     </span>
                                                     <span className="text-[12.5px] truncate" style={{ color: 'var(--az-text-secondary)' }}>
@@ -2339,12 +2339,12 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                                     </span>
                                                 </div>
                                                 <span className="font-mono text-[11px] shrink-0">
-                                                    {c.after !== null && <span className="text-emerald-400/70">+{afterLines} </span>}
-                                                    {c.before !== null && <span className="text-red-400/60">-{beforeLines}</span>}
+                                                    {c.after !== null && <span className="text-[rgba(103,214,160,0.7)]">+{afterLines} </span>}
+                                                    {c.before !== null && <span className="text-[rgba(255,125,139,0.6)]">-{beforeLines}</span>}
                                                 </span>
                                             </summary>
                                             {c.after !== null && (
-                                                <pre className="mx-3 mb-2.5 p-2.5 rounded-lg bg-[#0B0E13] border border-white/10 overflow-x-auto text-[11px] font-mono leading-relaxed text-[#E7ECF3] max-h-[240px] overflow-y-auto whitespace-pre-wrap break-words">
+                                                <pre className="mx-3 mb-2.5 p-2.5 rounded-lg bg-[#080F1C] border border-white/10 overflow-x-auto text-[11px] font-mono leading-relaxed text-[#E6EDF8] max-h-[240px] overflow-y-auto whitespace-pre-wrap break-words">
                                                     {c.after.slice(0, 6000)}{c.after.length > 6000 ? '\n… (truncated preview)' : ''}
                                                 </pre>
                                             )}
@@ -2361,20 +2361,20 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     )}
                     {/* Premium change summary — Azemax workspace */}
                     {lastDiffs.length > 0 && (
-                        <div className="rounded-[10px] border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset,0_4px_12px_rgba(0,0,0,0.14)]">
+                        <div className="rounded-[10px] border border-[var(--az-border)] bg-[var(--az-surface-2)] overflow-hidden shadow-[0_1px_0_rgba(230,237,248,0.02)_inset,0_4px_12px_rgba(0,0,0,0.14)]">
                             {/* Summary header */}
                             <div className="flex items-center justify-between px-3 py-2.5 gap-3">
                                 <div className="flex items-center gap-2.5 min-w-0">
-                                    <span className="w-7 h-7 rounded-[7px] bg-[rgba(46,160,67,0.09)] border border-[rgba(46,160,67,0.14)] flex items-center justify-center shrink-0">
-                                        <FileCode size={13} strokeWidth={1.75} className="text-emerald-300/80" />
+                                    <span className="w-7 h-7 rounded-[7px] bg-[rgba(103,214,160,0.09)] border border-[rgba(103,214,160,0.14)] flex items-center justify-center shrink-0">
+                                        <FileCode size={13} strokeWidth={1.75} className="text-[rgba(103,214,160,0.8)]" />
                                     </span>
                                     <div className="min-w-0">
                                         <div className="text-[12.5px] font-medium tracking-tight leading-none" style={{ color: 'var(--az-text)' }}>
                                             {lastDiffs.length} file{lastDiffs.length !== 1 ? 's' : ''} changed
                                         </div>
                                         <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-[11px] font-mono font-medium tracking-tight text-emerald-400/75">+{lastDiffs.reduce((a, d) => a + d.added, 0)}</span>
-                                            <span className="text-[11px] font-mono font-medium tracking-tight text-red-400/65">-{lastDiffs.reduce((a, d) => a + d.removed, 0)}</span>
+                                            <span className="text-[11px] font-mono font-medium tracking-tight text-[rgba(103,214,160,0.75)]">+{lastDiffs.reduce((a, d) => a + d.added, 0)}</span>
+                                            <span className="text-[11px] font-mono font-medium tracking-tight text-[rgba(255,125,139,0.65)]">-{lastDiffs.reduce((a, d) => a + d.removed, 0)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2407,7 +2407,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                 </div>
                             </div>
                             {/* Per-file rows — subtle tonal separation */}
-                            <div className="border-t border-white/[0.05] bg-[rgba(255,255,255,0.01)]">
+                            <div className="border-t border-white/[0.05] bg-[rgba(230,237,248,0.01)]">
                                 {lastDiffs.map(d => (
                                     <div key={d.file} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                                         <div className="flex items-center gap-2 min-w-0">
@@ -2421,8 +2421,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[11px]">
-                                                <span className="text-emerald-400/70">+{d.added}</span>
-                                                {d.removed > 0 && <span className="text-red-400/60">-{d.removed}</span>}
+                                                <span className="text-[rgba(103,214,160,0.7)]">+{d.added}</span>
+                                                {d.removed > 0 && <span className="text-[rgba(255,125,139,0.6)]">-{d.removed}</span>}
                                             </span>
                                             <button
                                                 onClick={() => {
@@ -2694,11 +2694,11 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     background: transparent;
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: rgba(255, 255, 255, 0.1);
+                    background: rgba(230,237,248, 0.1);
                     border-radius: 3px;
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                    background: rgba(255, 255, 255, 0.15);
+                    background: rgba(230,237,248, 0.15);
                 }
             `}</style>
             </div>

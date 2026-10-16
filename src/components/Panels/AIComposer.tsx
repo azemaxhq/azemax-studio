@@ -487,7 +487,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                         </button>
                         {fileList.length > 0 && (
                             <>
-                                <div className="h-px my-1 mx-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                                <div className="h-px my-1 mx-2" style={{ background: 'rgba(230,237,248,0.06)' }} />
                                 <div className="px-3 pt-1 pb-1 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-widest" style={{ color: 'var(--az-text-faint)'}}><FolderSearch size={10} /> Workspace files</div>
                                 <div className="max-h-40 overflow-y-auto custom-scrollbar">
                                     {fileList.slice(0,6).map(fp => (
@@ -521,7 +521,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                         <span className="block text-[12.5px] font-medium leading-none">{cfg.label}</span>
                                         <span className="block text-[11px] leading-none mt-1" style={{ color: active ? 'var(--az-text-secondary)' : 'var(--az-text-muted)'}}>{cfg.desc}</span>
                                     </span>
-                                    {active && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                                    {active && <span className="w-1.5 h-1.5 rounded-full bg-[var(--az-success)] shrink-0" />}
                                 </button>
                             );
                         })}
@@ -531,7 +531,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
 
             {/* Composer container */}
             <div
-                className={`az-composer relative overflow-hidden transition-colors ${isDragOver ? '!border-white/20 !bg-[#1E232E]' : ''}`}
+                className={`az-composer relative overflow-hidden transition-colors ${isDragOver ? '!border-[var(--az-accent-border)] !bg-[var(--az-surface-3)]' : ''}`}
                 onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
                 onDragLeave={() => setIsDragOver(false)}
                 onDrop={e => {
@@ -552,7 +552,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                 {allChips.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 px-3 pt-2.5 pb-0.5">
                         {allChips.map(chip => (
-                            <span key={chip.id} className="inline-flex items-center gap-1 pl-2 pr-1 py-[3px] rounded-full text-[11px] leading-none" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", color: "var(--az-text-secondary)"}}>
+                            <span key={chip.id} className="inline-flex items-center gap-1 pl-2 pr-1 py-[3px] rounded-full text-[11px] leading-none" style={{ background: "rgba(230,237,248,0.05)", border: "1px solid rgba(230,237,248,0.07)", color: "var(--az-text-secondary)"}}>
                                 <span className="shrink-0" style={{ color: "var(--az-text-muted)"}}>{chip.icon}</span>
                                 <span className="truncate max-w-[160px] tracking-tight" style={{ color: "var(--az-text-secondary)"}}>{chip.label}</span>
                                 {chip.detail && <span className="text-white/25 truncate max-w-[110px] hidden sm:inline">· {chip.detail}</span>}
@@ -574,8 +574,8 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                     onKeyDown={handleKeyDown}
                     placeholder={currentModeCfg.placeholder}
                     rows={1}
-                    className="w-full bg-transparent text-[13.5px] leading-[1.5] px-3 pt-2.5 pb-1.5 min-h-[40px] max-h-[140px] resize-none focus:outline-none focus-visible:outline-none antialiased placeholder:text-[#677283]"
-                    style={{ color: "#DCE3EC", height: '40px', outline: 'none', boxShadow: 'none', border: 'none' } as React.CSSProperties}
+                    className="w-full bg-transparent text-[13.5px] leading-[1.5] px-3 pt-2.5 pb-1.5 min-h-[40px] max-h-[140px] resize-none focus:outline-none focus-visible:outline-none antialiased placeholder:text-[#72849F]"
+                    style={{ color: "#DCE6F5", height: '40px', outline: 'none', boxShadow: 'none', border: 'none' } as React.CSSProperties}
                     spellCheck={false}
                     autoComplete="off"
                 />
@@ -591,8 +591,8 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                 aria-haspopup="menu"
                                 onClick={() => setShowAttachMenu(v => !v)}
                                 className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-[6px] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${showAttachMenu ? '!bg-white/[0.08] !text-[var(--az-text)]' : ''}`}
-                                style={{ color: showAttachMenu ? "var(--az-text)" as string : "var(--az-text-muted)" as string, background: showAttachMenu ? "rgba(255,255,255,0.08)" : "transparent"}}
-                                onMouseEnter={e=>{ if(!showAttachMenu){e.currentTarget.style.background="rgba(255,255,255,0.06)"; e.currentTarget.style.color="var(--az-text)"}}}
+                                style={{ color: showAttachMenu ? "var(--az-text)" as string : "var(--az-text-muted)" as string, background: showAttachMenu ? "rgba(230,237,248,0.08)" : "transparent"}}
+                                onMouseEnter={e=>{ if(!showAttachMenu){e.currentTarget.style.background="rgba(230,237,248,0.06)"; e.currentTarget.style.color="var(--az-text)"}}}
                                 onMouseLeave={e=>{ if(!showAttachMenu){e.currentTarget.style.background="transparent"; e.currentTarget.style.color="var(--az-text-muted)"}}}
                             >
                                 <Paperclip size={13} strokeWidth={1.75} />
@@ -606,7 +606,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                 title={`Mode: ${composerMode} — ${currentModeCfg.desc}`}
                                 aria-label="Select agent mode"
                                 className={`hidden sm:inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-[6px] text-[11px] font-medium leading-none select-none transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/15 ${showAgentMenu ? '!bg-white/[0.08] !text-[var(--az-text)]' : ''}`}
-                                style={{ background: showAgentMenu ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", color: showAgentMenu ? "var(--az-text)" as string : "var(--az-text-secondary)" as string}}
+                                style={{ background: showAgentMenu ? "rgba(230,237,248,0.08)" : "rgba(230,237,248,0.05)", border: "1px solid rgba(230,237,248,0.07)", color: showAgentMenu ? "var(--az-text)" as string : "var(--az-text-secondary)" as string}}
                             >
                                 <span className="opacity-60">{currentModeCfg.icon}</span>
                                 {composerMode}
@@ -619,7 +619,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                         {isLoading ? (
                             <button
                                 onClick={onStop}
-                                className="az-send-btn focus:outline-none" style={{ background: "rgba(255,255,255,0.06)", color: "var(--az-text)", border: "1px solid rgba(255,255,255,0.07)"}}
+                                className="az-send-btn focus:outline-none" style={{ background: "rgba(230,237,248,0.06)", color: "var(--az-text)", border: "1px solid rgba(230,237,248,0.07)"}}
                                 title="Stop (Esc)"
                                 aria-label="Stop generation"
                             >
@@ -632,7 +632,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                 className={`az-send-btn focus:outline-none ${input.trim() && !disabled ? '' : 'cursor-not-allowed'}`}
                                 style={input.trim() && !disabled
                                     ? { background: 'var(--az-accent)', color: '#FFFFFF', border: '1px solid var(--az-accent)', boxShadow: '0 1px 4px rgba(0,0,0,0.12)'}
-                                    : { background: 'rgba(255,255,255,0.06)', color: 'var(--az-text-disabled)', border: '1px solid rgba(255,255,255,0.05)'}}
+                                    : { background: 'rgba(230,237,248,0.06)', color: 'var(--az-text-disabled)', border: '1px solid rgba(230,237,248,0.05)'}}
                                 title="Send (Enter)"
                                 aria-label="Send message"
                             >
@@ -645,10 +645,10 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
 
             {/* collapsed agent mode on mobile — second row if needed */}
             <div className="sm:hidden mt-1.5 flex items-center gap-1.5">
-                <button onClick={() => setShowAgentMenu(v=>!v)} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', color: 'var(--az-text-muted)'}}>
+                <button onClick={() => setShowAgentMenu(v=>!v)} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium" style={{ background: 'rgba(230,237,248,0.05)', border: '1px solid rgba(230,237,248,0.07)', color: 'var(--az-text-muted)'}}>
                     {currentModeCfg.icon} {composerMode} <ChevronDown size={10} className={showAgentMenu?'rotate-180':''} />
                 </button>
-                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.22)'}}>· {currentModeCfg.desc}</span>
+                <span className="text-[11px]" style={{ color: 'rgba(230,237,248,0.22)'}}>· {currentModeCfg.desc}</span>
             </div>
         </div>
     );

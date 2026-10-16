@@ -11,8 +11,8 @@ const ToggleSwitch: React.FC<{ checked: boolean; onChange: (checked: boolean) =>
       aria-label={label}
       aria-describedby={describedBy}
       onClick={() => onChange(!checked)}
-      className={`relative w-10 h-5 rounded-full transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 focus-visible:ring-offset-0 ${
-        checked ? 'bg-blue-500' : 'bg-white/20'
+      className={`relative w-10 h-5 rounded-full transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] focus-visible:ring-offset-0 ${
+        checked ? 'bg-[var(--az-accent)]' : 'bg-white/20'
       }`}
     >
       <div
@@ -32,10 +32,10 @@ const SelectControl: React.FC<{ value: string; choices: { value: string; label: 
         aria-label={label}
         aria-describedby={describedBy}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none pl-2.5 pr-7 py-1.5 text-[13px] bg-white/[0.08] border border-white/[0.15] rounded-md text-white/70 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-400/20"
+        className="appearance-none pl-2.5 pr-7 py-1.5 text-[13px] bg-white/[0.08] border border-white/[0.15] rounded-md text-white/70 focus:outline-none focus:border-[rgba(91,140,255,0.5)] focus:ring-1 focus:ring-[rgba(91,140,255,0.2)]"
       >
         {choices.map((choice) => (
-          <option key={choice.value} value={choice.value} className="bg-[#141923] text-white/80">
+          <option key={choice.value} value={choice.value} className="bg-[#0D192B] text-white/80">
             {choice.label}
           </option>
         ))}
@@ -52,7 +52,7 @@ const NumberControl: React.FC<{ value: number; min: number; max: number; onChang
         type="button"
         aria-label={`Decrease ${label}`}
         onClick={() => onChange(Math.max(min, value - 1))}
-        className="w-6 h-6 flex items-center justify-center rounded-md bg-white/[0.06] border border-white/10 text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
+        className="w-6 h-6 flex items-center justify-center rounded-md bg-white/[0.06] border border-white/10 text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] transition-colors"
       >
         <Minus size={12} />
       </button>
@@ -67,13 +67,13 @@ const NumberControl: React.FC<{ value: number; min: number; max: number; onChang
           const parsed = parseInt(e.target.value, 10);
           onChange(Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : value);
         }}
-        className="w-12 px-1 py-1 text-center text-[13px] bg-white/[0.08] border border-white/[0.15] rounded-md text-white/70 focus:outline-none focus:border-blue-400/50"
+        className="w-12 px-1 py-1 text-center text-[13px] bg-white/[0.08] border border-white/[0.15] rounded-md text-white/70 focus:outline-none focus:border-[rgba(91,140,255,0.5)]"
       />
       <button
         type="button"
         aria-label={`Increase ${label}`}
         onClick={() => onChange(Math.min(max, value + 1))}
-        className="w-6 h-6 flex items-center justify-center rounded-md bg-white/[0.06] border border-white/10 text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
+        className="w-6 h-6 flex items-center justify-center rounded-md bg-white/[0.06] border border-white/10 text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] transition-colors"
       >
         <Plus size={12} />
       </button>
@@ -110,7 +110,7 @@ const TextControl: React.FC<{ value: string; placeholder?: string; onChange: (va
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className="w-36 px-2.5 py-1.5 text-[13px] bg-white/[0.08] border border-white/[0.15] rounded-md text-white/70 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-400/20"
+      className="w-36 px-2.5 py-1.5 text-[13px] bg-white/[0.08] border border-white/[0.15] rounded-md text-white/70 focus:outline-none focus:border-[rgba(91,140,255,0.5)] focus:ring-1 focus:ring-[rgba(91,140,255,0.2)]"
     />
   );
 };

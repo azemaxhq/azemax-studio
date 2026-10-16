@@ -20,7 +20,7 @@ export const SettingsSearch: React.FC<SettingsSearchProps> = ({ query, onChange 
           }}
           placeholder="Search settings..."
           aria-label="Search settings"
-          className="w-full pl-8 pr-7 py-1.5 text-[13px] bg-white/[0.05] border border-white/[0.1] rounded-lg text-white/80 placeholder:text-white/30 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-400/20 transition-colors"
+          className="w-full pl-8 pr-7 py-1.5 text-[13px] bg-white/[0.05] border border-white/[0.1] rounded-lg text-white/80 placeholder:text-white/30 focus:outline-none focus:border-[rgba(91,140,255,0.5)] focus:ring-1 focus:ring-[rgba(91,140,255,0.2)] transition-colors"
         />
         {query && (
           <button

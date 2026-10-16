@@ -31,12 +31,12 @@ const AppContent = memo(function AppContent() {
 });
 
 const AppLoadingFallback = () => (
-  <div style={{ display: 'flex', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#0B0E13' }}>
+  <div style={{ display: 'flex', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', background: '#080F1C' }}>
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
       <AzemaxLogo size={40} />
       <div style={{ textAlign: 'center' }}>
-        <p style={{ fontSize: '13px', fontWeight: 600, color: '#F1F5F9', letterSpacing: '-0.01em' }}>{BRAND.name}</p>
-        <p style={{ fontSize: '11px', color: '#727D8E', marginTop: '4px' }}>Loading workspace…</p>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: '#E6EDF8', letterSpacing: '-0.01em' }}>{BRAND.name}</p>
+        <p style={{ fontSize: '11px', color: '#72849F', marginTop: '4px' }}>Loading workspace…</p>
       </div>
     </div>
   </div>
@@ -78,11 +78,11 @@ function WorkspaceShell() {
 
 function RootErrorFallback(error: Error) {
   return (
-    <div style={{ padding: '40px', background: '#0B0E13', color: '#F1F5F9', minHeight: '100vh', fontFamily: 'ui-monospace, monospace' }}>
-      <h1 style={{ color: '#FF647C', fontSize: '18px', marginBottom: '16px', fontWeight: 600 }}>Application Error</h1>
-      <div style={{ background: '#10141B', border: '1px solid rgba(255,255,255,0.075)', borderRadius: '8px', padding: '20px', marginBottom: '16px' }}>
-        <p style={{ color: '#F1F5F9', fontSize: '13px', marginBottom: '8px' }}>{error.message}</p>
-        <pre style={{ color: '#727D8E', fontSize: '11px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{error.stack}</pre>
+    <div style={{ padding: '40px', background: '#080F1C', color: '#E6EDF8', minHeight: '100vh', fontFamily: 'ui-monospace, monospace' }}>
+      <h1 style={{ color: '#FF7D8B', fontSize: '18px', marginBottom: '16px', fontWeight: 600 }}>Application Error</h1>
+      <div style={{ background: '#0A1322', border: '1px solid rgba(230,237,248,0.075)', borderRadius: '8px', padding: '20px', marginBottom: '16px' }}>
+        <p style={{ color: '#E6EDF8', fontSize: '13px', marginBottom: '8px' }}>{error.message}</p>
+        <pre style={{ color: '#72849F', fontSize: '11px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{error.stack}</pre>
       </div>
       <button
         onClick={() => window.location.reload()}

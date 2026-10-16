@@ -17,14 +17,14 @@ const CategoryCard: React.FC<{ category: CategoryDefinition; onSelect: (id: Cate
     <button
       type="button"
       onClick={() => onSelect(category.id)}
-      className="group flex flex-col items-start gap-1.5 min-h-[128px] p-4 rounded-xl border border-white/[0.08] bg-white/[0.03] text-left transition-colors hover:bg-white/[0.05] hover:border-white/[0.14] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50"
+      className="group flex flex-col items-start gap-1.5 min-h-[128px] p-4 rounded-xl border border-white/[0.08] bg-white/[0.03] text-left transition-colors hover:bg-white/[0.05] hover:border-white/[0.14] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.5)]"
     >
-      <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-white/70 transition-colors group-hover:text-white group-hover:border-blue-400/30">
+      <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-white/70 transition-colors group-hover:text-white group-hover:border-[rgba(91,140,255,0.3)]">
         <Icon size={16} />
       </div>
       <span className="mt-1 text-[13px] font-medium text-white/90">{category.label}</span>
       <span className="text-[11px] text-white/40 leading-relaxed">{category.description}</span>
-      <span className="mt-auto inline-flex items-center gap-1 pt-1.5 text-[10px] font-medium text-blue-400/70 transition-colors group-hover:text-[var(--az-text)]">
+      <span className="mt-auto inline-flex items-center gap-1 pt-1.5 text-[10px] font-medium text-[rgba(91,140,255,0.7)] transition-colors group-hover:text-[var(--az-text)]">
         Open <ArrowRight size={10} />
       </span>
     </button>

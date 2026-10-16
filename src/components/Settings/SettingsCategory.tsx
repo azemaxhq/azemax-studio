@@ -29,7 +29,7 @@ export const SettingsCategory: React.FC<SettingsCategoryProps> = memo(({ categor
     <div className="pb-6">
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-lg bg-blue-500/10 border border-blue-400/20 flex items-center justify-center text-[var(--az-text)]">
+          <div className="w-9 h-9 shrink-0 rounded-lg bg-[rgba(91,140,255,0.1)] border border-[rgba(91,140,255,0.2)] flex items-center justify-center text-[var(--az-text)]">
             <Icon size={16} />
           </div>
           <div className="min-w-0">
@@ -49,7 +49,7 @@ export const SettingsCategory: React.FC<SettingsCategoryProps> = memo(({ categor
               onClick={() => setConfirmingReset(true)}
               title={`Reset ${category.label} settings`}
               aria-label={`Reset ${category.label} settings to defaults`}
-              className="p-1.5 rounded-md text-white/30 hover:text-white/80 hover:bg-white/[0.07] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
+              className="p-1.5 rounded-md text-white/30 hover:text-white/80 hover:bg-white/[0.07] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] transition-colors"
             >
               <RotateCcw size={12} />
             </button>

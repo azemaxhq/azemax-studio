@@ -40,12 +40,12 @@ const getLanguage = (fileName: string): string => {
 // Ageing Grade Badge Component
 // ────────────────────────────────────────────
 const gradeColors: Record<string, { bg: string; border: string; text: string; glow: string }> = {
-    'A+': { bg: 'rgba(53, 211, 153, 0.12)', border: 'rgba(53, 211, 153, 0.28)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.12)' },
-    'A': { bg: 'rgba(53, 211, 153, 0.10)', border: 'rgba(53, 211, 153, 0.24)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.08)' },
-    'B': { bg: 'rgba(91, 140, 255, 0.10)', border: 'rgba(91, 140, 255, 0.24)', text: '#78A7FF', glow: 'rgba(91, 140, 255, 0.08)' },
-    'C': { bg: 'rgba(245, 185, 76, 0.10)', border: 'rgba(245, 185, 76, 0.24)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.08)' },
-    'D': { bg: 'rgba(245, 185, 76, 0.12)', border: 'rgba(245, 185, 76, 0.28)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.10)' },
-    'F': { bg: 'rgba(255, 100, 124, 0.10)', border: 'rgba(255, 100, 124, 0.28)', text: '#FF647C', glow: 'rgba(255, 100, 124, 0.10)' },
+    'A+': { bg: 'rgba(103,214,160, 0.12)', border: 'rgba(103,214,160, 0.28)', text: '#67D6A0', glow: 'rgba(103,214,160, 0.12)' },
+    'A': { bg: 'rgba(103,214,160, 0.10)', border: 'rgba(103,214,160, 0.24)', text: '#67D6A0', glow: 'rgba(103,214,160, 0.08)' },
+    'B': { bg: 'rgba(91,140,255, 0.10)', border: 'rgba(91,140,255, 0.24)', text: '#79A3FF', glow: 'rgba(91,140,255, 0.08)' },
+    'C': { bg: 'rgba(240,198,116, 0.10)', border: 'rgba(240,198,116, 0.24)', text: '#F0C674', glow: 'rgba(240,198,116, 0.08)' },
+    'D': { bg: 'rgba(240,198,116, 0.12)', border: 'rgba(240,198,116, 0.28)', text: '#F0C674', glow: 'rgba(240,198,116, 0.10)' },
+    'F': { bg: 'rgba(255,125,139, 0.10)', border: 'rgba(255,125,139, 0.28)', text: '#FF7D8B', glow: 'rgba(255,125,139, 0.10)' },
 };
 
 const GradeBadge: React.FC<{ grade: string; label: string }> = ({ grade, label }) => {
@@ -66,7 +66,7 @@ const GradeBadge: React.FC<{ grade: string; label: string }> = ({ grade, label }
                 {grade}
             </div>
             <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-wider text-[#7F8A9A] font-semibold">Code Age Grade</span>
+                <span className="text-[10px] uppercase tracking-wider text-[#8296B4] font-semibold">Code Age Grade</span>
                 <span className="text-xs mt-0.5" style={{ color: colors.text }}>{label}</span>
             </div>
         </div>
@@ -77,15 +77,15 @@ const GradeBadge: React.FC<{ grade: string; label: string }> = ({ grade, label }
 // Signal Bar Component
 // ────────────────────────────────────────────
 const severityColors: Record<string, string> = {
-    critical: '#FF647C',
-    high: '#F5B94C',
-    medium: '#F5B94C',
-    low: '#35D399',
+    critical: '#FF7D8B',
+    high: '#F0C674',
+    medium: '#F0C674',
+    low: '#67D6A0',
 };
 
 const SignalBar: React.FC<{ signal: AgeingSignal; maxScore: number }> = ({ signal, maxScore }) => {
     const barWidth = maxScore > 0 ? Math.max(4, (signal.score * signal.weight / maxScore) * 100) : 0;
-    const color = severityColors[signal.severity] || '#7F8A9A';
+    const color = severityColors[signal.severity] || '#8296B4';
 
     return (
         <div className="group p-3 rounded-[6px] bg-[var(--az-surface-3)] border border-[var(--az-border)] hover:border-[var(--az-border-strong)] transition-colors duration-150">
@@ -105,7 +105,7 @@ const SignalBar: React.FC<{ signal: AgeingSignal; maxScore: number }> = ({ signa
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#7F8A9A] font-mono">{signal.count} found</span>
+                    <span className="text-[10px] text-[#8296B4] font-mono">{signal.count} found</span>
                     <span className="text-xs font-bold font-mono" style={{ color }}>
                         {Math.round(signal.score * signal.weight)}
                     </span>
@@ -120,7 +120,7 @@ const SignalBar: React.FC<{ signal: AgeingSignal; maxScore: number }> = ({ signa
                     }}
                 />
             </div>
-            <p className="text-[10px] text-[#7F8A9A] mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <p className="text-[10px] text-[#8296B4] mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                 {signal.description}
             </p>
         </div>
@@ -152,8 +152,8 @@ const CategoryBreakdown: React.FC<{ scores: Record<string, number> }> = ({ score
             {Object.entries(scores).map(([cat, score]) => (
                 <div key={cat} className="flex items-center gap-2.5">
                     <div className="flex items-center gap-1.5 w-20 shrink-0">
-                        <span className="text-[#7F8A9A]">{categoryIcons[cat]}</span>
-                        <span className="text-[10px] text-[#7F8A9A] font-medium">{categoryLabels[cat]}</span>
+                        <span className="text-[#8296B4]">{categoryIcons[cat]}</span>
+                        <span className="text-[10px] text-[#8296B4] font-medium">{categoryLabels[cat]}</span>
                     </div>
                     <div className="flex-1 h-2 bg-[var(--az-bg)] rounded-full overflow-hidden border border-[var(--az-border)]">
                         <div
@@ -161,16 +161,16 @@ const CategoryBreakdown: React.FC<{ scores: Record<string, number> }> = ({ score
                             style={{
                                 width: `${Math.max(2, score)}%`,
                                 background: score > 60
-                                    ? '#FF647C'
+                                    ? '#FF7D8B'
                                     : score > 30
-                                        ? '#F5B94C'
+                                        ? '#F0C674'
                                         : score > 0
                                             ? '#5B8CFF'
-                                            : '#35D399',
+                                            : '#67D6A0',
                             }}
                         />
                     </div>
-                    <span className="text-[10px] font-mono text-[#7F8A9A] w-7 text-right">{score}%</span>
+                    <span className="text-[10px] font-mono text-[#8296B4] w-7 text-right">{score}%</span>
                 </div>
             ))}
         </div>
@@ -181,7 +181,7 @@ const CategoryBreakdown: React.FC<{ scores: Record<string, number> }> = ({ score
 // Hotspot Item Component
 // ────────────────────────────────────────────
 const HotspotItem: React.FC<{ hotspot: AgeingHotspot; index: number }> = ({ hotspot, index }) => {
-    const color = severityColors[hotspot.severity] || '#7F8A9A';
+    const color = severityColors[hotspot.severity] || '#8296B4';
     return (
         <div
             className="flex gap-3 p-2.5 rounded-lg bg-black/20 border border-white/5 hover:border-white/10 transition-all duration-200 group"
@@ -204,12 +204,12 @@ const HotspotItem: React.FC<{ hotspot: AgeingHotspot; index: number }> = ({ hots
                     >
                         {hotspot.severity}
                     </span>
-                    <span className="text-[10px] text-[#7F8A9A]">Line {hotspot.line}</span>
+                    <span className="text-[10px] text-[#8296B4]">Line {hotspot.line}</span>
                 </div>
-                <code className="text-[11px] text-[#A7B0BF] font-mono block truncate opacity-80">
+                <code className="text-[11px] text-[#A5B5CD] font-mono block truncate opacity-80">
                     {hotspot.code}
                 </code>
-                <p className="text-[10px] text-[#7F8A9A] mt-1 flex items-center gap-1">
+                <p className="text-[10px] text-[#8296B4] mt-1 flex items-center gap-1">
                     <ChevronRight size={8} className="shrink-0" />
                     {hotspot.reason}
                 </p>
@@ -226,7 +226,7 @@ const CircularScore: React.FC<{ score: number; size?: number }> = ({ score, size
     const radius = (size - 8) / 2;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (freshness / 100) * circumference;
-    const color = score <= 15 ? '#35D399' : score <= 30 ? '#5B8CFF' : score <= 50 ? '#F5B94C' : score <= 70 ? '#F5B94C' : '#FF647C';
+    const color = score <= 15 ? '#67D6A0' : score <= 30 ? '#5B8CFF' : score <= 50 ? '#F0C674' : score <= 70 ? '#F0C674' : '#FF7D8B';
 
     return (
         <div className="relative" style={{ width: size, height: size }}>
@@ -244,7 +244,7 @@ const CircularScore: React.FC<{ score: number; size?: number }> = ({ score, size
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-lg font-bold" style={{ color }}>{score}%</span>
-                <span className="text-[8px] text-[#7F8A9A] uppercase tracking-wider">Aged</span>
+                <span className="text-[8px] text-[#8296B4] uppercase tracking-wider">Aged</span>
             </div>
         </div>
     );
@@ -269,9 +269,9 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                     <BarChart3 size={14} /> Code Age Trend
                 </h4>
                 <div className="flex flex-col items-center justify-center py-6 gap-2">
-                    <Calendar size={24} className="text-[#7F8A9A]/50" />
-                    <span className="text-[#7F8A9A] text-sm">No trend data available</span>
-                    <span className="text-[10px] text-[#7F8A9A]">Analyze this file multiple times to see trends</span>
+                    <Calendar size={24} className="text-[#8296B4]/50" />
+                    <span className="text-[#8296B4] text-sm">No trend data available</span>
+                    <span className="text-[10px] text-[#8296B4]">Analyze this file multiple times to see trends</span>
                 </div>
             </div>
         );
@@ -288,17 +288,17 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                 <BarChart3 size={14} /> Code Age Trend
                 <div className="ml-auto flex items-center gap-2">
                     {trendData.trend.improving ? (
-                        <div className="flex items-center gap-1 text-[#35D399]">
+                        <div className="flex items-center gap-1 text-[#67D6A0]">
                             <TrendingUp size={12} />
                             <span className="text-[10px]">Improving</span>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-1 text-[#FF647C]">
+                        <div className="flex items-center gap-1 text-[#FF7D8B]">
                             <TrendingDown size={12} />
                             <span className="text-[10px]">Declining</span>
                         </div>
                     )}
-                    <span className="text-[10px] text-[#7F8A9A]">
+                    <span className="text-[10px] text-[#8296B4]">
                         {trendData.trend.changeRate > 0 ? '+' : ''}{trendData.trend.changeRate}%
                     </span>
                 </div>
@@ -310,7 +310,7 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                     {recentSnapshots.map((snapshot: any, index: number) => {
                         const score = snapshot.analysis.codeAgeing;
                         const height = ((score - minScore) / scoreRange) * 100;
-                        const color = score <= 30 ? '#35D399' : score <= 50 ? '#F5B94C' : score <= 70 ? '#E4B86A' : '#FF647C';
+                        const color = score <= 30 ? '#67D6A0' : score <= 50 ? '#F0C674' : score <= 70 ? '#F0C674' : '#FF7D8B';
                         
                         return (
                             <div
@@ -326,24 +326,24 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                     })}
                 </div>
                 <div className="flex justify-between mt-1">
-                    <span className="text-[8px] text-[#7F8A9A]">{minScore}%</span>
-                    <span className="text-[8px] text-[#7F8A9A]">{maxScore}%</span>
+                    <span className="text-[8px] text-[#8296B4]">{minScore}%</span>
+                    <span className="text-[8px] text-[#8296B4]">{maxScore}%</span>
                 </div>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-3 gap-2 mb-3">
                 <div className="p-2 rounded bg-black/20 text-center">
-                    <div className="text-[8px] text-[#7F8A9A] uppercase">Stability</div>
-                    <div className="text-sm font-bold text-[#A7B0BF]">{trendData.trend.stability}%</div>
+                    <div className="text-[8px] text-[#8296B4] uppercase">Stability</div>
+                    <div className="text-sm font-bold text-[#A5B5CD]">{trendData.trend.stability}%</div>
                 </div>
                 <div className="p-2 rounded bg-black/20 text-center">
-                    <div className="text-[8px] text-[#7F8A9A] uppercase">Analyses</div>
-                    <div className="text-sm font-bold text-[#A7B0BF]">{trendData.snapshots.length}</div>
+                    <div className="text-[8px] text-[#8296B4] uppercase">Analyses</div>
+                    <div className="text-sm font-bold text-[#A5B5CD]">{trendData.snapshots.length}</div>
                 </div>
                 <div className="p-2 rounded bg-black/20 text-center">
-                    <div className="text-[8px] text-[#7F8A9A] uppercase">Latest</div>
-                    <div className="text-sm font-bold text-[#A7B0BF]">{recentSnapshots[recentSnapshots.length - 1]?.analysis.codeAgeing}%</div>
+                    <div className="text-[8px] text-[#8296B4] uppercase">Latest</div>
+                    <div className="text-sm font-bold text-[#A5B5CD]">{recentSnapshots[recentSnapshots.length - 1]?.analysis.codeAgeing}%</div>
                 </div>
             </div>
 
@@ -361,14 +361,14 @@ const TrendChart: React.FC<{ fileId: string }> = ({ fileId }) => {
                     {recentSnapshots.reverse().map((snapshot: any, index: number) => (
                         <div key={index} className="flex items-center justify-between p-2 rounded bg-black/20">
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#7F8A9A]">
+                                <span className="text-[10px] text-[#8296B4]">
                                     {new Date(snapshot.timestamp).toLocaleDateString()}
                                 </span>
-                                <span className="text-[10px] font-mono text-[#A7B0BF]">
+                                <span className="text-[10px] font-mono text-[#A5B5CD]">
                                     {snapshot.analysis.codeAgeing}%
                                 </span>
                             </div>
-                            <span className="text-[10px] text-[#7F8A9A]">
+                            <span className="text-[10px] text-[#8296B4]">
                                 {snapshot.analysis.ageingDetails.grade}
                             </span>
                         </div>
@@ -418,7 +418,7 @@ const OutputTab: React.FC = () => {
                 <pre className="whitespace-pre-wrap break-words text-[var(--az-terminal-fg)] mb-2">{lastExecutionData.stdout}</pre>
             )}
             {lastExecutionData.stderr && (
-                <pre className="whitespace-pre-wrap break-words text-[#FF8A9D]">{lastExecutionData.stderr}</pre>
+                <pre className="whitespace-pre-wrap break-words text-[var(--az-error)]">{lastExecutionData.stderr}</pre>
             )}
         </div>
     );
@@ -819,7 +819,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                 mobile leads with Terminal / Problems / Output. When the
                 mobile sheet is collapsed, only those three show — Performance
                 and Ageing stay one tap away (tap any tab to half-open). */}
-            <div className={`flex items-center gap-1 px-2 border-b shrink-0 h-8 min-h-8 ${isMobile ? 'overflow-x-auto no-scrollbar' : 'overflow-hidden'}`} style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
+            <div className={`flex items-center gap-1 px-2 border-b shrink-0 h-8 min-h-8 ${isMobile ? 'overflow-x-auto no-scrollbar' : 'overflow-hidden'}`} style={{ background: 'var(--az-surface)', borderColor: 'var(--az-border-subtle)' }}>
                 {(isMobile
                     ? (isCollapsed
                         ? (['terminal', 'problems', 'output'] as BottomTab[])
@@ -841,7 +841,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                 <AlertTriangle size={13} />
                                 <span>Problems</span>
                                 {(problemCounts.errors > 0 || problemCounts.warnings > 0) && (
-                                    <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#FF647C] text-white' : 'bg-[#F5B94C] text-black'}`}>
+                                    <span className={`text-[10px] px-1.5 py-0 rounded-full font-mono font-bold ${problemCounts.errors > 0 ? 'bg-[#FF7D8B] text-white' : 'bg-[#F0C674] text-black'}`}>
                                         {problemCounts.errors + problemCounts.warnings}
                                     </span>
                                 )}
@@ -852,7 +852,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                 <FileOutput size={13} />
                                 <span>Output</span>
                                 {lastExecutionData && lastExecutionData.exitCode !== 0 && (lastExecutionData.stdout || lastExecutionData.stderr) && (
-                                    <span className="w-1.5 h-1.5 rounded-full bg-[#FF647C]" title={`Exit ${lastExecutionData.exitCode}`} />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#FF7D8B]" title={`Exit ${lastExecutionData.exitCode}`} />
                                 )}
                             </>
                         )}
@@ -909,7 +909,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                 <div className="flex flex-col items-center text-center gap-3">
                                                     <GradeBadge grade={analysis.ageingDetails.grade} label={analysis.ageingDetails.gradeLabel} />
                                                     <CircularScore score={analysis.codeAgeing} size={90} />
-                                                    <p className="text-[11px] text-[#7F8A9A] leading-relaxed px-2">
+                                                    <p className="text-[11px] text-[#8296B4] leading-relaxed px-2">
                                                         {analysis.ageingDetails.summary}
                                                     </p>
                                                     <button
@@ -924,9 +924,9 @@ Apply the fix while preserving all other code exactly as-is.`;
 
                                             {/* Ageing Signals Breakdown */}
                                             <div className="glass-analysis-card col-span-1 warning hover-scale">
-                                                <h4 className="font-semibold mb-3 text-[#F5B94C] flex items-center gap-2 text-sm">
+                                                <h4 className="font-semibold mb-3 text-[#F0C674] flex items-center gap-2 text-sm">
                                                     <Zap size={14} /> Ageing Signals
-                                                    <span className="text-[10px] text-[#7F8A9A] font-normal ml-auto">
+                                                    <span className="text-[10px] text-[#8296B4] font-normal ml-auto">
                                                         {analysis.ageingDetails.signals.length} detected
                                                     </span>
                                                 </h4>
@@ -942,9 +942,9 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-center justify-center py-8 gap-2">
-                                                        <Shield size={28} className="text-[#35D399]/50" />
-                                                        <span className="text-[#35D399] text-sm font-medium">No ageing signals</span>
-                                                        <span className="text-[10px] text-[#7F8A9A]">Code is modern & clean</span>
+                                                        <Shield size={28} className="text-[#67D6A0]/50" />
+                                                        <span className="text-[#67D6A0] text-sm font-medium">No ageing signals</span>
+                                                        <span className="text-[10px] text-[#8296B4]">Code is modern & clean</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -959,24 +959,24 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                 {/* Stats summary */}
                                                 <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Health</div>
-                                                        <div className={`text-lg font-bold ${analysis.healthScore > 80 ? 'text-[#35D399]' : analysis.healthScore > 50 ? 'text-[#F5B94C]' : 'text-[#FF647C]'}`}>
+                                                        <div className="text-[9px] text-[#8296B4] uppercase tracking-wider">Health</div>
+                                                        <div className={`text-lg font-bold ${analysis.healthScore > 80 ? 'text-[#67D6A0]' : analysis.healthScore > 50 ? 'text-[#F0C674]' : 'text-[#FF7D8B]'}`}>
                                                             {analysis.healthScore}
                                                         </div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Complexity</div>
-                                                        <div className={`text-lg font-bold ${analysis.complexity === 'Low' ? 'text-[#35D399]' : analysis.complexity === 'Medium' ? 'text-[#F5B94C]' : 'text-[#FF647C]'}`}>
+                                                        <div className="text-[9px] text-[#8296B4] uppercase tracking-wider">Complexity</div>
+                                                        <div className={`text-lg font-bold ${analysis.complexity === 'Low' ? 'text-[#67D6A0]' : analysis.complexity === 'Medium' ? 'text-[#F0C674]' : 'text-[#FF7D8B]'}`}>
                                                             {analysis.complexity}
                                                         </div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Maintain.</div>
+                                                        <div className="text-[9px] text-[#8296B4] uppercase tracking-wider">Maintain.</div>
                                                         <div className="text-lg font-bold text-[#5B8CFF]">{analysis.maintainability}</div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-black/20">
-                                                        <div className="text-[9px] text-[#7F8A9A] uppercase tracking-wider">Hotspots</div>
-                                                        <div className="text-lg font-bold text-[#F5B94C]">{analysis.ageingDetails.hotspots.length}</div>
+                                                        <div className="text-[9px] text-[#8296B4] uppercase tracking-wider">Hotspots</div>
+                                                        <div className="text-lg font-bold text-[#F0C674]">{analysis.ageingDetails.hotspots.length}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -991,9 +991,9 @@ Apply the fix while preserving all other code exactly as-is.`;
                                             
                                             {/* Hotspots */}
                                             <div className="glass-analysis-card error hover-scale">
-                                                <h4 className="font-semibold mb-3 text-[#FF647C] flex items-center gap-2 text-sm">
+                                                <h4 className="font-semibold mb-3 text-[#FF7D8B] flex items-center gap-2 text-sm">
                                                     <AlertTriangle size={14} /> Hotspots
-                                                    <span className="text-[10px] text-[#7F8A9A] font-normal ml-auto">
+                                                    <span className="text-[10px] text-[#8296B4] font-normal ml-auto">
                                                         {analysis.ageingDetails.hotspots.length}
                                                     </span>
                                                 </h4>
@@ -1013,17 +1013,17 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-center justify-center py-6 gap-2">
-                                                        <Shield size={24} className="text-[#35D399]/50" />
-                                                        <span className="text-[#35D399] text-xs font-medium">No hotspots</span>
+                                                        <Shield size={24} className="text-[#67D6A0]/50" />
+                                                        <span className="text-[#67D6A0] text-xs font-medium">No hotspots</span>
                                                     </div>
                                                 )}
                                             </div>
 
                                             {/* Recommendations */}
                                             <div className="glass-analysis-card success hover-scale">
-                                                <h4 className="font-semibold mb-3 text-[#35D399] flex items-center gap-2 text-sm">
+                                                <h4 className="font-semibold mb-3 text-[#67D6A0] flex items-center gap-2 text-sm">
                                                     <Zap size={14} /> Recommendations
-                                                    <span className="text-[10px] text-[#7F8A9A] font-normal ml-auto">
+                                                    <span className="text-[10px] text-[#8296B4] font-normal ml-auto">
                                                         {analysis.ageingDetails.signals.filter(s => s.recommendation).length}
                                                     </span>
                                                 </h4>
@@ -1033,24 +1033,24 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                             <div
                                                                 key={i}
                                                                 className={`flex gap-2 p-2 rounded-lg border transition-all duration-200 ${appliedIndices.has(i)
-                                                                    ? 'bg-[#35D399]/10 border-[#35D399]/30'
-                                                                    : 'bg-[#35D399]/5 border-[#35D399]/10 hover:border-[#35D399]/20'
+                                                                    ? 'bg-[#67D6A0]/10 border-[#67D6A0]/30'
+                                                                    : 'bg-[#67D6A0]/5 border-[#67D6A0]/10 hover:border-[#67D6A0]/20'
                                                                     }`}
                                                             >
-                                                                <div className="shrink-0 w-4 h-4 rounded-full bg-[#35D399]/15 flex items-center justify-center">
+                                                                <div className="shrink-0 w-4 h-4 rounded-full bg-[#67D6A0]/15 flex items-center justify-center">
                                                                     {appliedIndices.has(i)
-                                                                        ? <CheckCircle size={8} className="text-[#35D399]" />
-                                                                        : <span className="text-[9px] font-bold text-[#35D399]">{i + 1}</span>
+                                                                        ? <CheckCircle size={8} className="text-[#67D6A0]" />
+                                                                        : <span className="text-[9px] font-bold text-[#67D6A0]">{i + 1}</span>
                                                                     }
                                                                 </div>
-                                                                <p className={`text-[10px] leading-relaxed flex-1 ${appliedIndices.has(i) ? 'text-[#35D399]/70 line-through' : 'text-[#A7B0BF]'}`}>{signal.recommendation}</p>
+                                                                <p className={`text-[10px] leading-relaxed flex-1 ${appliedIndices.has(i) ? 'text-[#67D6A0]/70 line-through' : 'text-[#A5B5CD]'}`}>{signal.recommendation}</p>
                                                                 {!appliedIndices.has(i) && (
                                                                     <button
                                                                         onClick={() => handleApplyRecommendation(signal, i)}
                                                                         disabled={applyingIndex !== null}
                                                                         className={`shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold transition-all duration-200 ${applyingIndex === i
-                                                                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                                                            : 'bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/25 hover:text-purple-300'
+                                                                            ? 'bg-[rgba(91,140,255,0.20)] text-[var(--az-accent-bright)] border border-[var(--az-accent-border)]'
+                                                                            : 'bg-[var(--az-accent-soft)] text-[var(--az-accent)] border border-[var(--az-accent-border)] hover:bg-[rgba(91,140,255,0.22)] hover:text-[var(--az-accent-bright)]'
                                                                             }`}
                                                                     >
                                                                         {applyingIndex === i
@@ -1064,8 +1064,8 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-center justify-center py-6 gap-2">
-                                                        <Shield size={24} className="text-[#35D399]/50" />
-                                                        <span className="text-[#35D399] text-xs font-medium">All good!</span>
+                                                        <Shield size={24} className="text-[#67D6A0]/50" />
+                                                        <span className="text-[#67D6A0] text-xs font-medium">All good!</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -1074,7 +1074,7 @@ Apply the fix while preserving all other code exactly as-is.`;
                                         {/* Halstead Metrics compact */}
                                         {analysis.halstead && (
                                             <div className="glass-analysis-card info hover-scale animate-slide-in">
-                                                <h5 className="text-[10px] text-[#7F8A9A] uppercase tracking-wider font-semibold mb-3 flex items-center gap-1.5">
+                                                <h5 className="text-[10px] text-[#8296B4] uppercase tracking-wider font-semibold mb-3 flex items-center gap-1.5">
                                                     <Activity size={10} /> Halstead Metrics
                                                 </h5>
                                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1085,8 +1085,8 @@ Apply the fix while preserving all other code exactly as-is.`;
                                                         { label: 'Effort', value: analysis.halstead.effort },
                                                     ].map(m => (
                                                         <div key={m.label} className="p-2 rounded bg-black/20 text-center hover-scale">
-                                                            <div className="text-[8px] text-[#7F8A9A] uppercase">{m.label}</div>
-                                                            <div className="text-sm font-mono text-[#A7B0BF] font-semibold">{m.value}</div>
+                                                            <div className="text-[8px] text-[#8296B4] uppercase">{m.label}</div>
+                                                            <div className="text-sm font-mono text-[#A5B5CD] font-semibold">{m.value}</div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -1097,17 +1097,17 @@ Apply the fix while preserving all other code exactly as-is.`;
                                     <div className="flex h-full items-center justify-center animate-fade-in-up">
                                         <div className="text-center">
                                             <div className="w-8 h-8 mx-auto rounded-full border-2 border-[#5B8CFF]/30 border-t-[#5B8CFF] animate-spin mb-3" />
-                                            <span className="text-[#7F8A9A]">Analyzing code ageing...</span>
+                                            <span className="text-[#8296B4]">Analyzing code ageing...</span>
                                         </div>
                                     </div>
                                 )
                             ) : (
                                 <div className="glass-empty-state h-full animate-fade-in-up">
                                     <div className="glass-empty-state-icon">
-                                        <AlertTriangle size={32} className="text-[#7F8A9A]" />
+                                        <AlertTriangle size={32} className="text-[#8296B4]" />
                                     </div>
                                     <h3 className="text-white/80 font-medium mb-2">No File Open</h3>
-                                    <p className="text-[#7F8A9A] text-sm">Open a file to run code ageing analysis</p>
+                                    <p className="text-[#8296B4] text-sm">Open a file to run code ageing analysis</p>
                                 </div>
                             )}
                         </div>

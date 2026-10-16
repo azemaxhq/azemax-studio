@@ -103,8 +103,8 @@ const WEB_STARTER: Array<{ name: string; content: string }> = [
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
-  background: #0b0e13;
-  color: #f1f5f9;
+  background: #080F1C;
+  color: #E6EDF8;
   line-height: 1.6;
 }
 

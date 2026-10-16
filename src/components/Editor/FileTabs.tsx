@@ -37,8 +37,8 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
             aria-label="Editor file tabs"
             className={`flex items-center overflow-x-auto no-scrollbar border-b shrink-0 select-none ${className}`}
             style={{
-                background: 'var(--az-surface)',
-                borderColor: 'var(--az-border)',
+                background: 'var(--az-bg)',
+                borderColor: 'var(--az-border-subtle)',
                 height: isMobile ? '40px' : '34px',
                 minHeight: isMobile ? '40px' : '34px',
             }}
@@ -71,7 +71,7 @@ export const FileTabs: React.FC<FileTabsProps> = ({ className = '', isMobile = f
                                 : 'text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-white/[0.03]'
                             }`}
                         style={{
-                            borderColor: 'var(--az-border)',
+                            borderColor: 'var(--az-border-subtle)',
                             maxWidth: isMobile ? '200px' : '220px',
                             minWidth: isMobile ? '100px' : '110px',
                         }}

@@ -34,7 +34,7 @@ const SearchResultRow: React.FC<{ def: SettingDef; onOpen: () => void }> = ({ de
     type="button"
     onClick={onOpen}
     aria-label={`Open ${def.label}`}
-    className="group w-full flex items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-left transition-colors hover:bg-white/[0.05] hover:border-white/[0.13] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50"
+    className="group w-full flex items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-left transition-colors hover:bg-white/[0.05] hover:border-white/[0.13] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.5)]"
   >
     <span className="min-w-0">
       <span className="block text-[13px] font-medium text-white/85 group-hover:text-white">{def.label}</span>
@@ -102,7 +102,7 @@ export const SettingsPanel: React.FC<{ onClose?: () => void }> = ({ onClose }) =
             <button
               type="button"
               onClick={goHome}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] text-white/50 hover:text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] text-white/50 hover:text-white hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] transition-colors"
             >
               <ArrowLeft size={13} />
               <span>Settings</span>
@@ -129,7 +129,7 @@ export const SettingsPanel: React.FC<{ onClose?: () => void }> = ({ onClose }) =
               <button
                 type="button"
                 onClick={() => setConfirmingResetAll(true)}
-                className="p-1.5 rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 transition-colors"
+                className="p-1.5 rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] transition-colors"
                 title="Reset all settings to defaults"
                 aria-label="Reset all settings to defaults"
               >
@@ -186,7 +186,7 @@ export const SettingsPanel: React.FC<{ onClose?: () => void }> = ({ onClose }) =
                         <button
                           type="button"
                           onClick={() => openCategory(categoryId)}
-                          className="ml-auto inline-flex items-center gap-1 text-[10px] text-blue-400/70 hover:text-[var(--az-text)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 rounded"
+                          className="ml-auto inline-flex items-center gap-1 text-[10px] text-[rgba(91,140,255,0.7)] hover:text-[var(--az-text)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] rounded"
                         >
                           View category <ArrowRight size={10} />
                         </button>

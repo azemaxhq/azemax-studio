@@ -101,11 +101,11 @@ export const TerminalPanel: React.FC<{ isMobile?: boolean }> = ({ isMobile = fal
     }, [handleContextAction]);
 
     return (
-        <div ref={panelRef} className="h-full flex flex-col relative overflow-hidden group" style={{ background: "var(--az-surface-2)"}}>
+        <div ref={panelRef} className="h-full flex flex-col relative overflow-hidden group" style={{ background: "var(--az-surface)"}}>
 
 
             {/* Header Bar — 36px stable */}
-            <div className="h-9 min-h-9 flex items-center justify-between px-3 shrink-0 z-10 overflow-hidden" style={{ background: "var(--az-surface-2)", borderBottom: "1px solid var(--az-border)"}}>
+            <div className="h-9 min-h-9 flex items-center justify-between px-3 shrink-0 z-10 overflow-hidden" style={{ background: "var(--az-surface)", borderBottom: "1px solid var(--az-border-subtle)"}}>
 
                 {/* Tabs Area — stable height, no wrap */}
                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar mask-gradient-right flex-1 min-w-0 h-full py-1">
@@ -117,15 +117,15 @@ export const TerminalPanel: React.FC<{ isMobile?: boolean }> = ({ isMobile = fal
                                 relative group/tab flex items-center gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-[6px] cursor-pointer select-none transition-colors duration-150 border max-w-[200px] text-[12px]
                                 ${isMobile ? 'min-w-[72px]' : 'min-w-[96px] sm:min-w-[120px]'}
                                 ${activeTerminalId === term.id
-                                    ? 'bg-[rgba(255,255,255,.04)] text-[#E7ECF3] border-[var(--az-border)]'
-                                    : 'text-[#778291] border-transparent hover:text-[var(--az-icon-hover)] hover:bg-[rgba(255,255,255,0.035)]'}
+                                    ? 'bg-[rgba(230,237,248,.04)] text-[#E6EDF8] border-[var(--az-border)]'
+                                    : 'text-[var(--az-text-muted)] border-transparent hover:text-[var(--az-icon-hover)] hover:bg-[var(--az-surface-hover)]'}
                             `}
                         >
                             {/* Status Icon — per-terminal (vscode ITerminalStatus) */}
                             {isTerminalRunning(term.id) ? (
                                 <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--az-warning)"}} title="Running" />
                             ) : (
-                                <Terminal size={13} style={{ color: activeTerminalId === term.id ? "#E7ECF3" : "var(--az-icon)"}} />
+                                <Terminal size={13} style={{ color: activeTerminalId === term.id ? "#E6EDF8" : "var(--az-icon)"}} />
                             )}
 
                             <span className="text-[11px] font-medium truncate flex-1">{term.title}</span>
@@ -166,7 +166,7 @@ export const TerminalPanel: React.FC<{ isMobile?: boolean }> = ({ isMobile = fal
                     <button
                         onClick={() => createTerminal(selectedFolder || 'root')}
                         aria-label="New terminal"
-                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1 ml-1'}`} style={{ color: "var(--az-icon)"}}
+                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(230,237,248,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1 ml-1'}`} style={{ color: "var(--az-icon)"}}
                         title="New Terminal"
                     >
                         <Plus size={isMobile ? 16 : 14} />
@@ -180,7 +180,7 @@ export const TerminalPanel: React.FC<{ isMobile?: boolean }> = ({ isMobile = fal
                     <button
                         onClick={() => activeTerminalId && clearTerminal(activeTerminalId)}
                         aria-label="Clear terminal output"
-                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1.5'}`} style={{ color: "var(--az-icon)"}}
+                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(230,237,248,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1.5'}`} style={{ color: "var(--az-icon)"}}
                         title="Clear Output"
                     >
                         <Eraser size={isMobile ? 16 : 14} />
@@ -191,7 +191,7 @@ export const TerminalPanel: React.FC<{ isMobile?: boolean }> = ({ isMobile = fal
                         onClick={() => setShowStdin(!showStdin)}
                         aria-label="Toggle standard input"
                         aria-pressed={showStdin}
-                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1.5'} ${showStdin ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border-strong)]' : ''}`} style={showStdin ? {} : { color: 'var(--az-icon)'}}
+                        className={`rounded-[6px] transition-colors duration-150 hover:bg-[rgba(230,237,248,0.06)] flex items-center justify-center shrink-0 ${isMobile ? 'w-9 h-9' : 'p-1.5'} ${showStdin ? 'bg-[var(--az-surface-3)] text-[var(--az-text)] border border-[var(--az-border-strong)]' : ''}`} style={showStdin ? {} : { color: 'var(--az-icon)'}}
                         title="Provide Input (stdin)"
                     >
                         <Keyboard size={isMobile ? 16 : 14} />
@@ -226,7 +226,7 @@ export const TerminalPanel: React.FC<{ isMobile?: boolean }> = ({ isMobile = fal
             {/* Stdin Input Panel */}
             <div className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${showStdin ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                 <div className="overflow-hidden">
-                    <div className="p-2 shrink-0" style={{ background: "var(--az-surface-2)", borderBottom: "1px solid var(--az-border)"}}>
+                    <div className="p-2 shrink-0" style={{ background: "var(--az-surface)", borderBottom: "1px solid var(--az-border-subtle)"}}>
                         <div className="flex flex-col gap-1">
                             <div className="text-[10px] font-semibold uppercase tracking-wider px-1" style={{ color: "var(--az-text-muted)"}}>
                                 Standard Input (stdin)

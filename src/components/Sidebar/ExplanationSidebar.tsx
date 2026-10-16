@@ -85,7 +85,7 @@ export const ExplanationSidebar: React.FC = () => {
                     onClick={handleExplain}
                     disabled={isExplaining}
                     title="Explain the entire active file"
-                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#5B8CFF]/25 bg-[#5B8CFF]/10 text-[#c9a8ff] hover:bg-[#5B8CFF]/20 hover:border-[#5B8CFF]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
+                    className="flex items-center gap-2 px-3 py-1.5 h-8 rounded-lg border border-[#5B8CFF]/25 bg-[#5B8CFF]/10 text-[var(--az-accent-bright)] hover:bg-[#5B8CFF]/20 hover:border-[#5B8CFF]/35 text-xs font-medium leading-none transition-colors disabled:opacity-50 disabled:pointer-events-none antialiased"
                 >
                     <FileText size={14} className="shrink-0" />
                     Explain File

@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 /* ============================================
-   AZEMAX DESIGN SYSTEM — NEUTRAL-FIRST PREMIUM
-   90% neutral / 7% borders / 3% accent
-   Sophisticated graphite, expensive, quiet
+   AZEMAX DESIGN SYSTEM — MIDNIGHT BLUE
+   90% midnight navy / 7% borders / 3% accent
+   One continuous navy foundation, calm & premium
    ============================================ */
 
 :root {
@@ -24,75 +24,104 @@
   /* Prevent font-size inflation on mobile rotation */
   -webkit-font-feature-settings: 'cv01','cv02','cv03','ss01';
 
-  /* ---- Surfaces — layered dark-neutral system (3–7% luminance steps) ---- */
-  --az-bg: #0B0E13;
-  --az-bg-subtle: #0C1118;
-  --az-surface: #10141B;
-  --az-surface-2: #141923;
-  --az-surface-3: #181E29;
-  --az-surface-hover: #1D2430;
-  --az-surface-active: #222B38;
-  --az-overlay: #181E29;
-  --az-terminal-bg: #0C1118;
-  --az-terminal-fg: #CDD6E0;
-  --az-terminal-cursor: #78A7FF;
-  --az-terminal-cursor-accent: #0C1118;
-  --az-editor-bg: #10141B;
-  --az-composer-bg: #151A22;
-  --az-composer-bg-hover: #161C26;
-  --az-composer-bg-focus: #181E29;
+  /* ============================================
+     AZEMAX — MIDNIGHT BLUE
+     One continuous midnight-navy foundation.
+     Deep navy surfaces, subtle blue undertone,
+     restrained electric-blue accents, cool type.
+     Panels separate by SMALL tonal shifts, not
+     dramatically different colors.
+     ============================================ */
 
-  /* ---- Borders — SUBTLE .055 / NORMAL .08 / STRONG .12 / ACCENT blue ---- */
-  --az-border: rgba(255,255,255,0.08);
-  --az-border-strong: rgba(255,255,255,0.12);
-  --az-border-subtle: rgba(255,255,255,0.055);
-  --az-border-solid: #232A36;
-  --az-border-solid-strong: #2E3746;
-  --az-divider: rgba(255,255,255,0.055);
-  --az-divider-strong: rgba(255,255,255,0.08);
+  /* ---- Surfaces — a tight midnight-navy range ---- */
+  --az-bg: #080F1C;              /* application background (deepest navy shell) */
+  --az-bg-subtle: #070D17;       /* recessed shell / status & lowest layer */
+  --az-surface: #0A1322;         /* primary panel surface */
+  --az-surface-2: #0D192B;       /* secondary panel surface */
+  --az-surface-3: #112039;       /* subtle elevated / selected containers */
+  --az-surface-elevated: #112039;
+  --az-surface-hover: #152744;   /* interactive hover */
+  --az-surface-active: #172D50;  /* pressed / selected */
+  --az-surface-input: #070D17;   /* inputs and recessed areas */
+  --az-overlay: #0D192B;         /* floating panels & overlays */
+  --az-terminal-bg: #070D17;     /* terminal — recessed into the workspace */
+  --az-terminal-fg: #C6D3E6;
+  --az-terminal-cursor: #79A3FF;
+  --az-terminal-cursor-accent: #070D17;
+  --az-editor-bg: #080F1C;       /* editor canvas — same navy as shell (seamless) */
+  --az-composer-bg: #0D192B;
+  --az-composer-bg-hover: #112039;
+  --az-composer-bg-focus: #112039;
+  --az-selection-bg: rgba(91,140,255,0.26);
 
-  /* ---- Text ---- */
-  --az-text: #F1F5F9;
-  --az-text-secondary: #A7B0BF;
-  --az-text-muted: #727D8E;
-  --az-text-faint: #5B6474;
-  --az-text-disabled: #4D5665;
+  /* ---- Borders — quiet, low-contrast, navy-tinted ---- */
+  --az-border: #1B2A42;
+  --az-border-strong: #2A4164;
+  --az-border-subtle: #142137;
+  --az-border-solid: #1B2A42;
+  --az-border-solid-strong: #2A4164;
+  --az-divider: #142137;
+  --az-divider-strong: #1B2A42;
 
-  /* ---- Accent (Azemax blue) — primary actions, active nav, selection, focus, AI only ---- */
+  /* ---- Text — cool white → muted blue-gray ---- */
+  --az-text: #E6EDF8;
+  --az-text-secondary: #A5B5CD;
+  --az-text-muted: #72849F;
+  --az-text-faint: #62748F;
+  --az-text-disabled: #53647D;
+
+  /* ---- Accent (Azemax electric blue) — primary actions, active nav, selection, focus, AI ---- */
   --az-accent: #5B8CFF;
-  --az-accent-hover: #6E9BFF;
-  --az-accent-bright: #78A7FF;
-  --az-accent-soft: rgba(91,140,255,0.10);
-  --az-accent-soft-subtle: rgba(91,140,255,0.09);
-  --az-accent-ring: rgba(91,140,255,0.18);
-  --az-accent-border: rgba(91,140,255,0.35);
-  --az-focus-ring: 0 0 0 2px rgba(91,140,255,.18);
-  --az-focus-ring-subtle: 0 0 0 1px rgba(255,255,255,0.07);
-  --az-border-focus: rgba(91,140,255,.50);
-  --az-composer-focus-ring: 0 0 0 3px rgba(91,140,255,.08);
+  --az-accent-hover: #79A3FF;
+  --az-accent-bright: #8FB0FF;
+  --az-accent-soft: rgba(91,140,255,0.14);
+  --az-accent-soft-subtle: rgba(91,140,255,0.10);
+  --az-accent-ring: rgba(91,140,255,0.24);
+  --az-accent-border: #294B80;
+  --az-focus-ring: 0 0 0 2px rgba(91,140,255,.24);
+  --az-focus-ring-subtle: 0 0 0 1px rgba(91,140,255,0.10);
+  --az-border-focus: #6D9AFF;
+  --az-composer-focus-ring: 0 0 0 3px rgba(91,140,255,.14);
 
   /* ---- Icon hierarchy — monochrome UI, blue reserved for active/AI ---- */
-  --az-icon: #7F8A9A;
-  --az-icon-hover: #AAB4C2;
+  --az-icon: #8296B4;
+  --az-icon-hover: #B3C3DC;
   --az-icon-active: #5B8CFF;
-  --az-icon-disabled: #4C5665;
-  --az-icon-primary: #F4F7FB;
-  --az-icon-activity: #727D8C;
-  --az-icon-activity-hover: #B8C1CE;
-  --az-icon-activity-active: #F2F6FC;
+  --az-icon-disabled: #53647D;
+  --az-icon-primary: #E6EDF8;
+  --az-icon-activity: #72849F;
+  --az-icon-activity-hover: #A5B5CD;
+  --az-icon-activity-active: #E6EDF8;
 
-  /* ---- Semantic (restrained) ---- */
-  --az-success: #35D399;
-  --az-success-soft: rgba(53,211,153,0.10);
-  --az-success-border: rgba(53,211,153,0.24);
-  --az-warning: #F5B94C;
-  --az-warning-soft: rgba(245,185,76,0.10);
-  --az-warning-border: rgba(245,185,76,0.24);
-  --az-error: #FF647C;
-  --az-error-soft: rgba(255,100,124,0.10);
-  --az-error-border: rgba(255,100,124,0.24);
-  --az-info: #5B8CFF;
-  --az-info-soft: rgba(91,140,255,0.10);
+  /* ---- Semantic (restrained, muted-pastel) ---- */
+  --az-success: #67D6A0;
+  --az-success-soft: rgba(103,214,160,0.12);
+  --az-success-border: rgba(103,214,160,0.30);
+  --az-warning: #F0C674;
+  --az-warning-soft: rgba(240,198,116,0.12);
+  --az-warning-border: rgba(240,198,116,0.30);
+  --az-error: #FF7D8B;
+  --az-error-soft: rgba(255,125,139,0.12);
+  --az-error-border: rgba(255,125,139,0.30);
+  --az-info: #7FA8F0;
+  --az-info-soft: rgba(127,168,240,0.12);
+
+  /* ---- Semantic aliases — single source of truth for the app ---- */
+  --background: var(--az-bg);
+  --foreground: var(--az-text);
+  --surface: var(--az-surface);
+  --surface-elevated: var(--az-surface-elevated);
+  --surface-hover: var(--az-surface-hover);
+  --surface-active: var(--az-surface-active);
+  --border: var(--az-border);
+  --muted: var(--az-surface-2);
+  --muted-foreground: var(--az-text-muted);
+  --primary: var(--az-accent);
+  --primary-foreground: #FFFFFF;
+  --success: var(--az-success);
+  --warning: var(--az-warning);
+  --destructive: var(--az-error);
+  --ring: var(--az-accent);
 
   /* ---- Radius — engineered, sharp (not playful) ---- */
   --az-radius-sm: 6px;
@@ -198,27 +227,27 @@ body {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,.16);
+  background: rgba(230,237,248,.16);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(230,237,248,.25); background-clip: padding-box; }
 ::-webkit-scrollbar-corner { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 999px; background-clip: padding-box; border: 1px solid transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); background-clip: padding-box; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(230,237,248,.16); border-radius: 999px; background-clip: padding-box; border: 1px solid transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(230,237,248,.25); background-clip: padding-box; }
 .custom-scrollbar { scrollbar-gutter: stable; }
-* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.16) transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(230,237,248,.16) transparent; }
 
 /* Explorer — 4px extremely subtle scrollbar, visible only on hover/scroll */
 .explorer-scrollbar { scrollbar-width: thin; scrollbar-color: transparent transparent; scrollbar-gutter: stable; }
-.explorer-scrollbar:hover { scrollbar-color: rgba(255,255,255,.16) transparent; }
+.explorer-scrollbar:hover { scrollbar-color: rgba(230,237,248,.16) transparent; }
 .explorer-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
 .explorer-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .explorer-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
-.explorer-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); background-clip: padding-box; border: 1px solid transparent; }
-.explorer-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); background-clip: padding-box; }
+.explorer-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(230,237,248,.16); background-clip: padding-box; border: 1px solid transparent; }
+.explorer-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(230,237,248,.25); background-clip: padding-box; }
 .explorer-scrollbar::-webkit-scrollbar-corner { background: transparent; }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -316,16 +345,16 @@ body {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   background: transparent; border: 1px solid transparent;
   padding: 5px 10px; min-height: 28px;
-  color: #717C8C;
+  color: var(--az-text-muted);
   font-size: 12px; font-weight: 500; line-height: 1; letter-spacing: -0.01em;
   cursor: pointer; position: relative;
   transition: color 150ms var(--az-ease), background 150ms var(--az-ease);
   border-radius: 6px;
   white-space: nowrap;
 }
-.glass-tab:hover { color: #AAB4C2; background: rgba(255,255,255,0.035); border-color: transparent; }
+.glass-tab:hover { color: var(--az-text-secondary); background: var(--az-surface-hover); border-color: transparent; }
 .glass-tab:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
-.glass-tab.active { color: #E8EDF4; background: transparent; border-color: transparent; }
+.glass-tab.active { color: var(--az-text); background: transparent; border-color: transparent; }
 .glass-tab.active::after {
   content: ''; position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); width: 16px; height: 2px;
   background: var(--az-accent); border-radius: 999px;
@@ -342,7 +371,7 @@ body {
 .monaco-editor .ghost-text,
 .monaco-editor .ghost-text-decoration,
 .monaco-editor .inline-suggestion-decoration {
-  color: rgba(167,172,181,0.55) !important;
+  color: rgba(186,196,213,0.55) !important;
   font-style: italic !important;
   text-shadow: none !important;
   font-family: 'JetBrains Mono', ui-monospace, monospace !important;
@@ -364,8 +393,8 @@ body {
   background: linear-gradient(
     90deg,
     var(--az-accent, #5B8CFF) 0%,
-    #a78bfa 40%,
-    var(--az-accent-bright, #78A7FF) 70%,
+    var(--az-accent-bright, #8FB0FF) 40%,
+    var(--az-info, #7FA8F0) 70%,
     var(--az-accent, #5B8CFF) 100%
   );
   background-size: 200% 100%;
@@ -381,7 +410,7 @@ body {
 }
 
 .ai-comment-suggestion {
-  color: #C4CEDF !important;
+  color: var(--az-text-secondary) !important;
   font-style: italic;
   font-weight: 400;
   letter-spacing: 0.01em;
@@ -425,7 +454,7 @@ body {
   background: linear-gradient(
     90deg,
     rgba(91,140,255,0.07) 0%,
-    rgba(167,139,250,0.04) 60%,
+    rgba(127,168,240,0.04) 60%,
     transparent 100%
   ) !important;
 }
@@ -446,10 +475,10 @@ body {
 
 /* Transient /// failure marker — trigger line kept, reason in hover */
 .ai-comment-error {
-  background: rgba(255,100,124,0.08) !important;
-  border-bottom: 1.5px solid rgba(255,100,124,0.60);
+  background: rgba(255,125,139,0.08) !important;
+  border-bottom: 1.5px solid rgba(255,125,139,0.60);
   border-radius: 2px;
-  box-shadow: 0 1px 0 0 rgba(255,100,124,0.18);
+  box-shadow: 0 1px 0 0 rgba(255,125,139,0.18);
 }
 .ai-comment-glyph { border-left: 2px solid var(--az-border-strong); }
 
@@ -463,7 +492,7 @@ body {
   margin-left: 12px;
   padding: 2px 10px 2px 8px;
   border-radius: 20px;
-  color: var(--az-accent-bright, #78A7FF);
+  color: var(--az-accent-bright, #79A3FF);
   background: rgba(91,140,255,0.09);
   border: 1px solid rgba(91,140,255,0.22);
   display: inline-block;
@@ -509,10 +538,10 @@ body {
 }
 
 /* Diagnostics — muted */
-.premium-diag-error-line { background: rgba(255,100,124,0.08) !important; border-left: 2px solid rgba(255,100,124,0.45); }
-.premium-diag-warning-line { background: rgba(245,185,76,0.08) !important; border-left: 2px solid rgba(245,185,76,0.45); }
-.premium-diag-error-inline { background: rgba(255,100,124,0.08); border-bottom: 1px solid rgba(255,100,124,0.5); border-radius: 2px; }
-.premium-diag-warning-inline { background: rgba(245,185,76,0.08); border-bottom: 1px solid rgba(245,185,76,0.5); border-radius: 2px; }
+.premium-diag-error-line { background: rgba(255,125,139,0.08) !important; border-left: 2px solid rgba(255,125,139,0.45); }
+.premium-diag-warning-line { background: rgba(240,198,116,0.08) !important; border-left: 2px solid rgba(240,198,116,0.45); }
+.premium-diag-error-inline { background: rgba(255,125,139,0.08); border-bottom: 1px solid rgba(255,125,139,0.5); border-radius: 2px; }
+.premium-diag-warning-inline { background: rgba(240,198,116,0.08); border-bottom: 1px solid rgba(240,198,116,0.5); border-radius: 2px; }
 .premium-diag-glyph-error::after { content: '●'; color: var(--az-error); font-size: 9px; }
 .premium-diag-glyph-warning::after { content: '●'; color: var(--az-warning); font-size: 9px; }
 
@@ -543,6 +572,11 @@ body {
   box-shadow: var(--az-shadow-sm);
 }
 .glass-terminal::before { display: none; }
+/* xterm.css defaults the scroll viewport to pure black. With allowTransparency
+   the canvas is transparent, so the black showed through beneath the terminal
+   surface token. Make the viewport honour --az-terminal-bg instead. */
+.glass-terminal .xterm-viewport { background-color: var(--az-terminal-bg) !important; }
+.glass-terminal .xterm .xterm-screen { background-color: transparent; }
 .glass-terminal-body { padding: 12px; /* font is owned by xterm.js — VS Code leaves container neutral */ }
 
 .glass-explanation { background: var(--az-surface); position: relative; }
@@ -587,8 +621,8 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
    ============================================ */
 
 .az-composer {
-  background: #151A22;
-  border: 1px solid rgba(255,255,255,.08);
+  background: var(--az-composer-bg);
+  border: 1px solid var(--az-border);
   border-radius: 8px;
   box-shadow: var(--az-shadow-sm);
   transition:
@@ -598,11 +632,11 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
   outline: none;
 }
 .az-composer:hover {
-  border-color: rgba(255,255,255,0.12);
+  border-color: var(--az-border-strong);
   background: var(--az-composer-bg-hover);
 }
 .az-composer:focus-within {
-  border-color: rgba(91,140,255,.55);
+  border-color: var(--az-accent-border);
   background: var(--az-composer-bg-focus);
   box-shadow: var(--az-composer-focus-ring);
   outline: none;
@@ -626,9 +660,9 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
    ============================================ */
 
 :root {
-  --az-ai-accent-soft: rgba(91,140,255,0.10);
-  --az-ai-accent-soft-hover: rgba(91,140,255,0.14);
-  --az-ai-border-active: rgba(91,140,255,0.30);
+  --az-ai-accent-soft: rgba(91,140,255,0.14);
+  --az-ai-accent-soft-hover: rgba(91,140,255,0.18);
+  --az-ai-border-active: rgba(91,140,255,0.34);
   --az-ai-glow: 0 0 14px rgba(91,140,255,0.08);
   --az-ai-glow-active: 0 0 16px rgba(91,140,255,0.12);
 }
@@ -765,7 +799,7 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
   animation: az-ai-breathe 2.6s var(--az-ease) infinite;
 }
 .az-ai-topbar-btn[data-loading="true"] .az-ai-topbar-i {
-  color: #D1D6E0;
+  color: #C6D3E6;
 }
 
 .az-ai-topbar-spinner {
@@ -777,7 +811,7 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
   border-top-width: 1.35px;
   opacity: 0;
   pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.02);
+  box-shadow: 0 0 0 1px rgba(230,237,248,0.02);
 }
 .az-ai-topbar-btn[data-loading="true"] .az-ai-topbar-spinner {
   opacity: 0.88;
@@ -823,12 +857,11 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
   padding: 6px 10px;
   border-radius: 8px;
   background: var(--az-overlay);
-  background: rgba(26,30,38,0.97);
   backdrop-filter: blur(12px) saturate(1.1);
   -webkit-backdrop-filter: blur(12px) saturate(1.1);
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.04) inset;
-  color: rgba(255,255,255,0.86);
+  border: 1px solid var(--az-border);
+  box-shadow: 0 8px 24px rgba(9,13,22,0.5), 0 1px 0 rgba(230,237,248,0.04) inset;
+  color: var(--az-text);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -839,9 +872,9 @@ code, pre, kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono
   font-size: 9.5px;
   padding: 2px 5px;
   border-radius: 4px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.42);
+  background: rgba(230,237,248,0.08);
+  border: 1px solid rgba(230,237,248,0.06);
+  color: var(--az-text-muted);
   font-family: ui-monospace, SFMono-Regular, monospace;
   line-height: 1;
 }
@@ -970,7 +1003,7 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 }
 .file-explorer-scroll::-webkit-scrollbar{width:5px}
 .file-explorer-scroll::-webkit-scrollbar-track{background:transparent}
-.file-explorer-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
+.file-explorer-scroll::-webkit-scrollbar-thumb{background:rgba(230,237,248,.16);border-radius:999px}
 .sidebar-header-premium{ background: var(--az-surface); border-bottom:1px solid var(--az-border); position:relative}
 .sidebar-header-premium::after{ display:none}
 .sidebar-action-btn:hover{ background:var(--az-surface-hover); color:var(--az-text); box-shadow:none}
@@ -1001,7 +1034,7 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 .az-focus:focus-visible{ outline:none; box-shadow: var(--az-focus-ring); border-color: var(--az-border-focus)}
 
 /* Composer placeholder & textarea polish — premium command-field */
-.az-composer textarea::placeholder { color: #677283; opacity: 1; font-weight: 400; transition: opacity var(--az-dur-fast) ease; }
+.az-composer textarea::placeholder { color: #72849F; opacity: 1; font-weight: 400; transition: opacity var(--az-dur-fast) ease; }
 .az-composer textarea:focus::placeholder { opacity: 0.48; }
 .az-composer textarea {
   font-family: 'Inter', system-ui, sans-serif;
@@ -1011,7 +1044,7 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
   box-shadow: none !important;
   border: none !important;
 }
-.az-composer textarea::selection { background: rgba(255,255,255,0.12); }
+.az-composer textarea::selection { background: rgba(230,237,248,0.12); }
 
 /* Chat sidebar — premium scroll + typography refinements */
 .ai-chat-root {
@@ -1021,31 +1054,31 @@ html.settings-larger-ui-text .text-\[12px\]{font-size:14px !important}
 }
 .ai-chat-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.10) transparent;
+  scrollbar-color: rgba(230,237,248,0.10) transparent;
   scrollbar-gutter: stable;
 }
 .ai-chat-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-.ai-chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
-.ai-chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); background-clip: padding-box; }
+.ai-chat-scroll::-webkit-scrollbar-thumb { background: rgba(230,237,248,0.16); border-radius: 999px; border: 1px solid transparent; background-clip: padding-box; }
+.ai-chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(230,237,248,0.25); background-clip: padding-box; }
 .ai-chat-scroll::-webkit-scrollbar-track { background: transparent; }
 
 /* Message editorial styles — tighter rhythm, refined hierarchy */
 .ai-message { animation: message-appear 200ms var(--az-ease-out) both; }
 .ai-code-block {
-  background: var(--az-surface-2);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--az-surface-input);
+  border: 1px solid var(--az-border-subtle);
   border-radius: 10px;
   overflow: hidden;
 }
 .ai-code-block-header {
-  background: #15181E;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: var(--az-surface-2);
+  border-bottom: 1px solid var(--az-border-subtle);
   padding: 7px 10px;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .ai-code-block pre {
   margin: 0; padding: 12px 14px;
-  background: #0F1115;
+  background: var(--az-surface-input);
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12.5px; line-height: 1.65;
   -webkit-font-smoothing: antialiased;
@@ -1135,7 +1168,7 @@ input:focus, textarea:focus, select:focus { outline: none; }
   border-left: 2px solid var(--az-accent) !important;
   color: var(--az-text) !important;
 }
-.az-explorer-hover:hover { background: rgba(255,255,255,0.045) !important; }
+.az-explorer-hover:hover { background: rgba(230,237,248,0.045) !important; }
 
 /* Empty states — small icon + title + one-line explanation */
 .az-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 32px 24px; text-align: center; }
@@ -1175,8 +1208,8 @@ button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
   border: 1px solid transparent;
   transition: background 150ms var(--az-ease), color 150ms var(--az-ease), border-color 150ms var(--az-ease);
 }
-.az-activity-btn:hover { color: var(--az-icon-activity-hover); background: rgba(255,255,255,0.04); }
-.az-activity-btn[data-active="true"] { color: var(--az-icon-activity-active); background: rgba(255,255,255,0.06); border-color: var(--az-border-subtle); }
+.az-activity-btn:hover { color: var(--az-icon-activity-hover); background: rgba(230,237,248,0.04); }
+.az-activity-btn[data-active="true"] { color: var(--az-icon-activity-active); background: rgba(230,237,248,0.06); border-color: var(--az-border-subtle); }
 .az-activity-btn:focus-visible { outline: none; box-shadow: var(--az-focus-ring); }
 .az-activity-indicator {
   position: absolute; left: -9px; top: 50%; transform: translateY(-50%);
@@ -1184,10 +1217,10 @@ button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
   background: var(--az-accent);
 }
 
-/* Bottom tabs — inactive #717C8C, hover #AAB4C2, active #E8EDF4 + compact 2px blue indicator */
-.az-tab-inactive { color: #717C8C; }
-.az-tab-inactive:hover { color: #AAB4C2; }
-.az-tab-active { color: #E8EDF4; }
+/* Bottom tabs — inactive muted, hover secondary, active primary + 2px blue indicator */
+.az-tab-inactive { color: var(--az-text-muted); }
+.az-tab-inactive:hover { color: var(--az-text-secondary); }
+.az-tab-active { color: var(--az-text); }
 
 /* Micro-interactions — 150-180ms ease, no panel animation */
 .az-hoverable { transition: background 170ms var(--az-ease), border-color 170ms var(--az-ease), color 170ms var(--az-ease), filter 170ms var(--az-ease); }
@@ -1198,16 +1231,16 @@ button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 8px 12px; border-radius: 8px;
   font-size: 11.5px; font-weight: 500; letter-spacing: -0.01em; line-height: 1;
-  background: rgba(255,255,255,0.025);
-  border: 1px solid rgba(255,255,255,0.07);
-  color: #B8C1CD;
+  background: var(--az-surface-2);
+  border: 1px solid var(--az-border);
+  color: var(--az-text-secondary);
   cursor: pointer;
   transition: background 150ms var(--az-ease), border-color 150ms var(--az-ease), color 150ms var(--az-ease);
 }
-.az-quick-action svg { color: #7D8897; flex-shrink: 0; transition: color 150ms var(--az-ease); }
-.az-quick-action:hover { background: rgba(91,140,255,0.08); border-color: rgba(91,140,255,0.20); color: #E7EDF6; }
-.az-quick-action:hover svg { color: #78A7FF; }
-.az-quick-action:focus-visible { outline: none; border-color: rgba(91,140,255,0.35); box-shadow: var(--az-focus-ring); }
+.az-quick-action svg { color: var(--az-text-muted); flex-shrink: 0; transition: color 150ms var(--az-ease); }
+.az-quick-action:hover { background: var(--az-accent-soft); border-color: var(--az-accent-border); color: var(--az-text); }
+.az-quick-action:hover svg { color: var(--az-accent-bright); }
+.az-quick-action:focus-visible { outline: none; border-color: var(--az-accent-border); box-shadow: var(--az-focus-ring); }
 
 /* Responsive guard — no horizontal overflow at 1280/1440/1600/1920 */
 .az-no-overflow { max-width: 100%; overflow-x: clip; }

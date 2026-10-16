@@ -12,7 +12,7 @@ export const ModernAILogo = ({ className }: { className?: string }) => (
         <defs>
             <linearGradient id="logo-gradient" x1="12" y1="12" x2="116" y2="116" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" stopColor="#5B8CFF" />
-                <stop offset="100%" stopColor="#78A7FF" />
+                <stop offset="100%" stopColor="#79A3FF" />
             </linearGradient>
             <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur stdDeviation="4" result="blur" />

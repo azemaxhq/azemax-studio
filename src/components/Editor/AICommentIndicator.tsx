@@ -99,7 +99,7 @@ export const AICommentIndicator: React.FC<Props> = ({ activeLine, editorRef, mon
         }
         @keyframes az-ind-dot {
           0%,100% { transform:scale(1);   opacity:0.80; box-shadow:0 0 4px 1.5px rgba(91,140,255,0.65); }
-          50%      { transform:scale(1.45); opacity:1;    box-shadow:0 0 9px 2px rgba(91,140,255,0.45),0 0 16px 3px rgba(167,139,250,0.18); }
+          50%      { transform:scale(1.45); opacity:1;    box-shadow:0 0 9px 2px rgba(91,140,255,0.45),0 0 16px 3px rgba(127,168,240,0.18); }
         }
         @media (prefers-reduced-motion:reduce) {
           [data-az-ind] > div:first-child { animation:none !important; }

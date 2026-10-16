@@ -54,12 +54,12 @@ function BetaWorkspace({ children }: { children: ReactNode }) {
                     data-testid="beta-anon-banner"
                     style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
-                        padding: '7px 16px', fontSize: '12px', color: '#A7B0BF',
-                        background: '#0E1420', borderBottom: '1px solid rgba(255,255,255,0.07)',
+                        padding: '7px 16px', fontSize: '12px', color: '#A5B5CD',
+                        background: 'var(--az-surface-2)', borderBottom: '1px solid var(--az-border-subtle)',
                     }}
                 >
                     <span>
-                        <strong style={{ color: '#F1F5F9', fontWeight: 600 }}>Public beta</strong>
+                        <strong style={{ color: '#E6EDF8', fontWeight: 600 }}>Public beta</strong>
                         {' — '}guest workspace saved in this browser only; clearing site data or switching devices loses it.
                         {' '}Sign in (optional) for higher AI &amp; execution limits.
                     </span>
@@ -67,7 +67,7 @@ function BetaWorkspace({ children }: { children: ReactNode }) {
                         type="button"
                         onClick={dismiss}
                         aria-label="Dismiss guest notice"
-                        style={{ background: 'none', border: 'none', padding: '4px 6px', color: '#727D8E', fontSize: '12px', cursor: 'pointer' }}
+                        style={{ background: 'none', border: 'none', padding: '4px 6px', color: '#72849F', fontSize: '12px', cursor: 'pointer' }}
                     >
                         Dismiss
                     </button>
@@ -110,7 +110,7 @@ export function OptionalAuthForm({ onDone }: { onDone?: () => void }) {
 
     if (done) {
         return (
-            <p role="status" style={{ fontSize: '13px', color: '#7EE2A8' }}>
+            <p role="status" style={{ fontSize: '13px', color: 'var(--az-success)' }}>
                 Signed in — your workspace now syncs to your account.
             </p>
         );
@@ -121,7 +121,7 @@ export function OptionalAuthForm({ onDone }: { onDone?: () => void }) {
             <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {mode === 'signup' && (
                     <div>
-                        <label htmlFor="auth-name" style={labelStyle}>Display name <span style={{ color: '#727D8E' }}>(optional)</span></label>
+                        <label htmlFor="auth-name" style={labelStyle}>Display name <span style={{ color: '#72849F' }}>(optional)</span></label>
                         <input id="auth-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                             autoComplete="nickname" maxLength={80} style={inputStyle} />
                     </div>
@@ -132,13 +132,13 @@ export function OptionalAuthForm({ onDone }: { onDone?: () => void }) {
                         autoComplete="email" required maxLength={254} style={inputStyle} />
                 </div>
                 <div>
-                    <label htmlFor="auth-password" style={labelStyle}>Password {mode === 'signup' && <span style={{ color: '#727D8E' }}>(min 10 characters)</span>}</label>
+                    <label htmlFor="auth-password" style={labelStyle}>Password {mode === 'signup' && <span style={{ color: '#72849F' }}>(min 10 characters)</span>}</label>
                     <input id="auth-password" type="password" value={password} onChange={(e) => { setPassword(e.target.value); clearError(); }}
                         autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                         required minLength={mode === 'signup' ? 10 : 1} maxLength={256} style={inputStyle} />
                 </div>
                 {error && (
-                    <p role="alert" style={{ fontSize: '12.5px', color: '#FF8A9D', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '8px', padding: '9px 12px', margin: 0 }}>
+                    <p role="alert" style={{ fontSize: '12.5px', color: 'var(--az-error)', background: 'var(--az-error-soft)', border: '1px solid var(--az-error-border)', borderRadius: '8px', padding: '9px 12px', margin: 0 }}>
                         {error}
                     </p>
                 )}
@@ -146,7 +146,7 @@ export function OptionalAuthForm({ onDone }: { onDone?: () => void }) {
                     {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
                 </button>
             </form>
-            <p style={{ fontSize: '12.5px', color: '#727D8E', textAlign: 'center', marginTop: '18px' }}>
+            <p style={{ fontSize: '12.5px', color: '#72849F', textAlign: 'center', marginTop: '18px' }}>
                 {mode === 'login' ? (
                     <>New to Azemax? <button type="button" onClick={() => { setMode('signup'); clearError(); }} style={linkStyle}>Create an account</button></>
                 ) : (
@@ -162,7 +162,7 @@ function GatedAuthGate({ children }: { children: ReactNode }) {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0B0E13' }} role="status" aria-live="polite" aria-label="Loading">
+            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#080F1C' }} role="status" aria-live="polite" aria-label="Loading">
                 <AzemaxLogo size={40} />
             </div>
         );
@@ -171,12 +171,12 @@ function GatedAuthGate({ children }: { children: ReactNode }) {
     if (user) return <>{children}</>;
 
     return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0B0E13', padding: '24px' }}>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080F1C', padding: '24px' }}>
             <main style={{ width: '100%', maxWidth: '380px' }} aria-labelledby="auth-title">
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
                     <AzemaxLogo size={44} />
-                    <h1 id="auth-title" style={{ fontSize: '20px', fontWeight: 650, color: '#F1F5F9', letterSpacing: '-0.01em', margin: 0 }}>{BRAND.name}</h1>
-                    <p style={{ fontSize: '13px', color: '#727D8E', margin: 0 }}>
+                    <h1 id="auth-title" style={{ fontSize: '20px', fontWeight: 650, color: '#E6EDF8', letterSpacing: '-0.01em', margin: 0 }}>{BRAND.name}</h1>
+                    <p style={{ fontSize: '13px', color: '#72849F', margin: 0 }}>
                         Sign in to your workspace
                     </p>
                 </div>
@@ -186,17 +186,17 @@ function GatedAuthGate({ children }: { children: ReactNode }) {
     );
 }
 
-const labelStyle: React.CSSProperties = { display: 'block', fontSize: '12px', fontWeight: 600, color: '#A7B0BF', marginBottom: '6px' };
+const labelStyle: React.CSSProperties = { display: 'block', fontSize: '12px', fontWeight: 600, color: '#A5B5CD', marginBottom: '6px' };
 
 const inputStyle: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box', fontSize: '14px', color: '#F1F5F9',
-    background: '#10141B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
+    width: '100%', boxSizing: 'border-box', fontSize: '14px', color: '#E6EDF8',
+    background: '#0A1322', border: '1px solid rgba(230,237,248,0.1)', borderRadius: '8px',
     padding: '10px 12px', outline: 'none',
 };
 
 const buttonStyle = (busy: boolean): React.CSSProperties => ({
     marginTop: '4px', padding: '11px 14px', fontSize: '14px', fontWeight: 600, color: '#fff',
-    background: busy ? '#3D5BBF' : '#5B8CFF', border: 'none', borderRadius: '8px',
+    background: busy ? '#294B80' : '#5B8CFF', border: 'none', borderRadius: '8px',
     cursor: busy ? 'wait' : 'pointer',
 });
 

@@ -20,14 +20,13 @@ import {
 } from 'lucide-react';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
-import {
+import performanceService, {
   analyzePerformance,
   PerformanceHistory,
   type PerformanceReport,
   type PerformanceMetrics,
-  type PerformanceBottleneck
+  type PerformanceBottleneck,
 } from '../../utils/performanceService';
-import performanceService from '../../utils/performanceService';
 import {
   generatePerformanceAlerts,
   PerformanceAlertManager,
@@ -39,20 +38,20 @@ import { getLanguageFromFilename } from '../../utils/language';
 
 // Grade colors
 const gradeColors: Record<string, { bg: string; border: string; text: string; glow: string }> = {
-  'A+': { bg: 'rgba(53, 211, 153, 0.12)', border: 'rgba(53, 211, 153, 0.28)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.10)' },
-  'A': { bg: 'rgba(53, 211, 153, 0.10)', border: 'rgba(53, 211, 153, 0.24)', text: '#35D399', glow: 'rgba(53, 211, 153, 0.08)' },
-  'B': { bg: 'rgba(91, 140, 255, 0.10)', border: 'rgba(91, 140, 255, 0.24)', text: '#78A7FF', glow: 'rgba(91, 140, 255, 0.08)' },
-  'C': { bg: 'rgba(245, 185, 76, 0.10)', border: 'rgba(245, 185, 76, 0.24)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.08)' },
-  'D': { bg: 'rgba(245, 185, 76, 0.12)', border: 'rgba(245, 185, 76, 0.28)', text: '#F5B94C', glow: 'rgba(245, 185, 76, 0.10)' },
-  'F': { bg: 'rgba(255, 100, 124, 0.10)', border: 'rgba(255, 100, 124, 0.28)', text: '#FF647C', glow: 'rgba(255, 100, 124, 0.10)' },
+  'A+': { bg: 'rgba(103,214,160, 0.12)', border: 'rgba(103,214,160, 0.28)', text: '#67D6A0', glow: 'rgba(103,214,160, 0.10)' },
+  'A': { bg: 'rgba(103,214,160, 0.10)', border: 'rgba(103,214,160, 0.24)', text: '#67D6A0', glow: 'rgba(103,214,160, 0.08)' },
+  'B': { bg: 'rgba(91,140,255, 0.10)', border: 'rgba(91,140,255, 0.24)', text: '#79A3FF', glow: 'rgba(91,140,255, 0.08)' },
+  'C': { bg: 'rgba(240,198,116, 0.10)', border: 'rgba(240,198,116, 0.24)', text: '#F0C674', glow: 'rgba(240,198,116, 0.08)' },
+  'D': { bg: 'rgba(240,198,116, 0.12)', border: 'rgba(240,198,116, 0.28)', text: '#F0C674', glow: 'rgba(240,198,116, 0.10)' },
+  'F': { bg: 'rgba(255,125,139, 0.10)', border: 'rgba(255,125,139, 0.28)', text: '#FF7D8B', glow: 'rgba(255,125,139, 0.10)' },
 };
 
 // Severity colors
 const severityColors: Record<string, string> = {
-  critical: '#FF647C',
-  high: '#E4B86A',
-  medium: '#F5B94C',
-  low: '#35D399',
+  critical: '#FF7D8B',
+  high: '#F0C674',
+  medium: '#F0C674',
+  low: '#67D6A0',
 };
 
 const calculateImprovement = (previous: PerformanceMetrics, current: PerformanceMetrics): number => {
@@ -159,10 +158,10 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
     return (
       <div className="p-4 glass-empty-state h-full">
         <div className="glass-empty-state-icon">
-          <Activity size={32} className="text-[#7F8A9A]" />
+          <Activity size={32} className="text-[#8296B4]" />
         </div>
         <h3 className="text-white/80 font-medium mb-2">Performance Metrics</h3>
-        <p className="text-[#7F8A9A] text-sm">Run your code to see performance metrics</p>
+        <p className="text-[#8296B4] text-sm">Run your code to see performance metrics</p>
       </div>
     );
   }
@@ -173,7 +172,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[var(--az-surface-3)] border border-[var(--az-border)] flex items-center justify-center">
-            <BarChart3 size={18} className="text-blue-400" />
+            <BarChart3 size={18} className="text-[var(--az-accent)]" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-white">Performance Analysis</h2>
@@ -200,7 +199,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
           </button>
           <button
             onClick={() => PerformanceHistory.clear()}
-            className="p-2 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            className="p-2 rounded-lg text-white/40 hover:text-[var(--az-error)] hover:bg-[rgba(255,125,139,0.1)] transition-all"
             title="Clear History"
           >
             <RefreshCw size={14} />
@@ -256,7 +255,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                     <div className="text-right">
                       <div className="text-xs text-white/50 mb-1">vs Previous Run</div>
                       <div className={`flex items-center gap-1 text-sm font-bold ${
-                        currentReport.comparison.improvement > 0 ? 'text-green-400' : 'text-red-400'
+                        currentReport.comparison.improvement > 0 ? 'text-[var(--az-success)]' : 'text-[var(--az-error)]'
                       }`}>
                         {currentReport.comparison.improvement > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                         {Math.abs(currentReport.comparison.improvement).toFixed(1)}%
@@ -279,7 +278,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
         <div className="mb-6">
           <div className="glass-analysis-card">
             <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-              <TrendingUp size={14} className="text-blue-400" />
+              <TrendingUp size={14} className="text-[var(--az-accent)]" />
               Performance Comparison
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -316,27 +315,27 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
             {/* Overall Improvement Indicator */}
             <div className="mt-4 p-3 rounded-lg border" style={{
               background: currentReport.comparison.improvement > 0 
-                ? 'rgba(53, 211, 153, 0.10)' 
-                : 'rgba(255, 100, 124, 0.10)',
+                ? 'rgba(103,214,160, 0.10)' 
+                : 'rgba(255,125,139, 0.10)',
               borderColor: currentReport.comparison.improvement > 0 
-                ? 'rgba(53, 211, 153, 0.24)' 
-                : 'rgba(255, 100, 124, 0.24)'
+                ? 'rgba(103,214,160, 0.24)' 
+                : 'rgba(255,125,139, 0.24)'
             }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {currentReport.comparison.improvement > 0 ? (
-                    <TrendingUp size={16} className="text-green-400" />
+                    <TrendingUp size={16} className="text-[var(--az-success)]" />
                   ) : (
-                    <TrendingDown size={16} className="text-red-400" />
+                    <TrendingDown size={16} className="text-[var(--az-error)]" />
                   )}
                   <span className={`text-sm font-medium ${
-                    currentReport.comparison.improvement > 0 ? 'text-green-400' : 'text-red-400'
+                    currentReport.comparison.improvement > 0 ? 'text-[var(--az-success)]' : 'text-[var(--az-error)]'
                   }`}>
                     {currentReport.comparison.improvement > 0 ? 'Performance Improved' : 'Performance Regressed'}
                   </span>
                 </div>
                 <div className={`text-sm font-bold ${
-                  currentReport.comparison.improvement > 0 ? 'text-green-400' : 'text-red-400'
+                  currentReport.comparison.improvement > 0 ? 'text-[var(--az-success)]' : 'text-[var(--az-error)]'
                 }`}>
                   {Math.abs(currentReport.comparison.improvement).toFixed(1)}%
                 </div>
@@ -351,7 +350,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
         <div className="mb-6">
           <div className="glass-analysis-card">
             <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-              <AlertTriangle size={14} className="text-orange-400" />
+              <AlertTriangle size={14} className="text-[var(--az-warning)]" />
               Performance Alerts ({alerts.length})
             </h3>
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -359,25 +358,25 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                 <div
                   key={alert.id}
                   className={`p-3 rounded-lg border ${
-                    alert.severity === 'critical' ? 'bg-red-500/10 border-red-500/30' :
-                    alert.severity === 'high' ? 'bg-orange-500/10 border-orange-500/30' :
-                    alert.severity === 'medium' ? 'bg-yellow-500/10 border-yellow-500/30' :
+                    alert.severity === 'critical' ? 'bg-[rgba(255,125,139,0.1)] border-[rgba(255,125,139,0.3)]' :
+                    alert.severity === 'high' ? 'bg-[rgba(240,198,116,0.1)] border-[rgba(240,198,116,0.3)]' :
+                    alert.severity === 'medium' ? 'bg-[rgba(240,198,116,0.1)] border-[rgba(240,198,116,0.3)]' :
                     'bg-[var(--az-surface-3)] border-[var(--az-border)]'
                   }`}
                 >
                   <div className="flex items-start gap-2">
                     <div className={`w-2 h-2 rounded-full mt-1.5 ${
-                      alert.severity === 'critical' ? 'bg-red-400' :
-                      alert.severity === 'high' ? 'bg-orange-400' :
-                      alert.severity === 'medium' ? 'bg-yellow-400' :
-                      'bg-blue-400'
+                      alert.severity === 'critical' ? 'bg-[var(--az-error)]' :
+                      alert.severity === 'high' ? 'bg-[var(--az-warning)]' :
+                      alert.severity === 'medium' ? 'bg-[var(--az-warning)]' :
+                      'bg-[var(--az-accent)]'
                     }`} />
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
                         <span className={`text-sm font-medium ${
-                          alert.type === 'achievement' ? 'text-green-400' :
-                          alert.type === 'improvement' ? 'text-blue-400' :
-                          alert.type === 'regression' ? 'text-orange-400' :
+                          alert.type === 'achievement' ? 'text-[var(--az-success)]' :
+                          alert.type === 'improvement' ? 'text-[var(--az-accent)]' :
+                          alert.type === 'regression' ? 'text-[var(--az-warning)]' :
                           'text-white'
                         }`}>
                           {alert.title}
@@ -428,7 +427,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
               {/* Key Metrics */}
               <div className="glass-analysis-card">
                 <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                  <Zap size={14} className="text-yellow-400" />
+                  <Zap size={14} className="text-[var(--az-warning)]" />
                   Key Metrics
                 </h3>
                 <div className="space-y-3">
@@ -443,7 +442,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
               {/* Operations Analysis */}
               <div className="glass-analysis-card">
                 <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                  <Activity size={14} className="text-blue-400" />
+                  <Activity size={14} className="text-[var(--az-accent)]" />
                   Operations Analysis
                 </h3>
                 <div className="space-y-3">
@@ -461,7 +460,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
             <div className="space-y-4">
               <div className="glass-analysis-card">
                 <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                  <Zap size={14} className="text-yellow-400" />
+                  <Zap size={14} className="text-[var(--az-warning)]" />
                   Efficiency Metrics
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -510,7 +509,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
               
               <div className="glass-analysis-card">
                 <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                  <Target size={14} className="text-blue-400" />
+                  <Target size={14} className="text-[var(--az-accent)]" />
                   Code Quality Metrics
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -524,7 +523,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${currentReport.metrics.quality.codeQuality}%`,
-                          background: `#35D399`
+                          background: `#67D6A0`
                         }}
                       />
                     </div>
@@ -568,19 +567,19 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                     label="Peak Memory"
                     value={currentReport.metrics.memoryUsage.peak}
                     max={200}
-                    color="#FF647C"
+                    color="#FF7D8B"
                   />
                   <MemoryBar
                     label="Average Memory"
                     value={currentReport.metrics.memoryUsage.average}
                     max={200}
-                    color="#E4B86A"
+                    color="#F0C674"
                   />
                   <MemoryBar
                     label="Final Memory"
                     value={currentReport.metrics.memoryUsage.final}
                     max={200}
-                    color="#F5B94C"
+                    color="#F0C674"
                   />
                 </div>
               </div>
@@ -596,7 +595,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                     label="Peak CPU"
                     value={currentReport.metrics.cpuUsage.peak}
                     max={100}
-                    color="#FF647C"
+                    color="#FF7D8B"
                   />
                   <CpuBar
                     label="Average CPU"
@@ -612,7 +611,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
           {selectedMetric === 'timeline' && history.length > 0 && (
             <div className="glass-analysis-card">
               <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                <Calendar size={14} className="text-blue-400" />
+                <Calendar size={14} className="text-[var(--az-accent)]" />
                 Performance History
               </h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -656,14 +655,14 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
                           <div className="flex items-center gap-1">
                             <Clock size={10} className="text-white/40" />
                             <span className="text-white/60">Time:</span>
-                            <span className={timeImprovement > 0 ? 'text-green-400' : 'text-red-400'}>
+                            <span className={timeImprovement > 0 ? 'text-[var(--az-success)]' : 'text-[var(--az-error)]'}>
                               {timeImprovement > 0 ? '-' : '+'}{Math.abs(timeImprovement).toFixed(1)}%
                             </span>
                           </div>
                           <div className="flex items-center gap-1">
                             <HardDrive size={10} className="text-white/40" />
                             <span className="text-white/60">Memory:</span>
-                            <span className={memoryImprovement > 0 ? 'text-green-400' : 'text-red-400'}>
+                            <span className={memoryImprovement > 0 ? 'text-[var(--az-success)]' : 'text-[var(--az-error)]'}>
                               {memoryImprovement > 0 ? '-' : '+'}{Math.abs(memoryImprovement).toFixed(1)}%
                             </span>
                           </div>
@@ -680,7 +679,7 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
           {currentReport.bottlenecks.length > 0 && (
             <div className="glass-analysis-card">
               <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                <AlertTriangle size={14} className="text-orange-400" />
+                <AlertTriangle size={14} className="text-[var(--az-warning)]" />
                 Performance Bottlenecks ({currentReport.bottlenecks.length})
               </h3>
               <div className="space-y-2">
@@ -700,13 +699,13 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({ executionDat
           {currentReport.recommendations.length > 0 && (
             <div className="glass-analysis-card">
               <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                <CheckCircle size={14} className="text-green-400" />
+                <CheckCircle size={14} className="text-[var(--az-success)]" />
                 Recommendations
               </h3>
               <div className="space-y-2">
                 {currentReport.recommendations.map((rec, index) => (
-                  <div key={index} className="flex items-start gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                    <CheckCircle size={14} className="text-green-400 mt-0.5 shrink-0" />
+                  <div key={index} className="flex items-start gap-3 p-3 bg-[rgba(103,214,160,0.1)] border border-[rgba(103,214,160,0.2)] rounded-lg">
+                    <CheckCircle size={14} className="text-[var(--az-success)] mt-0.5 shrink-0" />
                     <p className="text-sm text-white/80 leading-relaxed">{rec}</p>
                   </div>
                 ))}
@@ -851,7 +850,7 @@ const ComparisonMetric: React.FC<ComparisonMetricProps> = ({
         <div className="flex items-center justify-between pt-1 border-t border-white/10">
           <span className="text-xs text-white/50">Change:</span>
           <div className={`flex items-center gap-1 text-xs font-bold ${
-            isImproved ? 'text-green-400' : 'text-red-400'
+            isImproved ? 'text-[var(--az-success)]' : 'text-[var(--az-error)]'
           }`}>
             {isImproved ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
             {Math.abs(change).toFixed(1)}%

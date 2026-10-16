@@ -200,7 +200,7 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 4, scale: 0.98 }}
                   transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-                  className="relative w-full max-w-[440px] rounded-[12px] border bg-[var(--az-surface)] shadow-[0_16px_40px_rgba(0,0,0,0.55),0_1px_0_rgba(255,255,255,0.04)_inset] overflow-hidden"
+                  className="relative w-full max-w-[440px] rounded-[12px] border bg-[var(--az-surface)] shadow-[0_16px_40px_rgba(0,0,0,0.55),0_1px_0_rgba(230,237,248,0.04)_inset] overflow-hidden"
                   style={{ borderColor: 'var(--az-border)' }}
                 >
                   <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-0">
@@ -221,7 +221,7 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     <button ref={cancelRef} type="button" onClick={() => { (dialog as Extract<DialogState, {type:'confirm'}>).resolve(false); setDialog(null); }} className="min-w-[72px] px-3.5 py-2 text-[12.5px] font-[500] rounded-[8px] border bg-[var(--az-surface-3)] text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-[var(--az-surface-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)] transition-colors" style={{ borderColor: 'var(--az-border)' }}>
                       {confirmOpts.cancelLabel ?? 'Cancel'}
                     </button>
-                    <button type="button" onClick={() => { (dialog as Extract<DialogState, {type:'confirm'}>).resolve(true); setDialog(null); }} className={`min-w-[72px] px-3.5 py-2 text-[12.5px] font-[600] rounded-[8px] border focus:outline-none focus-visible:ring-1 transition-colors ${confirmOpts.danger !== false ? 'bg-[#FF647C] border-[#FF647C] text-white hover:brightness-105 focus-visible:ring-red-400/40 shadow-[0_1px_2px_rgba(0,0,0,0.2)]' : 'bg-[var(--az-accent)] border-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] focus-visible:ring-[var(--az-accent-ring)]'}`}>
+                    <button type="button" onClick={() => { (dialog as Extract<DialogState, {type:'confirm'}>).resolve(true); setDialog(null); }} className={`min-w-[72px] px-3.5 py-2 text-[12.5px] font-[600] rounded-[8px] border focus:outline-none focus-visible:ring-1 transition-colors ${confirmOpts.danger !== false ? 'bg-[#FF7D8B] border-[#FF7D8B] text-white hover:brightness-105 focus-visible:ring-[rgba(255,125,139,0.4)] shadow-[0_1px_2px_rgba(0,0,0,0.2)]' : 'bg-[var(--az-accent)] border-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] focus-visible:ring-[var(--az-accent-ring)]'}`}>
                       {confirmOpts.confirmLabel ?? 'Confirm'}
                     </button>
                   </div>

@@ -36,7 +36,7 @@ export const SmoothStreamingBubble: React.FC<Props> = ({ text, isStreaming, comp
             className={`smooth-streaming-content ${shouldAnimate ? '' : ''}`}
             style={{ contain: 'layout paint', willChange: 'opacity, transform' }}
         >
-            <div className="text-[15px] leading-[1.8] text-[#DCE2EA] break-words">
+            <div className="text-[15px] leading-[1.8] text-[#DCE6F5] break-words">
                 <MarkdownRenderer components={components} isStreaming={isStreaming}>
                     {text}
                 </MarkdownRenderer>

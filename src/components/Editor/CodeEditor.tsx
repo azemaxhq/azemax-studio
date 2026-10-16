@@ -22,6 +22,7 @@ import { useTerminal } from '../../context/TerminalContext';
 import { useKeyedDebounceCallback } from '../../hooks/useDebounce';
 import { setCursorPosition, useCursorPosition } from '../../core/runtime/cursorPositionStore';
 import { setActiveEditor, clearActiveEditor } from '../../core/editor/activeEditorStore';
+import { setupAzemaxDarkPlusHighlighting } from '../../core/editor/darkPlusHighlighting';
 import { DisposableStore } from '../../core/runtime/DisposableStore';
 import { getLanguageFromFilename as getMonacoLangId } from '../../utils/language';
 import type { FileNode } from '../../utils/mockFileSystem';
@@ -156,8 +157,6 @@ interface CodeEditorProps {
      */
     isMobile?: boolean;
 }
-
-let githubDarkThemeDefined = false;
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, isMobile = false }) => {
     const { activeFile } = useProjectFile();
@@ -396,10 +395,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                                 className: isError ? 'premium-diag-error-line' : isWarning ? 'premium-diag-warning-line' : 'premium-diag-info-line',
                                 glyphMarginClassName: isError ? 'premium-diag-glyph-error' : isWarning ? 'premium-diag-glyph-warning' : 'premium-diag-glyph-info',
                                 overviewRuler: {
-                                    color: isError ? 'rgba(248,81,73,0.9)' : isWarning ? 'rgba(254,188,46,0.9)' : 'rgba(88,166,255,0.9)',
+                                    color: isError ? 'rgba(255,125,139,0.9)' : isWarning ? 'rgba(240,198,116,0.9)' : 'rgba(127,168,240,0.9)',
                                     position: 4,
                                 },
-                                minimap: { color: isError ? '#FF647C' : isWarning ? '#F5B94C' : '#5B8CFF', position: 2 },
+                                minimap: { color: isError ? '#FF7D8B' : isWarning ? '#F0C674' : '#5B8CFF', position: 2 },
                                 hoverMessage: { value: hover },
                                 stickiness: 1,
                             }
@@ -833,8 +832,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                                 inlineClassName: isError ? 'premium-diag-error-inline' : isWarning ? 'premium-diag-warning-inline' : 'premium-diag-info-inline',
                                 className: isError ? 'premium-diag-error-line' : isWarning ? 'premium-diag-warning-line' : 'premium-diag-info-line',
                                 glyphMarginClassName: isError ? 'premium-diag-glyph-error' : isWarning ? 'premium-diag-glyph-warning' : 'premium-diag-glyph-info',
-                                overviewRuler: { color: isError ? 'rgba(248,81,73,0.9)' : isWarning ? 'rgba(254,188,46,0.9)' : 'rgba(88,166,255,0.9)', position: 4 },
-                                minimap: { color: isError ? '#FF647C' : isWarning ? '#F5B94C' : '#5B8CFF', position: 2 },
+                                overviewRuler: { color: isError ? 'rgba(255,125,139,0.9)' : isWarning ? 'rgba(240,198,116,0.9)' : 'rgba(127,168,240,0.9)', position: 4 },
+                                minimap: { color: isError ? '#FF7D8B' : isWarning ? '#F0C674' : '#5B8CFF', position: 2 },
                                 hoverMessage: { value: hover },
                                 stickiness: 1,
                             }
@@ -1616,85 +1615,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
     }, [runDiagnostics]);
 
     const handleEditorBeforeMount: BeforeMount = (monaco) => {
-        // Register the custom dark theme BEFORE @monaco-editor/react calls
-        // monaco.editor.setTheme(theme) during editor creation. If it were
-        // registered only in onMount (which runs after setTheme), Monaco would
-        // not find it, fall back to the default light theme, and never re-apply.
-        if (!githubDarkThemeDefined) {
-            githubDarkThemeDefined = true;
-            monaco.editor.defineTheme('github-dark', {
-                base: 'vs-dark',
-                inherit: true,
-                rules: [
-                    { token: 'comment', foreground: '657180', fontStyle: 'italic' },
-                    { token: 'comment.doc', foreground: '6E7A89', fontStyle: 'italic' },
-                    { token: 'keyword', foreground: '5B8CFF' },
-                    { token: 'keyword.control', foreground: '5B8CFF' },
-                    { token: 'type', foreground: '69B7FF' },
-                    { token: 'type.identifier', foreground: '69B7FF' },
-                    { token: 'class', foreground: '69B7FF' },
-                    { token: 'interface', foreground: '69B7FF' },
-                    { token: 'string', foreground: '8FD19E' },
-                    { token: 'string.escape', foreground: 'DFA76A' },
-                    { token: 'number', foreground: 'DFA76A' },
-                    { token: 'constant', foreground: 'DFA76A' },
-                    { token: 'variable', foreground: 'DCE2EA' },
-                    { token: 'variable.parameter', foreground: 'DCE2EA' },
-                    { token: 'function', foreground: 'E6EDF5' },
-                    { token: 'method', foreground: 'E6EDF5' },
-                    { token: 'operator', foreground: 'AAB3C0' },
-                    { token: 'delimiter', foreground: '7F8A9A' },
-                    { token: 'annotation', foreground: 'DFA76A' },
-                    { token: 'tag', foreground: '69B7FF' },
-                    { token: 'attribute.name', foreground: '69B7FF' },
-                    { token: 'attribute.value', foreground: '8FD19E' },
-                    { token: 'regexp', foreground: 'DFA76A' },
-                ],
-                colors: {
-                    'editor.background': '#10141B',
-                    'editor.foreground': '#DCE2EA',
-                    'editorLineNumber.foreground': '#596474',
-                    'editorLineNumber.activeForeground': '#AAB5C4',
-                    'editor.lineHighlightBackground': '#FFFFFF06',
-                    'editorCursor.foreground': '#78A7FF',
-                    'editor.selectionBackground': '#5B8CFF3D',
-                    'editor.inactiveSelectionBackground': '#5B8CFF24',
-                    'editorIndentGuide.background1': '#1E2632',
-                    'editorIndentGuide.background': '#1E2632',
-                    'editorIndentGuide.activeBackground1': '#2C3A4F',
-                    'editorIndentGuide.activeBackground': '#2C3A4F',
-                    'editorBracketPairGuide.background1': '#232A36',
-                    'editorBracketPairGuide.background2': '#28324A',
-                    'editorBracketPairGuide.background3': '#1E3A32',
-                    'editorBracketPairGuide.background4': '#3D2C1E',
-                    'editorBracketPairGuide.activeBackground1': '#2E3746',
-                    'editorBracketPairGuide.activeBackground2': '#3A4C6E',
-                    'editorGutter.background': '#10141B',
-                    'editorGutter.modifiedBackground': '#5B8CFF',
-                    'scrollbarSlider.background': '#2A3342AA',
-                    'scrollbarSlider.hoverBackground': '#3A4557CC',
-                    'scrollbarSlider.activeBackground': '#3A4557',
-                    'editorOverviewRuler.border': '#10141B',
-                    'editorRuler.foreground': '#232A36',
-                    'editor.foldBackground': '#141923',
-                    'editorStickyScroll.background': '#10141B',
-                    'editorStickyScroll.border': '#232A36',
-                    'editor.findMatchBackground': '#5B8CFF55',
-                    'editor.findMatchHighlightBackground': '#5B8CFF2A',
-                    'editor.lineHighlightBorder': '#00000000',
-                    'editorBracketMatch.background': '#5B8CFF24',
-                    'editorBracketMatch.border': '#5B8CFF4D',
-                    'editorWidget.background': '#181E29',
-                    'editorWidget.border': '#2E3746',
-                    'editorHoverWidget.background': '#181E29',
-                    'editorHoverWidget.border': '#2E3746',
-                    'editorSuggestWidget.background': '#141923',
-                    'editorSuggestWidget.border': '#2E3746',
-                    'editorSuggestWidget.selectedBackground': '#1D2430',
-                    'minimap.background': '#10141B',
-                }
-            });
-        }
+        // Single authoritative syntax-highlighting setup (VS Code Dark+ token
+        // colors on Azemax Midnight Blue + per-language Monarch tokenizer
+        // shims). Registered BEFORE @monaco-editor/react calls
+        // monaco.editor.setTheme(theme) during editor creation. The setup is
+        // idempotent per Monaco instance; see darkPlusHighlighting.ts.
+        setupAzemaxDarkPlusHighlighting(monaco);
     };
 
     const handleEditorMount: OnMount = (editor, monaco) => {
@@ -1960,7 +1886,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
 
     if (!activeFile) {
         return (
-            <div className="w-full h-full flex flex-col items-center justify-center relative select-none" style={{ background: "var(--az-surface)", color: "var(--az-text-muted)"}}>
+            <div className="w-full h-full flex flex-col items-center justify-center relative select-none" style={{ background: "var(--az-editor-bg)", color: "var(--az-text-muted)"}}>
                 <div className="flex flex-col items-center gap-3 mb-6">
                     <AzemaxLogo size={40} />
                     <span className="text-[13px] font-semibold tracking-tight leading-none" style={{ color: "var(--az-text)"}}>{BRAND.name}</span>
@@ -1986,7 +1912,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                 single Run action and the bottom nav owns AI, so rendering this
                 row on phones would duplicate Run and waste vertical chrome. */}
             {!isMobile && (
-            <div className="flex items-center justify-between px-3 shrink-0 overflow-hidden" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}>
+            <div className="flex items-center justify-between px-3 shrink-0 overflow-hidden" style={{ height: 'var(--az-topbar-height)', minHeight: 'var(--az-topbar-height)', background: 'var(--az-bg)', borderBottom: '1px solid var(--az-border-subtle)' }}>
                 <div ref={toolbarLeftRef} className={`flex items-center min-w-0 flex-1 overflow-hidden ${toolbarSize === 'mini' ? 'gap-0' : toolbarSize === 'compact' ? 'gap-0.5' : 'gap-1'}`}>
                     {/* Check Errors — Premium AI DeepCheck (production-grade) */}
                     {(() => {
@@ -2016,7 +1942,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                                 : hasErrors
                                     ? 'bg-[var(--az-error-soft)] text-[var(--az-error)] border border-[var(--az-error-border)]'
                                     : hasWarnings
-                                        ? 'bg-[var(--az-warning-soft)] text-[#F5B94C] border border-[var(--az-warning-border)]'
+                                        ? 'bg-[var(--az-warning-soft)] text-[#F0C674] border border-[var(--az-warning-border)]'
                                         : isCheckSuccess
                                             ? 'bg-[var(--az-success-soft)] text-[var(--az-success)] border border-[var(--az-success-border)]'
                                             : diagnosticStale
@@ -2028,7 +1954,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                         {isChecking ? (
                             <>
                                 <span className="relative flex items-center justify-center">
-                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/20 animate-ping" />
+                                    <span className="absolute h-3 w-3 rounded-full bg-[rgba(91,140,255,0.2)] animate-ping" />
                                     <Loader2 size={12} className="animate-spin text-[var(--az-text-muted)] relative" />
                                 </span>
                                 {toolbarSize === 'full' && <span className="text-[var(--az-text-secondary)]">Checking...</span>}
@@ -2037,9 +1963,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                         ) : hasErrors ? (
                             <AlertCircle size={12} />
                         ) : hasWarnings ? (
-                            <AlertCircle size={12} className="text-[#F5B94C]" />
+                            <AlertCircle size={12} className="text-[#F0C674]" />
                         ) : isCheckSuccess ? (
-                            <CheckCircle size={12} className="text-green-300" />
+                            <CheckCircle size={12} className="text-[var(--az-success)]" />
                         ) : (
                             <CheckCircle size={12} className={diagnosticStale ? 'opacity-50' : ''} />
                         )}
@@ -2101,7 +2027,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                         {isFormatting ? (
                             <>
                                 <span className="relative flex items-center justify-center">
-                                    <span className="absolute h-3 w-3 rounded-full bg-violet-500/20 animate-ping" />
+                                    <span className="absolute h-3 w-3 rounded-full bg-[rgba(91,140,255,0.2)] animate-ping" />
                                     <span className="absolute h-2 w-2 rounded-full animate-spin" style={{ background: "var(--az-text-muted)", borderTopColor: 'transparent', borderWidth: '1.5px', borderStyle: 'solid' } as React.CSSProperties} />
                                     <Loader2 size={12} className="animate-spin text-[var(--az-text-muted)] relative" />
                                 </span>
@@ -2147,10 +2073,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                             <div className={`shrink-0 w-px bg-[var(--az-border)] ${toolbarSize === 'compact' ? 'h-3 mx-0.5' : 'h-5 mx-1'}`} />
 
                             {/* Font Size — compact segmented control */}
-                            <div className="shrink-0 flex items-center gap-0.5 rounded-[7px] border px-0.5 h-7" style={{ background: '#151A22', borderColor: 'rgba(255,255,255,.08)' }}>
+                            <div className="shrink-0 flex items-center gap-0.5 rounded-[7px] border px-0.5 h-7" style={{ background: '#0D192B', borderColor: 'rgba(230,237,248,.08)' }}>
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.max(10, settings.editor.fontSize - 1) })}
-                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[rgba(255,255,255,0.06)] rounded-[5px] transition-colors duration-150 shrink-0"
+                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[rgba(230,237,248,0.06)] rounded-[5px] transition-colors duration-150 shrink-0"
                                     aria-label="Decrease font size"
                                 >
                                     <Minus size={12} className="shrink-0" />
@@ -2158,7 +2084,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                                 <span className="text-[11px] text-[var(--az-text-secondary)] w-5 text-center font-mono leading-none tabular-nums select-none">{settings.editor.fontSize}</span>
                                 <button
                                     onClick={() => updateSettings('editor', { fontSize: Math.min(24, settings.editor.fontSize + 1) })}
-                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[rgba(255,255,255,0.06)] rounded-[5px] transition-colors duration-150 shrink-0"
+                                    className="w-6 h-6 flex items-center justify-center text-[var(--az-icon)] hover:text-[var(--az-icon-hover)] hover:bg-[rgba(230,237,248,0.06)] rounded-[5px] transition-colors duration-150 shrink-0"
                                     aria-label="Increase font size"
                                 >
                                     <Plus size={12} className="shrink-0" />
@@ -2184,7 +2110,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                 role="toolbar"
                 aria-label="Editor actions"
                 className="flex items-center gap-0.5 px-1.5 shrink-0 overflow-x-auto no-scrollbar"
-                style={{ height: '40px', minHeight: '40px', background: 'var(--az-surface)', borderBottom: '1px solid var(--az-border)' }}
+                style={{ height: '40px', minHeight: '40px', background: 'var(--az-bg)', borderBottom: '1px solid var(--az-border-subtle)' }}
             >
                 <button
                     onClick={settings.code.diagnostics ? runDiagnostics : undefined}
@@ -2238,8 +2164,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                 </button>
                 <span className="flex-1" />
                 <span className="text-[10px] font-mono tabular-nums px-1 shrink-0" style={{ color: 'var(--az-text-faint)' }} title="Diagnostics">
-                    {diagCounts.errors > 0 && <span className="text-[#FF647C] font-semibold mr-1.5">●{diagCounts.errors}</span>}
-                    {diagCounts.warnings > 0 && <span className="text-[#F5B94C] font-semibold">●{diagCounts.warnings}</span>}
+                    {diagCounts.errors > 0 && <span className="text-[#FF7D8B] font-semibold mr-1.5">●{diagCounts.errors}</span>}
+                    {diagCounts.warnings > 0 && <span className="text-[#F0C674] font-semibold">●{diagCounts.warnings}</span>}
                     {diagCounts.total === 0 && <span>{language.toUpperCase()}</span>}
                 </span>
             </div>
@@ -2261,7 +2187,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                     // and disposes all models on unmount.
                     path={activeFile ? `inmemory://azemax/${activeFile.id}` : 'inmemory://azemax/empty'}
                     defaultValue={activeFile?.content || ''}
-                    theme={isDark ? 'github-dark' : 'vs-light'}
+                    theme={isDark ? 'azemax-midnight-signature' : 'vs-light'}
                     onChange={handleEditorChange}
                     beforeMount={handleEditorBeforeMount}
                     onMount={handleEditorMount}
@@ -2274,17 +2200,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ isAiOpen, onToggleAi, is
                 carries diagnostics + language, so this 24px row is parked to
                 give the editor maximum space. */}
             {settings.general.showStatusBar && !isMobile && (
-                <div className="h-6 min-h-6 text-[11px] leading-none flex items-center justify-between px-3 shrink-0 select-none font-medium overflow-hidden antialiased" style={{ background: 'var(--az-surface-2)', color: 'var(--az-text-muted)', borderTop: '1px solid var(--az-border)'}}>
+                <div className="h-6 min-h-6 text-[11px] leading-none flex items-center justify-between px-3 shrink-0 select-none font-medium overflow-hidden antialiased" style={{ background: 'var(--az-bg)', color: 'var(--az-text-muted)', borderTop: '1px solid var(--az-border-subtle)'}}>
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none">
                             <GitBranch size={11} className="shrink-0" />
                             <span>main</span>
                         </div>
                         <div className="flex items-center gap-1 hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text-secondary)] px-1.5 py-0.5 rounded-md cursor-pointer transition-colors leading-none" title={diagnosticSummary || (diagCounts.total === 0 ? 'No diagnostics' : `${diagCounts.errors} errors · ${diagCounts.warnings} warnings`)}>
-                            <CheckCircle size={11} className={`shrink-0 ${diagCounts.errors > 0 ? 'text-[#FF647C]' : 'text-[var(--az-text-muted)]'}`} />
-                            <span className={diagCounts.errors > 0 ? 'text-[#FF647C] font-semibold' : ''}>{diagCounts.errors}</span>
-                            <AlertCircle size={11} className={`ml-1 shrink-0 ${diagCounts.warnings > 0 ? 'text-[#F5B94C]' : 'text-[var(--az-text-muted)]'}`} />
-                            <span className={diagCounts.warnings > 0 ? 'text-[#F5B94C] font-semibold' : ''}>{diagCounts.warnings}</span>
+                            <CheckCircle size={11} className={`shrink-0 ${diagCounts.errors > 0 ? 'text-[#FF7D8B]' : 'text-[var(--az-text-muted)]'}`} />
+                            <span className={diagCounts.errors > 0 ? 'text-[#FF7D8B] font-semibold' : ''}>{diagCounts.errors}</span>
+                            <AlertCircle size={11} className={`ml-1 shrink-0 ${diagCounts.warnings > 0 ? 'text-[#F0C674]' : 'text-[var(--az-text-muted)]'}`} />
+                            <span className={diagCounts.warnings > 0 ? 'text-[#F0C674] font-semibold' : ''}>{diagCounts.warnings}</span>
                             {diagnosticStale && diagCounts.total > 0 && <span className="ml-1 text-[9px] px-1 py-0 rounded bg-[var(--az-surface-3)] border border-[var(--az-border)]">stale</span>}
                             {diagCounts.infos > 0 && <span className="ml-1 text-[9px] text-[#5B8CFF]">{diagCounts.infos}i</span>}
                         </div>

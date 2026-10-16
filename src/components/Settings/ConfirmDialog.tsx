@@ -99,7 +99,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-            className="relative w-full max-w-[440px] rounded-[12px] border bg-[var(--az-surface)] shadow-[0_16px_40px_rgba(0,0,0,0.55),0_1px_0_rgba(255,255,255,0.04)_inset] overflow-hidden"
+            className="relative w-full max-w-[440px] rounded-[12px] border bg-[var(--az-surface)] shadow-[0_16px_40px_rgba(0,0,0,0.55),0_1px_0_rgba(230,237,248,0.04)_inset] overflow-hidden"
             style={{ borderColor: 'var(--az-border)' }}
           >
             {/* Header */}
@@ -144,7 +144,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 onClick={onConfirm}
                 className={`min-w-[72px] px-3.5 py-2 text-[12.5px] font-[600] rounded-[8px] border focus:outline-none focus-visible:ring-1 transition-colors ${
                   danger
-                    ? 'bg-[#FF647C] border-[#FF647C] text-white hover:brightness-105 focus-visible:ring-red-400/40 shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
+                    ? 'bg-[#FF7D8B] border-[#FF7D8B] text-white hover:brightness-105 focus-visible:ring-[rgba(255,125,139,0.4)] shadow-[0_1px_2px_rgba(0,0,0,0.2)]'
                     : 'bg-[var(--az-accent)] border-[var(--az-accent)] text-white hover:bg-[var(--az-accent-hover)] focus-visible:ring-[var(--az-accent-ring)]'
                 }`}
               >

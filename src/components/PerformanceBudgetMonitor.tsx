@@ -199,7 +199,7 @@ export const PerformanceDashboard: React.FC<{ enabled?: boolean }> = ({ enabled 
     <div className="fixed top-4 right-4 z-40 glass-panel p-4 rounded-lg border border-white/10 min-w-[280px] animate-fade-in-up">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-white flex items-center gap-2">
-          <span className="w-2 h-2 bg-green-400 rounded-full" />
+          <span className="w-2 h-2 bg-[var(--az-success)] rounded-full" />
           Performance Dashboard
         </h3>
       </div>
@@ -207,29 +207,29 @@ export const PerformanceDashboard: React.FC<{ enabled?: boolean }> = ({ enabled 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-black/20 rounded-lg p-3">
           <div className="text-[10px] text-white/50 uppercase tracking-wider">FPS</div>
-          <div className={`text-2xl font-bold font-mono ${fps >= 55 ? 'text-green-400' : fps >= 30 ? 'text-yellow-400' : 'text-red-400'}`}>
+          <div className={`text-2xl font-bold font-mono ${fps >= 55 ? 'text-[var(--az-success)]' : fps >= 30 ? 'text-[var(--az-warning)]' : 'text-[var(--az-error)]'}`}>
             {fps}
           </div>
         </div>
         <div className="bg-black/20 rounded-lg p-3">
           <div className="text-[10px] text-white/50 uppercase tracking-wider">Frame Time</div>
-          <div className={`text-2xl font-bold font-mono ${frameTime <= 16.67 ? 'text-green-400' : frameTime <= 33 ? 'text-yellow-400' : 'text-red-400'}`}>
+          <div className={`text-2xl font-bold font-mono ${frameTime <= 16.67 ? 'text-[var(--az-success)]' : frameTime <= 33 ? 'text-[var(--az-warning)]' : 'text-[var(--az-error)]'}`}>
             {frameTime.toFixed(1)}ms
           </div>
         </div>
         <div className="bg-black/20 rounded-lg p-3">
           <div className="text-[10px] text-white/50 uppercase tracking-wider">Renders/s</div>
-          <div className="text-2xl font-bold font-mono text-blue-400">{renderCount}</div>
+          <div className="text-2xl font-bold font-mono text-[var(--az-accent)]">{renderCount}</div>
         </div>
         <div className="bg-black/20 rounded-lg p-3">
           <div className="text-[10px] text-white/50 uppercase tracking-wider">Commit Time</div>
-          <div className={`text-2xl font-bold font-mono ${commitTime <= 5 ? 'text-green-400' : commitTime <= 16 ? 'text-yellow-400' : 'text-red-400'}`}>
+          <div className={`text-2xl font-bold font-mono ${commitTime <= 5 ? 'text-[var(--az-success)]' : commitTime <= 16 ? 'text-[var(--az-warning)]' : 'text-[var(--az-error)]'}`}>
             {commitTime.toFixed(1)}ms
           </div>
         </div>
         <div className="bg-black/20 rounded-lg p-3 col-span-2">
           <div className="text-[10px] text-white/50 uppercase tracking-wider">JS Heap</div>
-          <div className="text-2xl font-bold font-mono text-purple-400">{memoryMB} MB</div>
+          <div className="text-2xl font-bold font-mono text-[var(--az-info)]">{memoryMB} MB</div>
         </div>
       </div>
 
@@ -244,7 +244,7 @@ export const PerformanceDashboard: React.FC<{ enabled?: boolean }> = ({ enabled 
               .map((p, i) => (
                 <div key={i} className="flex justify-between text-[10px] text-white/70">
                   <span className="truncate pr-2">{p.id} ({p.phase})</span>
-                  <span className={`font-mono ${p.actualDuration > 16.67 ? 'text-red-400' : 'text-green-400'}`}>
+                  <span className={`font-mono ${p.actualDuration > 16.67 ? 'text-[var(--az-error)]' : 'text-[var(--az-success)]'}`}>
                     {p.actualDuration.toFixed(1)}ms
                   </span>
                 </div>

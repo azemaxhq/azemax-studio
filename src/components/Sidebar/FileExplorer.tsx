@@ -167,7 +167,7 @@ const InputNode = ({ type, depth, initialValue = '', indentStep, indentBase, par
                 style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
                 className={cn(
                     "flex items-center gap-2 py-0 pr-3 min-h-[34px] h-[34px] rounded-[6px] border text-[13px] leading-none select-none transition-colors duration-150",
-                    "bg-[var(--az-surface-2)] border-[var(--az-border)] focus-within:bg-[var(--az-surface-3)] focus-within:border-[var(--az-border-strong)] focus-within:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+                    "bg-[var(--az-surface-2)] border-[var(--az-border)] focus-within:bg-[var(--az-surface-3)] focus-within:border-[var(--az-border-strong)] focus-within:shadow-[inset_0_0_0_1px_rgba(230,237,248,0.04)]"
                 )}
             >
                 {/* Chevron placeholder — fixed 16px slot, preserves tree geometry */}
@@ -270,7 +270,7 @@ const HighlightText = ({ text, query }: { text: string; query: string }) => {
         <span>
             {parts.map((p, i) =>
                 p.highlight
-                    ? <mark key={i} className="bg-amber-500/20 text-amber-200 rounded-[2px] px-[1px] py-0 ring-1 ring-amber-500/25 font-medium">{p.text}</mark>
+                    ? <mark key={i} className="bg-[rgba(240,198,116,0.2)] text-[var(--az-warning)] rounded-[2px] px-[1px] py-0 ring-1 ring-[rgba(240,198,116,0.25)] font-medium">{p.text}</mark>
                     : <span key={i}>{p.text}</span>
             )}
         </span>
@@ -435,12 +435,12 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 className={cn(
                     "flex items-center gap-1.5 py-0 pr-2 cursor-pointer transition-colors duration-100 text-[13px] leading-none select-none group relative rounded-[6px] mx-1.5 border min-h-[28px] max-md:min-h-[38px] max-md:h-[38px] md:h-[28px] antialiased outline-none focus-visible:ring-1 focus-visible:ring-[var(--az-accent-ring)]",
                     isActive
-                        ? "bg-[rgba(91,140,255,0.09)] text-[#E7ECF3] border-transparent font-[500] after:absolute after:left-0 after:top-[5px] after:bottom-[5px] after:w-[2px] after:rounded-full after:bg-[var(--az-accent)]"
+                        ? "bg-[rgba(91,140,255,0.09)] text-[#E6EDF8] border-transparent font-[500] after:absolute after:left-0 after:top-[5px] after:bottom-[5px] after:w-[2px] after:rounded-full after:bg-[var(--az-accent)]"
                         : isFocused
                             ? "bg-[var(--az-surface-2)] text-[var(--az-text)] border-[var(--az-border)] font-[450]"
                             : isSelected
                                 ? "bg-[var(--az-surface-2)] text-[var(--az-text)] border-[var(--az-border)] font-[450]"
-                                : "text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-[rgba(255,255,255,0.035)] border-transparent font-[400] hover:border-white/[0.03]",
+                                : "text-[var(--az-text-secondary)] hover:text-[var(--az-text)] hover:bg-[rgba(230,237,248,0.035)] border-transparent font-[400] hover:border-white/[0.03]",
                     isDragOver && "bg-[var(--az-accent-soft)] border-[var(--az-accent-border)] shadow-[0_0_0_1px_var(--az-accent-border)]",
                 )}
                 style={{ paddingLeft: `${depth * indentStep + indentBase}px` }}
@@ -481,11 +481,11 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 {/* Status — kept for errors only; yellow modification dots removed per design */}
                 {hasError && !isFolder && (
                     <span className="shrink-0 ml-2 w-2 h-2 flex items-center justify-center" aria-hidden>
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#FF647C]" title="Error" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#FF7D8B]" title="Error" />
                     </span>
                 )}
                 {gitStatus && !isFolder && (
-                    <span className="text-[9px] font-bold tracking-widest shrink-0 w-3 text-center leading-none ml-1" style={{ color: gitStatus === 'M' ? '#F5B94C' : gitStatus === 'A' ? '#35D399' : '#727D8E' }} title={gitStatus === 'M' ? 'Modified' : gitStatus === 'A' ? 'Added' : 'Untracked'}>{gitStatus}</span>
+                    <span className="text-[9px] font-bold tracking-widest shrink-0 w-3 text-center leading-none ml-1" style={{ color: gitStatus === 'M' ? '#F0C674' : gitStatus === 'A' ? '#67D6A0' : '#72849F' }} title={gitStatus === 'M' ? 'Modified' : gitStatus === 'A' ? 'Added' : 'Untracked'}>{gitStatus}</span>
                 )}
 
                 {/* File Count Badge for Folders */}
@@ -505,8 +505,8 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                             }
                         }}
                         className={`opacity-0 group-hover:opacity-100 p-1 rounded-[4px] transition-colors duration-100 ${isBookmarked
-                                ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
-                                : 'text-white/30 hover:text-amber-400 hover:bg-white/[0.06]'
+                                ? 'text-[var(--az-warning)] hover:text-[var(--az-warning)] hover:bg-[rgba(240,198,116,0.1)]'
+                                : 'text-white/30 hover:text-[var(--az-warning)] hover:bg-white/[0.06]'
                             }`}
                         title={isBookmarked ? 'Remove from Favorites' : 'Add to Favorites'}
                     >
@@ -534,7 +534,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                 {/* Delete — subtle */}
                 <button
                     onClick={handleDeleteClick}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 hover:bg-red-500/10 rounded-[4px] transition-colors duration-100"
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-[var(--az-error)] hover:bg-[rgba(255,125,139,0.1)] rounded-[4px] transition-colors duration-100"
                     title="Delete"
                 >
                     <Trash2 size={11} strokeWidth={1.75} />
@@ -556,7 +556,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                 className="absolute top-0 bottom-0 w-px pointer-events-none z-10"
                                 style={{
                                     left: `${(depth * indentStep) + indentBase + 8}px`,
-                                    background: "linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.085) 10px, rgba(255,255,255,0.085) calc(100% - 10px), transparent 100%)",
+                                    background: "linear-gradient(to bottom, transparent 0%, rgba(230,237,248,0.085) 10px, rgba(230,237,248,0.085) calc(100% - 10px), transparent 100%)",
                                     width: "1px",
                                     transform: "translateZ(0)",
                                 } as React.CSSProperties}
@@ -610,7 +610,7 @@ const FileTreeNode: React.FC<FileTreeNodeProps> = memo(({
                                     <div className="flex gap-2">
                                         <button
                                             onClick={(e) => { e.stopPropagation(); onStartCreating?.('file'); }}
-                                            className="text-xs bg-blue-500/10 border border-blue-500/20 text-[var(--az-text)] px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
+                                            className="text-xs bg-[rgba(91,140,255,0.1)] border border-[rgba(91,140,255,0.2)] text-[var(--az-text)] px-3 py-1.5 rounded-lg hover:bg-[rgba(91,140,255,0.2)] transition-colors"
                                         >
                                             New File
                                         </button>
@@ -1077,7 +1077,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
 
         // Add visual feedback
         const dragImage = document.createElement('div');
-        dragImage.className = 'bg-blue-500/20 border border-blue-500/40 rounded-lg px-2 py-1 text-sm text-[var(--az-text)]';
+        dragImage.className = 'bg-[rgba(91,140,255,0.2)] border border-[rgba(91,140,255,0.4)] rounded-lg px-2 py-1 text-sm text-[var(--az-text)]';
         dragImage.textContent = node.name;
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 0, 0);
@@ -1550,7 +1550,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                             <select
                                                 value={searchFilters.fileType}
                                                 onChange={(e) => handleFilterChange('fileType', e.target.value)}
-                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-blue-500/40"
+                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-[rgba(91,140,255,0.4)]"
                                             >
                                                 <option value="all">All Files</option>
                                                 <option value="folder">Folders</option>
@@ -1569,7 +1569,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                             <select
                                                 value={searchFilters.dateRange}
                                                 onChange={(e) => handleFilterChange('dateRange', e.target.value)}
-                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-blue-500/40"
+                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-[rgba(91,140,255,0.4)]"
                                             >
                                                 <option value="all">Any Time</option>
                                                 <option value="today">Today</option>
@@ -1584,7 +1584,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                             <select
                                                 value={searchFilters.sizeRange}
                                                 onChange={(e) => handleFilterChange('sizeRange', e.target.value)}
-                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-blue-500/40"
+                                                className="flex-1 text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:outline-none focus:border-[rgba(91,140,255,0.4)]"
                                             >
                                                 <option value="all">Any Size</option>
                                                 <option value="small">Small (&lt;10KB)</option>
@@ -1601,7 +1601,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                                     type="checkbox"
                                                     checked={searchFilters.showHidden}
                                                     onChange={(e) => handleFilterChange('showHidden', e.target.checked)}
-                                                    className="w-3 h-3 rounded border-white/[0.2] bg-white/[0.1] text-blue-500 focus:ring-blue-500/40"
+                                                    className="w-3 h-3 rounded border-white/[0.2] bg-white/[0.1] text-[var(--az-accent)] focus:ring-[rgba(91,140,255,0.4)]"
                                                 />
                                                 Hidden files
                                             </label>
@@ -1629,13 +1629,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
 
             {/* Favorites Section */}
             {bookmarkedFiles.size > 0 && (
-                <div className="border-b border-white/[0.04] bg-gradient-to-b from-amber-500/[0.04] to-transparent">
+                <div className="border-b border-white/[0.04] bg-gradient-to-b from-[var(--az-warning)]/[0.04] to-transparent">
                     <div className="px-2.5 py-1.5 flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="text-amber-400/80">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="text-[rgba(240,198,116,0.8)]">
                                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                             </svg>
-                            <span className="text-[10px] font-[600] tracking-[0.04em] uppercase text-amber-300/80">Favorites · {bookmarkedFiles.size}</span>
+                            <span className="text-[10px] font-[600] tracking-[0.04em] uppercase text-[rgba(240,198,116,0.8)]">Favorites · {bookmarkedFiles.size}</span>
                         </div>
                         <button
                             onClick={() => {
@@ -1660,7 +1660,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                                         e.stopPropagation();
                                         toggleBookmark(file.id);
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 w-4 h-4 flex items-center justify-center text-amber-400/70 hover:text-amber-300 hover:bg-white/[0.06] rounded-[3px] transition-colors"
+                                    className="opacity-0 group-hover:opacity-100 w-4 h-4 flex items-center justify-center text-[rgba(240,198,116,0.7)] hover:text-[var(--az-warning)] hover:bg-white/[0.06] rounded-[3px] transition-colors"
                                 >
                                     <X size={9} strokeWidth={1.75} />
                                 </button>
@@ -1698,7 +1698,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
                         <div className="flex gap-2">
                             <button
                                 onClick={() => startCreating('file', 'root')}
-                                className="text-xs bg-blue-500/10 border border-blue-500/20 text-[var(--az-text)] px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-colors"
+                                className="text-xs bg-[rgba(91,140,255,0.1)] border border-[rgba(91,140,255,0.2)] text-[var(--az-text)] px-3 py-1.5 rounded-lg hover:bg-[rgba(91,140,255,0.2)] transition-colors"
                             >
                                 New File
                             </button>

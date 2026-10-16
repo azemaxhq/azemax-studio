@@ -6,10 +6,10 @@ import { useProjectFile } from '../../context/ProjectContext';
 
 const severityIcon = (s: CanonicalDiagnostic['severity']) => {
     switch (s) {
-        case 'error': return <AlertCircle size={12} className="text-[#FF647C] shrink-0" />;
-        case 'warning': return <AlertTriangle size={12} className="text-[#F5B94C] shrink-0" />;
+        case 'error': return <AlertCircle size={12} className="text-[#FF7D8B] shrink-0" />;
+        case 'warning': return <AlertTriangle size={12} className="text-[#F0C674] shrink-0" />;
         case 'info': return <Info size={12} className="text-[#5B8CFF] shrink-0" />;
-        case 'hint': return <Lightbulb size={12} className="text-[#7F8A9A] shrink-0" />;
+        case 'hint': return <Lightbulb size={12} className="text-[#8296B4] shrink-0" />;
     }
 };
 
@@ -73,7 +73,7 @@ export const ProblemsPanel: React.FC = () => {
                 </div>
                 <span className="text-xs text-[var(--az-text-muted)]">No problems found</span>
                 <span className="text-[10px] text-[var(--az-text-muted)] opacity-70">Run Check to analyze current file</span>
-                {result?.isPartial && <span className="text-[10px] text-[#F5B94C]">Partial result — {result.errors.ai || result.errors.local}</span>}
+                {result?.isPartial && <span className="text-[10px] text-[#F0C674]">Partial result — {result.errors.ai || result.errors.local}</span>}
             </div>
         );
     }
@@ -82,11 +82,11 @@ export const ProblemsPanel: React.FC = () => {
         <div className="flex flex-col h-full">
             <div className="flex items-center gap-3 px-3 py-2 text-[11px] border-b shrink-0" style={{ background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}>
                 <span className="flex items-center gap-1.5">
-                    <AlertCircle size={12} className="text-[#FF647C]" />
+                    <AlertCircle size={12} className="text-[#FF7D8B]" />
                     <span className="font-semibold">{result.errorCount}</span> errors
                 </span>
                 <span className="flex items-center gap-1.5">
-                    <AlertTriangle size={12} className="text-[#F5B94C]" />
+                    <AlertTriangle size={12} className="text-[#F0C674]" />
                     <span className="font-semibold">{result.warningCount}</span> warnings
                 </span>
                 {result.infoCount > 0 && <span className="flex items-center gap-1.5"><Info size={12} className="text-[#5B8CFF]" />{result.infoCount} infos</span>}
@@ -95,7 +95,7 @@ export const ProblemsPanel: React.FC = () => {
                         +{global.total - result.diagnostics.length} elsewhere
                     </span>
                 )}
-                {result.isPartial && <span className="ml-auto text-[10px] text-[#F5B94C]">partial</span>}
+                {result.isPartial && <span className="ml-auto text-[10px] text-[#F0C674]">partial</span>}
                 {result.isStale && <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-[var(--az-surface-3)] border border-[var(--az-border)]">stale</span>}
             </div>
             <div className="flex-1 overflow-auto custom-scrollbar">

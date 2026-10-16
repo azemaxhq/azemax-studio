@@ -481,7 +481,7 @@ export const MainLayout: React.FC = () => {
 
                 {/* Editor — receives all remaining space */}
                 <div data-testid="editor-root" className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
-                    <div data-testid="editor" className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-surface)' }}>
+                    <div data-testid="editor" className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-editor-bg)' }}>
                         <CodeEditor
                             isMobile={true}
                             isAiOpen={mobileTab === 'ai'}
@@ -749,7 +749,7 @@ export const MainLayout: React.FC = () => {
                 <div className="flex-1 flex flex-col min-w-0">
                     {/* Editor Area */}
                     <div data-testid="editor-root" className="flex-1 flex min-h-0 relative">
-                        <div data-testid="editor" className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-surface)', border: 'none' }}>
+                        <div data-testid="editor" className="flex-1 min-w-0 overflow-hidden" style={{ background: 'var(--az-editor-bg)', border: 'none' }}>
                             <CodeEditor
                                 isAiOpen={isAiSidebarOpen}
                                 onToggleAi={toggleAiSidebar}
@@ -774,7 +774,7 @@ export const MainLayout: React.FC = () => {
                     {isDesktop && (
                         <div
                             ref={bottomPanelRef}
-                            style={{ height: bottomPanelHeight, background: 'var(--az-surface-2)', borderColor: 'var(--az-border)' }}
+                            style={{ height: bottomPanelHeight, background: 'var(--az-surface)', borderColor: 'var(--az-border)' }}
                             className="shrink-0 border-t"
                         >
                             <BottomPanel />

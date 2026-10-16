@@ -29,7 +29,7 @@
     font-weight: 500;
     letter-spacing: 0.005em;
     line-height: 1.5;
-    color: var(--az-text-secondary, #A7B0BF);
+    color: var(--az-text-secondary, #A5B5CD);
     transition: opacity 220ms ease;
 }
 
@@ -75,7 +75,7 @@
     .ai-response-container,
     .smooth-streaming-content { transition: opacity 120ms ease !important; animation: none !important; }
     .ai-loading-minimal { animation: none !important; opacity: 1 !important; }
-    .ai-loading-minimal-text { animation: none !important; color: var(--az-text-secondary, #A7B0BF); }
+    .ai-loading-minimal-text { animation: none !important; color: var(--az-text-secondary, #A5B5CD); }
     .streaming-caret-premium { box-shadow: none; }
 }
 
@@ -162,7 +162,7 @@
   justify-content: center;
   flex-shrink: 0;
   vertical-align: middle;
-  color: var(--az-accent-bright, #78A7FF);
+  color: var(--az-accent-bright, #79A3FF);
 }
 .ai-activity-mark svg {
   width: 100%;
@@ -211,11 +211,11 @@
   min-width: 48px;
   max-width: 220px;
   flex-shrink: 1;
-  color: var(--az-text-secondary, #A7B0BF);
+  color: var(--az-text-secondary, #A5B5CD);
 }
 .agent-activity-path {
   font-size: 11px;
-  color: var(--az-text-faint, #6B7484);
+  color: var(--az-text-faint, #62748F);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -269,9 +269,9 @@
 .ai-loading-minimal-text {
   background-image: linear-gradient(
     100deg,
-    var(--az-text-secondary, #A7B0BF) 45%,
-    #B9CFFF 50%,
-    var(--az-text-secondary, #A7B0BF) 55%
+    var(--az-text-secondary, #A5B5CD) 45%,
+    var(--az-accent-bright, #79A3FF) 50%,
+    var(--az-text-secondary, #A5B5CD) 55%
   );
   background-size: 300% 100%;
   animation: ai-text-flow 3s ease-in-out infinite;
@@ -319,7 +319,7 @@
   .ai-loading-minimal-text {
     animation: none !important;
     background: none !important;
-    color: var(--az-text-secondary, #A7B0BF) !important;
-    -webkit-text-fill-color: var(--az-text-secondary, #A7B0BF) !important;
+    color: var(--az-text-secondary, #A5B5CD) !important;
+    -webkit-text-fill-color: var(--az-text-secondary, #A5B5CD) !important;
   }
 }
