@@ -43,14 +43,14 @@ function nvidiaAllowed() {
     // NOTE: Nemotron 3 Super 120B is the documented primary model for every
     // task, and it is spelled with or without the `-a12b` suffix depending
     // on catalog vs client ('nvidia/nemotron-3-super-120b-a12b' vs
-    // 'nvidia/nemotron-3-super-120b-a12b'). Both spellings are ALWAYS
+    // 'nvidia/nemotron-3-super-120b'). Both spellings are ALWAYS
     // permitted, independent of which one the NVIDIA_MODEL env var names:
     // otherwise any request carrying the non-configured spelling fails
     // policy with 403 ("Model not permitted on provider nvidia") before
     // any provider fallback can run — which surfaces as a dead-end
     // "Explanation failed" in the UI.
     set.add('nvidia/nemotron-3-super-120b-a12b');
-    set.add('nvidia/nemotron-3-super-120b-a12b');
+    set.add('nvidia/nemotron-3-super-120b');
     if (def.startsWith('deepseek-ai/')) {
         set.add('deepseek-ai/deepseek-v4-flash-0731');
     }

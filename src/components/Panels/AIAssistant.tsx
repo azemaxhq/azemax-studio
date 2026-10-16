@@ -36,6 +36,7 @@ import type { ChatMessage } from '../../core/ai/types';
 import { parseArtifacts } from './ai/artifactParser';
 import { AI_ERROR_CODES } from '../../core/ai/AIError';
 import { AIRequestStore } from '../../core/ai/aiRequestStore';
+import { tryRebaseUpdate, contentEquivalent } from '../../core/ai/proposalRebase';
 import type { AgentActivity } from '../../core/ai/agentController';
 
 import { AzemaxLogo } from '../UI/AzemaxLogo';
@@ -816,6 +817,15 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
     const handleSendRef = useRef<((arg?: string) => void) | null>(null);
     const pendingStreamFrameRef = useRef<number | null>(null);
     const latestStreamTextRef = useRef('');
+    /**
+     * Activity watchdog for the running AI request: the timer only fires when
+     * NOTHING has happened for a while (no streamed token, no agent activity,
+     * no tool event). A healthy long run resets the timer on every event and is
+     * never cancelled just because it takes long — the old fixed 75s total
+     * deadline killed productive agent runs and made provider latency look
+     * like "stuck in Planning changes".
+     */
+    const watchdogResetRef = useRef<(() => void) | null>(null);
     const lastSentRef = useRef<{ text: string; at: number } | null>(null);
 
     // Derived state: Current Session
@@ -1006,7 +1016,11 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
     }, [currentSessionId]);
 
     /** Accept a pending agent proposal: staleness-check every change against
-     * the LIVE tree, then replay. A change whose base moved is refused. */
+     * the LIVE tree, then replay. A change whose base is unchanged applies
+     * directly; one whose file moved is safely REBASED onto the live content
+     * when the proposed region still exists verbatim (preserving the user's
+     * newer edits); anything else is a real conflict and is refused with an
+     * actionable explanation — never overwritten blindly. */
     const handleAcceptProposal = useCallback(() => {
         if (!pendingProposal) return;
         const liveTree = getFileTree();
@@ -1025,48 +1039,78 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
             return walk(liveTree);
         };
         let applied = 0;
+        let rebased = 0;
         const skipped: string[] = [];
+        const skipReasons = new Map<string, string>();
+        const skip = (path: string, reason?: string) => {
+            skipped.push(path);
+            if (reason) skipReasons.set(path, reason);
+        };
         for (const c of pendingProposal.changes) {
             try {
                 if (c.kind === 'update' || c.kind === 'delete') {
                     const live = findLive(c.fileId);
                     const liveContent = live && typeof live.content === 'string' ? live.content : null;
-                    if (!live || liveContent !== c.before) {
-                        skipped.push(c.path);
+                    if (!live || c.fileId === null) {
+                        skip(c.path, 'the file no longer exists');
                         continue;
                     }
-                    if (c.kind === 'update' && c.after !== null && c.fileId) {
-                        const r = updateFileContent(c.fileId, c.after);
-                        if ((r as { error?: unknown }).error) { skipped.push(c.path); continue; }
-                        applied++;
-                    } else if (c.kind === 'delete' && c.fileId) {
-                        deleteNode(c.fileId);
-                        applied++;
+                    // Unchanged (modulo line endings) → the proposal applies as-is.
+                    if (liveContent === null || contentEquivalent(liveContent, c.before)) {
+                        if (c.kind === 'update' && c.after !== null && c.fileId) {
+                            const r = updateFileContent(c.fileId, c.after);
+                            if ((r as { error?: unknown }).error) { skip(c.path, String((r as { error?: { message?: string } }).error?.message ?? 'write was rejected')); continue; }
+                            applied++;
+                        } else if (c.kind === 'delete' && c.fileId) {
+                            deleteNode(c.fileId);
+                            applied++;
+                        }
+                        continue;
                     }
+                    // The user changed the file while the AI was working.
+                    // A DELETION is destructive — it is never rebased.
+                    if (c.kind === 'delete') {
+                        skip(c.path, 'the file changed since the proposal — deleting it without review could discard your edits');
+                        continue;
+                    }
+                    // An UPDATE is rebased when the exact proposed region still
+                    // exists verbatim in the live file.
+                    if (c.kind === 'update' && c.after !== null && c.before !== null && liveContent !== null) {
+                        const result = tryRebaseUpdate(c.before, c.after, liveContent);
+                        if (result.rebased !== null) {
+                            const r = updateFileContent(c.fileId, result.rebased);
+                            if ((r as { error?: unknown }).error) { skip(c.path, String((r as { error?: { message?: string } }).error?.message ?? 'write was rejected')); continue; }
+                            // The rebased application preserved the user's newer edits.
+                            rebased++;
+                            continue;
+                        }
+                        skip(c.path, result.reason ?? 'the file changed since the proposal');
+                        continue;
+                    }
+                    skip(c.path, 'the file changed since the proposal');
                 } else if (c.kind === 'create' && c.after !== null) {
                     const r = createFile(c.path, c.after);
-                    if ((r as { error?: unknown }).error) { skipped.push(c.path); continue; }
+                    if ((r as { error?: unknown }).error) { skip(c.path, String((r as { error?: { message?: string } }).error?.message ?? 'the file already exists or could not be created')); continue; }
                     applied++;
                 } else if (c.kind === 'rename' && c.fileId && c.newPath) {
                     const live = findLive(c.fileId);
-                    const liveContent = live && typeof live.content === 'string' ? live.content : null;
-                    if (!live || liveContent !== c.before) {
-                        skipped.push(c.path);
-                        continue;
-                    }
+                    if (!live) { skip(c.path, 'the file no longer exists'); continue; }
+                    // Renaming never destroys content, so a content drift that
+                    // happened while the proposal was open is NOT a conflict.
                     const newName = c.newPath.split('/').pop() || c.newPath;
                     const r = renameNode(c.fileId, newName);
-                    if ((r as { error?: unknown }).error) { skipped.push(c.path); continue; }
+                    if ((r as { error?: unknown }).error) { skip(c.path, String((r as { error?: { message?: string } }).error?.message ?? 'rename was rejected')); continue; }
                     applied++;
                 }
-            } catch {
-                skipped.push(c.path);
+            } catch (e) {
+                console.warn(`[AcceptProposal] change for ${c.path} failed:`, e);
+                skip(c.path, 'applying the change threw an unexpected error');
             }
         }
         setPendingProposal(null);
-        setLastDiffs(pendingProposal.changes
-            .filter((c) => !skipped.includes(c.path))
-            .map((c) => {
+        const appliedPaths = pendingProposal.changes
+            .filter((c) => !skipped.includes(c.path));
+        setLastDiffs(appliedPaths.map((c) => {
                 const beforeLines = c.before ? c.before.split('\n').length : 0;
                 const afterLines = c.after ? c.after.split('\n').length : 0;
                 const added = Math.max(0, afterLines - beforeLines);
@@ -1077,11 +1121,21 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                     summary: c.kind === 'create' ? `Created · ${afterLines} lines` : c.kind === 'delete' ? 'Deleted' : `${added} added, ${removed} removed`,
                 };
             }));
-        appendSystemNote(
-            applied > 0
-                ? `Applied ${applied} change${applied !== 1 ? 's' : ''}${skipped.length ? ` (${skipped.length} skipped — file changed since proposal: ${skipped.join(', ')})` : ''}.`
-                : `No changes applied${skipped.length ? ` — ${skipped.length} skipped (file changed since proposal).` : '.'}`,
-        );
+        const skippedDetail = skipped
+            .map((p) => `${p}${skipReasons.has(p) ? ` — ${skipReasons.get(p)}` : ''}`)
+            .join('; ');
+        const totalApplied = applied + rebased;
+        if (totalApplied > 0) {
+            const rebasedNote = rebased > 0 ? ` (${rebased} re-based onto your newer edits)` : '';
+            const skippedNote = skipped.length ? ` Skipped: ${skippedDetail}. Re-run the request to generate a fresh proposal against the latest files.` : '';
+            appendSystemNote(`Applied ${totalApplied} change${totalApplied !== 1 ? 's' : ''}${rebasedNote}.${skippedNote}`);
+        } else if (skipped.length) {
+            appendSystemNote(
+                `No changes applied (all ${skipped.length} skipped — files changed since the proposal: ${skippedDetail}). Your edits were preserved. Re-run the request to generate a fresh proposal against the latest files.`,
+            );
+        } else {
+            appendSystemNote('No changes applied — the proposal contained no applicable changes.');
+        }
     }, [pendingProposal, getFileTree, updateFileContent, createFile, deleteNode, renameNode, appendSystemNote]);
 
     /** Reject a pending proposal: shadow changes are simply dropped. */
@@ -1256,14 +1310,31 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
 
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
-        let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        /**
+         * Idle watchdog — reset every time real progress arrives (a streamed
+         * token, an agent activity update, a tool result). Only fires when the
+         * pipeline is genuinely producing nothing for WATCHDOG_IDLE_MS.
+         */
+        const WATCHDOG_IDLE_MS = 45_000;
+        let watchdogId: ReturnType<typeof setTimeout> | null = null;
+        let watchdogDead = false;
+        const watchdogKill = () => {
+            if (watchdogDead) return;
+            watchdogDead = true;
             if (currentRequestIdRef.current === requestId && !abortController.signal.aborted) {
                 abortController.abort();
-                // Ensure store reaches terminal state even if provider hangs
+                // Ensure store reaches terminal state even if the provider hangs
                 const live = AIRequestStore.getActiveRequestForOperation('chat');
-                if (live?.id === requestId) AIRequestStore.failRequest(requestId, 'Request timed out after 75s — please retry.');
+                if (live?.id === requestId) AIRequestStore.failRequest(requestId, 'The AI request stopped responding and was cancelled. Please try again.');
             }
-        }, 75000);
+        };
+        const resetWatchdog = () => {
+            if (watchdogDead) return;
+            if (watchdogId) clearTimeout(watchdogId);
+            watchdogId = setTimeout(watchdogKill, WATCHDOG_IDLE_MS);
+        };
+        watchdogResetRef.current = resetWatchdog;
+        resetWatchdog();
 
         // Build fresh context at request time (Monaco-first, never cached) — pin as requestContext so late switching doesn't cause mismatch
         const activeFile = getActiveFile();
@@ -1394,11 +1465,15 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
             }
         } catch { /* ignore context parse errors */ }
 
-        // Dynamic full-workspace context — not just single file, scored by mentions/active/recent/keywords, token-budgeted
+        // Dynamic full-workspace context — not just single file, scored by mentions/active/recent/keywords, token-budgeted.
+        // The full snapshot is computed ONCE per send and reused by the dynamic
+        // context, the semantic planner, and the chat fallback path — building
+        // the same tree serialization 2–3 times per request was measurable
+        // dead work on the critical path.
+        const workspaceSnapshot = buildWorkspaceSnapshot(editorCtx, fileTree);
         let dynamicContext: ReturnType<typeof buildDynamicWorkspaceContext> | null = null;
         try {
-            const snapForDynamic = buildWorkspaceSnapshot(editorCtx, fileTree);
-            dynamicContext = buildDynamicWorkspaceContext(snapForDynamic, userMessageText, atPaths, { maxFiles: 8, maxTotalChars: 20000, maxPerFileChars: 3500 });
+            dynamicContext = buildDynamicWorkspaceContext(workspaceSnapshot, userMessageText, atPaths, { maxFiles: 8, maxTotalChars: 20000, maxPerFileChars: 3500 });
         } catch { /* ignore */ }
 
         // Convert chat history to ChatMessage[] for the pipeline
@@ -1413,7 +1488,14 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
             const fastTrimmedLower = userMessageText.trim().toLowerCase();
             const skipPlanner =
                 (/^(hello|hi|hey|hello ai|hi there|hey there|greetings)[\s!?.]*$/i.test(userMessageText.trim()) && fastTrimmedLower.length <= 20) ||
-                /what file|which file|current file|active file|file is this|file name/i.test(userMessageText);
+                /what file|which file|current file|active file|file is this|file name/i.test(userMessageText) ||
+                // Edit mode already forces the agent path for any non-trivial
+                // request on an open file — a planner round trip there was a
+                // pure model call before the real work started (the classic
+                // "Planning changes for too long" latency). Only keep it when
+                // the message might be an explanation request, which Edit mode
+                // would otherwise route through the agent.
+                (composerMode === 'Edit' && Boolean(fileContent?.trim()) && !/explain|what is|what does|how does|describe|walk me|why does|why is/i.test(userMessageText));
             // Determine operation type via semantic planner first (for loading status)
             const { generateSemanticPlan, semanticPlanToAIOperationType } = await import('../../core/ai/semanticPlanner');
             let operationForStatus: import('../../core/ai/aiRequestStore').AIOperationType = 'chat';
@@ -1429,7 +1511,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                         if (abortController.signal) abortController.signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('The operation was aborted.', 'AbortError')); }, { once: true });
                     });
                     return await Promise.race([
-                        generateSemanticPlan(userMessageText, editorCtx, buildWorkspaceSnapshot(editorCtx, fileTree).fileTreeString, historyForPipeline, abortController.signal),
+                        generateSemanticPlan(userMessageText, editorCtx, workspaceSnapshot.fileTreeString, historyForPipeline, abortController.signal),
                         timeout as Promise<null>
                     ]);
                 })();
@@ -1468,22 +1550,13 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
             // Direct file-read fast path: "what is hello.py" with pill/file should stream file content realtime, not just activity
             const isFileContentRequest = referencedContents.length > 0 && /(what is|what's|show me|^show$|show |read|display|content of).*\.?(py|java|js|ts|txt|md|json)/i.test(userMessageText.toLowerCase());
             if (isFileContentRequest && referencedContents.length > 0) {
+                // The content is already available locally — render it in one
+                // honest update. The previous artificial chunk loop simulated
+                // streaming with per-chunk sleeps, which only added latency and
+                // fabricated progress for a completed local read.
                 aiLoading.setGenerating();
-                aiLoading.setStreaming();
                 const fileReadText = referencedContents.map(r => `**${r.path}** — ${r.content.split('\n').length} lines:\n\`\`\`\n${r.content.slice(0, 4500)}\n\`\`\``).join('\n\n');
-                // Simulate realtime streaming: chunked updates via scheduleStreamUpdate
-                let acc = '';
-                const chunks = fileReadText.match(/.{1,240}[\n ]|.+$/g) ?? [fileReadText];
-                for (const ch of chunks) {
-                    if (abortController.signal.aborted) break;
-                    acc += ch;
-                    scheduleStreamUpdate(requestId, acc);
-                    // small delay to make streaming visible
-                    await new Promise<void>(r => setTimeout(r, 14));
-                }
-                // Ensure final full content is set
                 scheduleStreamUpdate(requestId, fileReadText);
-                await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
                 responseText = fileReadText;
             } else if (wantsModification && composerMode !== 'Ask') {
                 // EDIT PATH — Cursor-style Agent Controller (Intent → Live Context → Tools → Execute → Verify)
@@ -1510,6 +1583,8 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                     requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
                     onActivity: (act) => {
                         if (currentRequestIdRef.current !== requestId) return;
+                        // Real agent work arrived — keep the activity watchdog alive.
+                        watchdogResetRef.current?.();
                         setAgentActivities(prev => {
                             const idx = prev.findIndex(a => a.id === act.id);
                             if (idx >= 0) { const next = [...prev]; next[idx] = act; return next; }
@@ -1607,7 +1682,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     fileContext = `${dynamicContext.fragments}\n\n---\nMode: ${composerMode} | Mentioned: ${atPaths.join(', ') || '(none)'} | Question: "${userMessageText}"${taskContextHint}${dirHint}`;
                 } else {
                     const refBlock = referencedContents.length ? `\nReferenced files:\n${referencedContents.map(r => `@${r.path}:\n\`\`\`\n${r.content}\n\`\`\``).join('\n')}` : '';
-                    const treeSnapshot = buildWorkspaceSnapshot(getActiveEditorContext() ?? null, fileTree).fileTreeString.slice(0, 1500);
+                    const treeSnapshot = workspaceSnapshot.fileTreeString.slice(0, 1500);
                     const chatFileContent = pinnedCtxForChat.selectionText != null ? (getActiveEditorContext()?.code ?? fileContent) : fileContent;
                     void chatFileContent;
                     fileContext = isCodeRelated && fileContent && fileContent.length > 10
@@ -1738,7 +1813,9 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
             }
         } finally {
             isSendingRef.current = false;
-            if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+            watchdogDead = true;
+            if (watchdogId) { clearTimeout(watchdogId); watchdogId = null; }
+            if (watchdogResetRef.current) watchdogResetRef.current = null;
             // Defensive: query live store, not captured closure status — prevents stuck loading
             const live = AIRequestStore.getActiveRequestForOperation('chat');
             if (live && live.id === requestId && !['success','error','cancelled','idle'].includes(live.status)) {
@@ -1768,6 +1845,8 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
     // Coalesce streaming updates: at most one rAF pending, always renders the latest text
     const scheduleStreamUpdate = useCallback((requestId: string, text: string) => {
         latestStreamTextRef.current = text;
+        // Real progress arrived — keep the activity watchdog alive.
+        watchdogResetRef.current?.();
         if (pendingStreamFrameRef.current !== null) return;
         pendingStreamFrameRef.current = requestAnimationFrame(() => {
             pendingStreamFrameRef.current = null;

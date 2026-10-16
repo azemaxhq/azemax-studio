@@ -12,6 +12,25 @@ import { extractToolCallsFromContent } from './AIClient';
  * animation frame (frame-scheduled batching, never an artificial delay).
  */
 
+/**
+ * Cheap pre-check before the full JSON tool-call extraction.
+ *
+ * `extractToolCallsFromContent` attempts `JSON.parse` over the entire
+ * accumulated content buffer. Running it on EVERY streamed token made token
+ * handling O(n²) for long responses (the dominant visible-token render cost on
+ * big answers). A tool-call payload can only be a complete JSON document
+ * starting with `{`/`[` (optionally fenced) and ending with `}`/`]`/a closing
+ * fence — anything else is prose or partially-streamed JSON and cannot extract
+ * successfully, so skipping it is behavior-preserving.
+ */
+function mayBeToolPayload(buffer: string): boolean {
+    const t = buffer.trim();
+    if (!t) return false;
+    if (!t.startsWith('{') && !t.startsWith('[') && !t.startsWith('```')) return false;
+    const last = t[t.length - 1];
+    return last === '}' || last === ']' || last === '`';
+}
+
 interface RawSseBlock {
     payload?: unknown;
     done?: boolean;
@@ -126,6 +145,11 @@ export async function* streamFromBackend(
      *  `tool_calls` SSE frames or JSON extraction) so we never emit duplicates. */
     let toolCallsEmitted = false;
 
+    /** Guarded extraction: only attempt a full parse when the buffer could still
+     *  be a complete JSON tool-call payload (see `mayBeToolPayload`). */
+    const tryExtract = (): AIToolCall[] | null =>
+        (!toolCallsEmitted && mayBeToolPayload(contentBuffer)) ? extractToolCallsFromContent(contentBuffer) : null;
+
     for await (const block of parseSseBlocks(response, signal)) {
         if (block.done) {
             // Flush any pending native tool calls.
@@ -138,9 +162,7 @@ export async function* streamFromBackend(
                 } else {
                     // Check the content buffer for a standalone JSON tool call
                     // that may have arrived in the last chunk(s).
-                    const extracted = contentBuffer.trim()
-                        ? extractToolCallsFromContent(contentBuffer)
-                        : null;
+                    const extracted = tryExtract();
                     if (extracted) {
                         yield { type: 'tool_calls', calls: extracted };
                         toolCallsEmitted = true;
@@ -169,7 +191,7 @@ export async function* streamFromBackend(
                     // JSON tool calls in content deltas rather than as separate
                     // 'tool_calls' SSE frames.
                     if (!toolCallsEmitted) {
-                        const extracted = extractToolCallsFromContent(contentBuffer);
+                        const extracted = tryExtract();
                         if (extracted && extracted.length > 0) {
                             yield { type: 'tool_calls', calls: extracted };
                             toolCallsEmitted = true;
@@ -199,9 +221,7 @@ export async function* streamFromBackend(
                 // Final flush: check content buffer one last time if we haven't
                 // already emitted tool calls.
                 if (!toolCallsEmitted) {
-                    const extracted = contentBuffer.trim()
-                        ? extractToolCallsFromContent(contentBuffer)
-                        : null;
+                    const extracted = tryExtract();
                     if (extracted) {
                         yield { type: 'tool_calls', calls: extracted };
                         toolCallsEmitted = true;
@@ -326,20 +346,26 @@ export async function* streamFromOpenAI(
     /** Tracks that we have seen at least one meaningful signal from the provider. */
     let sawAnySignal = false;
 
+    /** Guarded extraction — see `mayBeToolPayload` (O(n²) parse avoidance). */
+    const tryExtract = (): AIToolCall[] | null =>
+        (!toolCallsEmitted && mayBeToolPayload(contentBuffer)) ? extractToolCallsFromContent(contentBuffer) : null;
+
     for await (const block of parseSseBlocks(response, signal)) {
         if (block.done) {
             // Finish accumulating native tool calls and emit if not already done.
             if (!toolCallsEmitted) {
                 const calls = toolCalls.finish();
-                if (calls.length) yield { type: 'tool_calls', calls };
-                // Also check the content buffer for a standalone JSON tool call
-                // that may have arrived in the last chunk(s).
-                const extracted = contentBuffer.trim()
-                    ? extractToolCallsFromContent(contentBuffer)
-                    : null;
-                if (extracted && !toolCallsEmitted) {
-                    yield { type: 'tool_calls', calls: extracted };
+                if (calls.length) {
+                    yield { type: 'tool_calls', calls };
                     toolCallsEmitted = true;
+                } else {
+                    // Also check the content buffer for a standalone JSON tool call
+                    // that may have arrived in the last chunk(s).
+                    const extracted = tryExtract();
+                    if (extracted && !toolCallsEmitted) {
+                        yield { type: 'tool_calls', calls: extracted };
+                        toolCallsEmitted = true;
+                    }
                 }
             }
             sawAnySignal = true;
@@ -389,7 +415,7 @@ export async function* streamFromOpenAI(
             // recognized tool-call envelope.  This prevents false positives from
             // code examples, prose, or JSON embedded in explanatory text.
             if (!toolCallsEmitted) {
-                const extracted = extractToolCallsFromContent(contentBuffer);
+                const extracted = tryExtract();
                 if (extracted && extracted.length > 0) {
                     // Found a complete tool-call payload — emit it structured,
                     // then reset the buffer so further content is not misinterpreted.

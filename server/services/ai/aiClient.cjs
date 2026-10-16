@@ -156,11 +156,44 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
             : (stream ? 12000 : 20000))
         : (stream ? 30000 : 60000);
     const effectiveTimeout = timeoutMs != null ? timeoutMs : defaultTimeout;
+
+    // Timeout semantics:
+    //   - non-streaming: hard deadline over the whole request (a hung provider
+    //     must free the slot so the fallback chain can run).
+    //   - streaming: the deadline covers ONLY the time to first byte (connect +
+    //     response headers + first network chunk). Once the provider starts
+    //     streaming, flow control belongs to the idle watchdog in
+    //     aiRequestManager (STREAM_IDLE_TIMEOUT_MS), which aborts only when the
+    //     stream goes SILENT — a healthy 5-minute stream is never killed at the
+    //     fixed deadline. Previously the hard deadline covered the entire body,
+    //     which aborted long agent answers mid-generation and made the client
+    //     fall back / restart repeatedly.
     let requestSignal = signal;
-    if (typeof AbortSignal.timeout === 'function') {
+    let clearTtfbTimeout = null;
+    let armTtfbTimeout = null;
+    if (typeof AbortSignal.timeout === 'function' && !stream) {
         const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
         const signals = [signal, timeoutSignal].filter(Boolean);
         requestSignal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+    } else if (stream) {
+        // Manual TTFB watchdog for streams: abort only while nothing is flowing.
+        if (typeof AbortController === 'function') {
+            const watchdog = new AbortController();
+            const signals = [signal, watchdog.signal].filter(Boolean);
+            requestSignal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+            let timer = null;
+            const arm = () => {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(() => {
+                    if (!watchdog.signal.aborted) watchdog.abort(new Error('Provider did not start streaming in time'));
+                }, effectiveTimeout);
+            };
+            armTtfbTimeout = arm;
+            clearTtfbTimeout = () => {
+                if (timer) { clearTimeout(timer); timer = null; }
+            };
+            arm();
+        }
     }
 
     // Cap max_tokens per provider to avoid 413 Payload Too Large.
@@ -215,6 +248,7 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
     let response;
     let lastFetchError = null;
     for (let attempt = 0; attempt < 2; attempt++) {
+        if (armTtfbTimeout) armTtfbTimeout();
         try {
             response = await fetch(url, {
                 method: 'POST',
@@ -227,7 +261,9 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
                 body: JSON.stringify(body),
                 signal: requestSignal,
             });
+            if (clearTtfbTimeout) clearTtfbTimeout();
             if (!response.ok) {
+                if (clearTtfbTimeout) clearTtfbTimeout();
                 // Same-provider retry ONLY for 429 (rate limit — usually a fast
                 // failure where a brief backoff helps). For 5xx: fail over to
                 // the next provider immediately instead of burning a second
@@ -238,6 +274,7 @@ async function chatCompletion({ provider, model, messages, temperature = 0.6, to
                     // brief backoff before retrying same provider
                     await new Promise(r => setTimeout(r, 700 + Math.random() * 500));
                     lastFetchError = { status: response.status, text: txt };
+                    // The TTFB watchdog is re-armed at the top of the retry loop.
                     continue;
                 }
                 let text = '';

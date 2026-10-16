@@ -400,8 +400,18 @@ export async function executeTripleSlashPremium(req: TripleSlashRequest): Promis
                 snapshotMap: snapMap as any,
             } as any);
             if (!result2.success) {
-                // Already applied via executeEdits, so return success even if plan validation failed
-                return { success: true, message: 'Applied via direct edit (high-quality)', appliedCount: 1 };
+                // The edit was already placed into the visible editor by
+                // executeEdits above, so a flat failure would leave the user
+                // with a silently-dismissed persist error. Report the truth:
+                // the edit IS visible, but persisting it failed validation —
+                // surface the reason instead of pretending it was clean.
+                console.warn('[TripleSlash] file-tree persist failed after direct edit:', result2.message);
+                return {
+                    success: true,
+                    appliedCount: 1,
+                    appliedVersion: model.getVersionId(),
+                    message: `Applied in the editor, but persisting to the project failed: ${result2.message}`,
+                };
             }
             return result2;
         }

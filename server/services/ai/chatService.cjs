@@ -47,7 +47,7 @@ function toAIError(err, resolved, requestId) {
  * the client (canonical implementation lives in aiStream.cjs — malformed
  * entries with no function name are dropped, never repaired).
  */
-async function sendChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', task, allowFallback = true, requestId, tools = null, toolChoice = 'auto' }) {
+async function sendChat({ messages, model, temperature, top_p, maxTokens, responseLength = 'medium', task, allowFallback = true, requestId, tools = null, toolChoice = 'auto', signal = null }) {
     const params = resolveTaskParams({ task, maxTokens, temperature, top_p, responseLength });
     const plan = buildRoutingPlan(task, model, { allowFallback });
     const attempts = [plan.primary, ...plan.fallbacks];
@@ -99,6 +99,7 @@ async function sendChat({ messages, model, temperature, top_p, maxTokens, respon
                 stream: false,
                 requestId: rid,
                 timeoutMs,
+                signal,
                 // Provider-incompatible requests must fail this attempt and
                 // fall through the chain, NOT abort the whole chat.
                 tools: providerSupportsTools(resolved.provider) ? tools : null,
@@ -383,15 +384,23 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                 }
 
                 // Content already streamed: never restart the generation (that
-                // would duplicate tokens the user already saw). End cleanly so
-                // the partial response is preserved instead of shown as an error.
+                // would duplicate tokens the user already saw). Preserve the
+                // partial response but report the truncation honestly — a
+                // silent clean `done` makes a provider interruption look like
+                // a complete answer.
                 if (sawToken) {
                     if (!res.writableEnded && !res.destroyed) {
-                        writeSse(res, { type: 'done', model: resolved.model });
+                        writeSse(res, {
+                            type: 'error',
+                            code: aiErr.code,
+                            message: 'The response was interrupted after it started streaming. Partial output kept.',
+                            provider: resolved.provider,
+                            retryable: false,
+                        });
                         res.write('data: [DONE]\n\n');
                         res.end();
                     }
-                    perfLog(`task=${params.task} model=${resolved.model} stream interrupted after content (kept partial, no fallback)`);
+                    perfLog(`task=${params.task} model=${resolved.model} stream interrupted after content (kept partial, error event emitted, no fallback)`);
                     return;
                 }
 
@@ -454,6 +463,7 @@ async function proxyOpenRouter({ messages, model }) {
             return response.json();
         } catch (err) {
             _lastError = err;
+            console.warn(`[AI legacy] OpenRouter model ${currentModel} failed:`, err && err.message);
         }
     }
 

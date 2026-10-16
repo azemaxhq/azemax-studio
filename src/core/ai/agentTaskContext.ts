@@ -318,6 +318,11 @@ export interface AgentBudget {
     maxTotalToolResultChars: number;
     /** Per-tool timeout. */
     toolTimeoutMs: number;
+    /** Max wall time for ONE model round-trip inside the loop. Prevents a
+     *  hung provider request from stalling the agent past the task budget. */
+    modelCallTimeoutMs: number;
+    /** Max read-only tool calls executed concurrently within one step. */
+    maxConcurrentReads: number;
 }
 
 export const DEFAULT_AGENT_BUDGET: AgentBudget = {
@@ -327,6 +332,8 @@ export const DEFAULT_AGENT_BUDGET: AgentBudget = {
     maxToolResultChars: 8_000,
     maxTotalToolResultChars: 40_000,
     toolTimeoutMs: 15_000,
+    modelCallTimeoutMs: 90_000,
+    maxConcurrentReads: 4,
 };
 
 /** Tools exposed to the model. Kept here so the loop and prompt agree. */

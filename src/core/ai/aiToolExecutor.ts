@@ -426,19 +426,23 @@ export async function executeActionPlan(
         return { success: true, appliedCount: appliedList.length, message };
     } catch (error) {
         // Rollback EVERY touched file to its pre-edit content
+        let rollbackFailures = 0;
         for (const [fileId, content] of rollback) {
             try {
                 deps.updateFileContent(fileId, content);
             } catch {
-                // best-effort rollback
+                rollbackFailures++;
             }
         }
         const msg = error instanceof Error ? error.message : String(error);
+        const rolledBackCleanly = rollback.size === 0 || rollbackFailures === 0;
         return {
             success: false,
             appliedCount: 0,
-            message: `Edit failed and was fully rolled back — your file is unchanged. (${msg})`,
-            rolledBack: rollback.size > 0,
+            message: rolledBackCleanly
+                ? `Edit failed and was fully rolled back — your file is unchanged. (${msg})`
+                : `Edit failed (${msg}) and the automatic rollback was NOT fully successful — ${rollbackFailures} file(s) may still contain partial changes. Please review before continuing.`,
+            rolledBack: rolledBackCleanly && rollback.size > 0,
         };
     }
 }

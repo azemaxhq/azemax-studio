@@ -125,6 +125,13 @@ router.post('/chat', betaGate, asyncHandler(async (req, res) => {
         return;
     }
 
+    const abortController = new AbortController();
+    // If the client disconnects while a slow non-streaming call is running,
+    // abort the upstream provider work instead of burning tokens nobody reads.
+    res.on('close', () => {
+        if (!res.writableEnded && !res.destroyed) abortController.abort();
+    });
+
     const result = await sendChat({
         messages: policy.serverMessages,
         model: policy.model,
@@ -137,6 +144,7 @@ router.post('/chat', betaGate, asyncHandler(async (req, res) => {
         toolChoice: policy.toolChoice,
         requestId: req.id,
         userId: req.user.id,
+        signal: abortController.signal,
     });
     recordUsage(req.user.id, { aiRequests: 1, aiTokens: Number(result.usage && result.usage.total_tokens) || 0 });
     // A tool-call turn has empty `content` by design — it must survive the

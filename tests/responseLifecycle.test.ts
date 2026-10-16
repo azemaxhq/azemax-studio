@@ -106,6 +106,7 @@ async function mock<T>(turns: unknown[], fn: (calls: any[]) => Promise<T>, opts:
         const raw = init?.body ? JSON.parse(String(init.body)) : null;
         calls.push(raw);
         const t = turns[Math.min(i++, turns.length - 1)];
+        if (t instanceof Response) return t; // pre-built response (e.g. truncated stream)
         if (t && (t as any).__status && (t as any).__status !== 200) {
             return new Response(JSON.stringify({ error: { message: 'upstream down' } }), { status: (t as any).__status });
         }
@@ -346,13 +347,19 @@ await (async () => {
     {
         AIRequestStore._clearForTests();
         const ws = new WS();
+        // streamPlainReply STREAMS (SSE) — the mock must speak the SSE shape,
+        // otherwise the (correctly surfaced) transport failure aborts the run.
         await mock([say('   ')], async () => {
             const res = await runAgentController({ userMessage: 'hello', workspace: ws.bridge(), fileName: null, history: [] });
             check('6. whitespace-only model output still yields a response', Boolean(res.message?.trim()));
-        });
+        }, { stream: true });
+        // An INSPECT verb ("list") routes this into the read-only tool loop,
+        // which uses the non-streaming chat path — a bare JSON envelope mock.
+        // The model then returns an EMPTY turn: the controller must fall back
+        // to a summary built from VERIFIED tool results, never prose.
         await mock([tool('list_files', {}, 'a'), say('')], async () => {
             const ws2 = new WS();
-            const res = await runAgentController({ userMessage: 'what files are here', workspace: ws2.bridge(), fileName: null, history: [] });
+            const res = await runAgentController({ userMessage: 'list the files', workspace: ws2.bridge(), fileName: null, history: [] });
             check('6. empty tool-loop output falls back to verified summary', Boolean(res.message?.trim()));
             check('6. fallback is not fabricated content', !/Created|Updated/.test(res.message || ''));
         });
@@ -451,8 +458,11 @@ await (async () => {
     // ════════════════════════════════════════════════════════════════════
     // 15 — Provider fallback with a different response shape
     // ════════════════════════════════════════════════════════════════════
+    // A backend stream that dies mid-flight (HTTP 200, zero content — the
+    // RETRYABLE transport kind of failure, unlike a definitive 5xx verdict)
+    // must be recovered by the direct-provider fallback chain.
     await mock(
-        [{ __status: 500 }, say('Recovered and created the page.')],
+        [new Response(''), say('Recovered and created the page.')],
         async calls => {
             const ws = new WS();
             const res = await runAgentController({ userMessage: 'say hi', workspace: ws.bridge(), fileName: null, history: [] });
@@ -460,6 +470,7 @@ await (async () => {
             check('15. fallback did not fabricate success', res.changedWorkspace === false);
             void calls;
         },
+        { stream: true }, // plain chat streams (SSE); the dead first stream exercises the fallback chain
     );
 
     // ════════════════════════════════════════════════════════════════════

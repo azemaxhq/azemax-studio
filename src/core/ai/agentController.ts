@@ -590,7 +590,11 @@ async function streamPlainReply(
         }
     } catch (e) {
         if ((e as Error).name === 'AbortError') throw e;
-        return `I couldn't reach the assistant right now. Please try again.`;
+        // A provider failure is NOT a friendly-sounding reply. Throwing lets
+        // the caller's typed error path surface an actionable message — the
+        // old "I couldn't reach the assistant right now." sentence was
+        // presented as a normal answer for the actual failure.
+        throw e;
     }
     const cleaned = acc.trim();
     if (cleaned) return cleaned;
@@ -657,28 +661,32 @@ async function validateChangedFiles(
     paths: string[],
     signal: AbortSignal | undefined,
     deps: AgentToolDeps,
-): Promise<Array<{ path: string; isError: boolean; markers: Array<{ message: string }>; firstMessage: string | null }>> {
-    const out: Array<{ path: string; isError: boolean; markers: Array<{ message: string }>; firstMessage: string | null }> = [];
-    if (paths.length === 0) return out;
+): Promise<Array<{ path: string; isError: boolean; markers: Array<{ message: string }>; firstMessage: string | null; checked: boolean }>> {
+    const targets = paths.slice(0, 8);
+    if (targets.length === 0) return [];
     const { executeTool } = await import('./agentTools');
-    for (const p of paths.slice(0, 8)) {
-        if (signal?.aborted) break;
+    // Diagnostics for different files are independent READ operations — run
+    // them concurrently instead of paying the sum of latencies sequentially.
+    const results = await Promise.all(targets.map(async (p) => {
+        if (signal?.aborted) {
+            return { path: p, isError: false, markers: [] as Array<{ message: string }>, firstMessage: null, checked: false };
+        }
         const res = await executeTool('get_diagnostics', { path: p }, deps);
         if (!res.ok) {
-            // Unchecked — NOT a pass. Reported as an error entry so the
-            // summary can say "could not validate" rather than "no errors".
-            out.push({ path: p, isError: false, markers: [], firstMessage: null });
-            continue;
+            // Unchecked — NOT a pass. Reported so the summary can say "could
+            // not validate" rather than "no errors".
+            return { path: p, isError: false, markers: [] as Array<{ message: string }>, firstMessage: null, checked: false };
         }
         const markers = (res.data.markers as Array<{ message?: string }>) ?? [];
-        out.push({
+        return {
             path: String(res.data.path ?? p),
             isError: Boolean(res.data.isError),
             markers: markers.map(m => ({ message: m.message ?? 'error' })),
             firstMessage: markers.length ? (markers[0].message ?? 'error') : null,
-        });
-    }
-    return out;
+            checked: true,
+        };
+    }));
+    return results;
 }
 
 function buildDiffs(
@@ -715,7 +723,7 @@ function buildDiffs(
  */
 function buildFinalResponse(
     loop: AgentLoopResult,
-    validation: Array<{ path: string; isError: boolean; markers: Array<{ message: string }> }>,
+    validation: Array<{ path: string; isError: boolean; markers: Array<{ message: string }>; checked?: boolean }>,
     hasProposal: boolean,
     preview: boolean,
 ): string {
@@ -760,6 +768,9 @@ function buildFinalResponse(
             .map(v => `${v.path}: ${v.markers[0]?.message ?? 'error'}`)
             .join('; ');
         parts.push(`Checks found ${validationErrors.length} issue(s) — ${detail}.`);
+    } else if (validation.some(v => !v.checked)) {
+        const unchecked = validation.filter(v => !v.checked).map(v => v.path);
+        parts.push(`I could not run checks on ${unchecked.join(', ')} — those files are unverified, not error-free.`);
     } else if (validation.length) {
         parts.push(`Diagnostics ran on ${validation.length} file(s) — no errors.`);
     }

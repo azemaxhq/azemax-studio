@@ -61,7 +61,5 @@ export function hashString(input: string): string {
     return (hash >>> 0).toString(36);
 }
 
-// Singleton caches used across the runtime.
+// Singleton cache used across the runtime.
 export const systemPromptCache = new BoundedCache<string, string>(16);
-export const fileSummaryCache = new BoundedCache<string, string>(32);
-export const modelResolutionCache = new BoundedCache<string, string>(16);
