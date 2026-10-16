@@ -141,11 +141,11 @@ function classifyProviderError({ provider, model, status, message, cause, latenc
                 cause, latencyMs, requestId,
             });
         }
-        if (statusNum === 400 || statusNum === 404 || statusNum === 422) {
-            // 404 (unknown/retired model id) must fall back to the next provider:
+        if (statusNum === 400 || statusNum === 404 || statusNum === 410 || statusNum === 422) {
+            // 404/410 (unknown/retired/EOL model id) must fall back to the next provider:
             // a single stale model string must never doom the whole chain.
             // 400/422 (malformed request) stay terminal — retrying elsewhere won't help.
-            const isNotFound = statusNum === 404;
+            const isNotFound = statusNum === 404 || statusNum === 410;
             return new AIError({
                 code: AI_ERROR_CODES.AI_PROVIDER_BAD_REQUEST,
                 provider, model, status: statusNum, retryable: isNotFound ? true : false,
