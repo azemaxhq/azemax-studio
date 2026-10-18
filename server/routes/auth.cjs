@@ -19,6 +19,7 @@
 const express = require('express');
 const { asyncHandler } = require('../lib/asyncHandler.cjs');
 const { requireAuth, SESSION_COOKIE } = require('../middleware/auth.cjs');
+const { verifyIdToken } = require('../services/auth/firebaseAdmin.cjs');
 const {
     createUser,
     findUserByEmail,
@@ -26,6 +27,7 @@ const {
     verifyPassword,
     createSession,
     revokeSession,
+    syncFirebaseUser,
 } = require('../services/auth/authService.cjs');
 const { isProd } = require('../config/index.cjs');
 
@@ -61,6 +63,84 @@ function clientIp(req) {
     return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
+/**
+ * Synchronize a Firebase Authentication identity with Azemax.
+ *
+ * The provider-issued ID token is verified with Firebase Admin. Every identity
+ * field (uid, email, verification state, provider) is derived from the decoded
+ * token — client-supplied ids/emails/roles are never trusted. The local user
+ * record is created or reconciled idempotently, then a server session is
+ * issued so the beta cross-site transport (cookie + Bearer fallback) works.
+ */
+router.post('/sync', asyncHandler(async (req, res) => {
+    let idToken = req.body?.idToken;
+    if (!idToken && typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ')) {
+        idToken = req.headers.authorization.slice(7).trim();
+    }
+    if (!idToken || typeof idToken !== 'string') {
+        return res.status(400).json({ error: 'Missing authentication idToken' });
+    }
+    // A Firebase ID token is a compact JWT well under 8 KB. Reject anything
+    // absurd before handing it to the verifier.
+    if (idToken.length > 8192) {
+        return res.status(400).json({ error: 'Invalid authentication idToken' });
+    }
+
+    let decoded;
+    try {
+        decoded = await verifyIdToken(idToken);
+    } catch (err) {
+        // Never echo provider error internals; surface a stable status only.
+        const status = err && err.status ? err.status : 401;
+        return res.status(status).json({
+            error: status === 503
+                ? 'Authentication provider is not configured on the server'
+                : 'Invalid or expired authentication token',
+            code: err && err.code ? err.code : 'auth/invalid-token',
+        });
+    }
+    if (!decoded || !decoded.uid) {
+        return res.status(401).json({ error: 'Invalid authentication token' });
+    }
+
+    const email = decoded.email;
+    if (!email) {
+        return res.status(400).json({ error: 'Token is missing a verified email claim' });
+    }
+
+    const user = (() => {
+        try {
+            return syncFirebaseUser({
+                uid: decoded.uid,
+                email,
+                displayName: decoded.name,
+                photoUrl: decoded.picture,
+                emailVerified: Boolean(decoded.email_verified),
+                providerId: (decoded.firebase && decoded.firebase.sign_in_provider) || 'password',
+            });
+        } catch (err) {
+            // Unverified provider identity for an email that already belongs to
+            // an account: refuse to merge (no account takeover via pre-hijack).
+            const status = err && err.status ? err.status : 500;
+            if (status === 409) {
+                return res.status(409).json({
+                    error: err.message || 'An account with this email already exists',
+                    code: err.code || 'auth/email-already-in-use',
+                });
+            }
+            throw err;
+        }
+    })();
+
+    if (!user) {
+        return res.status(500).json({ error: 'Could not synchronize the account' });
+    }
+
+    const { token, expiresAt } = createSession(user.id, clientIp(req));
+    setSessionCookie(res, token, expiresAt);
+    res.json({ user, token, expiresAt });
+}));
+
 router.post('/signup', asyncHandler(async (req, res) => {
     if (!ALLOW_SIGNUP) {
         return res.status(403).json({ error: 'Registration is disabled on this server' });
@@ -94,7 +174,7 @@ router.post('/logout', (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
-    res.json({ user: { id: req.user.id, email: req.user.email, displayName: req.user.displayName, createdAt: req.user.createdAt } });
+    res.json({ user: req.user });
 });
 
 module.exports = router;

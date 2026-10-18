@@ -1,5 +1,5 @@
 import React, { lazy } from 'react';
-import { Layers, BookOpen, Settings } from 'lucide-react';
+import { Layers, BookOpen, Settings, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../Sidebar/Sidebar';
 import { SettingsSidebar } from '../Sidebar/SettingsSidebar';
@@ -8,6 +8,8 @@ import { AIAssistant } from '../Panels/AIAssistant';
 import { BottomPanel } from '../Panels/BottomPanel';
 import { PerformanceBudgetMonitor } from '../PerformanceBudgetMonitor';
 import { getSettings } from '../../settings/settingsStore';
+import { useAuth } from '../../context/AuthContext';
+import { navigate } from '../../utils/appRouter';
 import { useSettingsSelector } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useMobileViewport } from '../../hooks/useMobileViewport';
@@ -36,6 +38,7 @@ const SidebarFallback = () => (
 );
 
 export const MainLayout: React.FC = () => {
+    const { user, isAnonymous } = useAuth();
     // Workspace state drives onboarding vs. IDE. The hook itself is
     // unconditional; the early return lives AFTER every hook call (just below)
     // so hook order is identical on every render.
@@ -648,6 +651,30 @@ export const MainLayout: React.FC = () => {
                 </button>
 
                 <div className="flex-1" />
+
+                <button
+                    onClick={() => {
+                        if (!user || isAnonymous) {
+                            navigate('/login?redirect=/app');
+                        } else {
+                            openSettings();
+                        }
+                    }}
+                    className="az-activity-btn"
+                    title={user && !isAnonymous ? (user.displayName || user.email) : 'Sign In'}
+                    aria-label="Account"
+                >
+                    {user && !isAnonymous && user.photoUrl ? (
+                        <img src={user.photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+                    ) : (
+                        <div className="relative flex items-center justify-center">
+                            <User size={16} strokeWidth={1.75} className="shrink-0" />
+                            {user && !isAnonymous && !user.emailVerified && (
+                                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[var(--az-warning)] border border-[var(--az-bg)]" />
+                            )}
+                        </div>
+                    )}
+                </button>
 
                 <button
                     onClick={openSettings}

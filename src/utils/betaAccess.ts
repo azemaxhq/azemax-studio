@@ -22,7 +22,9 @@
 
 function readEnvFlag(key: string): string | undefined {
     try {
-        const env = (import.meta as unknown as { env?: Record<string, string | undefined> })?.env;
+        // Reference `import.meta.env` literally so Vite injects it (see the note
+        // in sessionToken.ts — the optional-chained form breaks env injection).
+        const env = import.meta.env as Record<string, string | undefined> | undefined;
         return env?.[key];
     } catch {
         return undefined;

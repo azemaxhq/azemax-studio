@@ -106,7 +106,7 @@ function createApp() {
         max: LIMITS.AUTH_RATE_PER_MINUTE,
         keyOf: (req) => `auth:ip:${req.ip || req.socket.remoteAddress || 'unknown'}`,
         message: 'Too many authentication attempts. Try again later.',
-        scope: (req) => req.path.startsWith('/api/auth/login') || req.path.startsWith('/api/auth/signup'),
+        scope: (req) => req.path.startsWith('/api/auth/login') || req.path.startsWith('/api/auth/signup') || req.path.startsWith('/api/auth/sync'),
     }));
     // AI: per-user (or per-IP for unauthenticated, though routes require auth).
     app.use(createPolicyLimiter({

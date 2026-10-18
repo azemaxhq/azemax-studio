@@ -6,6 +6,7 @@ import { SettingsProvider } from './context/SettingsContext';
 import { PerformanceProvider } from './context/PerformanceContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthGate } from './components/Auth/AuthGate';
+import { AuthRoutes } from './components/Auth/AuthRoutes';
 import { DialogProvider } from './components/UI/DialogProvider';
 import { ErrorBoundary } from './components/UI/ErrorBoundary';
 import { composeProviders } from './core/composeProviders';
@@ -15,6 +16,7 @@ import { BRAND } from './core/branding';
 import { LandingPage } from './components/Landing/LandingPage';
 import { wakeBackend } from './utils/backendHealth';
 import { ANON_USER_ID, isAppRoutePath } from './utils/betaAccess';
+import { isAuthRoutePath, navigate } from './utils/appRouter';
 
 const MainLayout = lazy(() => import('./components/Layout/MainLayout').then(m => ({ default: m.MainLayout })));
 
@@ -117,25 +119,35 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
 
-  // Isolate Landing Page from IDE Workspace:
+  const navigateToLogin = useCallback(() => {
+    navigate('/login');
+  }, []);
+
+  // Isolate Landing Page from IDE Workspace & auth surface:
   // Route /app (and /app/*) mounts the IDE workspace with all context providers.
+  // Routes /login, /signup, /forgot-password, /verify-email, /auth/callback
+  // mount the authentication surface.
   // Route / (and any other marketing route) renders the Azemax Landing Page.
   // Direct navigation to /app always reaches the workspace — public beta has
   // no login redirect (see isAppRoutePath, unit-tested).
   const isAppRoute = isAppRoutePath(currentPath);
+  const isAuthRoute = isAuthRoutePath(currentPath);
 
-  if (!isAppRoute) {
+  if (!isAppRoute && !isAuthRoute) {
     return (
       <ErrorBoundary fallback={RootErrorFallback}>
-        <LandingPage onNavigateToApp={navigateToApp} />
+        <LandingPage onNavigateToApp={navigateToApp} onSignIn={navigateToLogin} />
       </ErrorBoundary>
     );
   }
 
+  // The AuthProvider instance is shared across /app and the auth routes so
+  // authentication state (and the single Firebase listener) survives
+  // navigation between the workspace and the sign-in / verification panes.
   return (
     <ErrorBoundary fallback={RootErrorFallback}>
       <AuthProvider>
-        <WorkspaceShell />
+        {isAppRoute ? <WorkspaceShell /> : <AuthRoutes path={currentPath} />}
       </AuthProvider>
     </ErrorBoundary>
   );

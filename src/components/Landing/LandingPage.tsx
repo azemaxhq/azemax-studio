@@ -29,9 +29,10 @@ function BelowFoldFallback({ minHeight = 600 }: { minHeight?: number }) {
 
 interface LandingPageProps {
   onNavigateToApp: () => void;
+  onSignIn?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp }) => {
+export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp, onSignIn }) => {
   // Refresh must always land on the hero, never mid-page. Browsers restore
   // the previous scroll offset and/or jump to location.hash on reload — both
   // bypass React. We kill that early (before paint) and strip any hash so a
@@ -88,7 +89,7 @@ export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp }
   return (
     <div className="az-landing-root flex flex-col selection:bg-[#4F8CFF] selection:text-white">
       {/* Persistent Translucent Navigation (owns rAF-throttled scroll progress) */}
-      <LandingNav onEnterWorkspace={onNavigateToApp} />
+      <LandingNav onEnterWorkspace={onNavigateToApp} onSignIn={onSignIn} />
 
       {/* Main Continuous Narrative Stream */}
       <main id="main-content" className="flex-1 w-full flex flex-col">

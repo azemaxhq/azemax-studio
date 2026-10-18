@@ -23,7 +23,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { DATABASE_PATH, DATA_DIR } = require('../config/index.cjs');
 const logger = require('../lib/logger.cjs');
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATIONS = [
     // v1: initial schema
@@ -77,6 +77,15 @@ const MIGRATIONS = [
         executions INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (user_id, day)
     );
+    `,
+    // v2: Firebase Authentication & OAuth integration
+    `
+    ALTER TABLE users ADD COLUMN firebase_uid TEXT;
+    ALTER TABLE users ADD COLUMN provider TEXT DEFAULT 'password';
+    ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0;
+    ALTER TABLE users ADD COLUMN photo_url TEXT;
+    ALTER TABLE users ADD COLUMN last_login_at TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
     `,
 ];
 

@@ -3,11 +3,14 @@ import {
     Play, Square, Search, MoreVertical,
     WrapText, Zap, Map as MapIcon, CheckCircle2, AlignLeft,
     Terminal, AlertTriangle, FileOutput, Command, Settings as SettingsIcon,
+    LogIn, LogOut,
 } from 'lucide-react';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { useProjectFile } from '../../context/ProjectContext';
 import { useTerminal } from '../../context/TerminalContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useAuth } from '../../context/AuthContext';
+import { navigate } from '../../utils/appRouter';
 import { ExplorerFileIcon } from '../Sidebar/ExplorerIcons';
 import { getLanguageFromFilename } from '../../utils/language';
 
@@ -36,6 +39,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     const { activeFile } = useProjectFile();
     const { runCode, stopProcess, isRunning, activeTerminalId } = useTerminal();
     const { settings, updateSettings } = useSettings();
+    const { user, isAnonymous, logout } = useAuth();
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -244,6 +248,22 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                                             onClick={closeAnd(() => onOpenSettings())}
                                         />
                                     </>
+                                )}
+
+                                <div className="h-px bg-white/[0.06] my-1.5 mx-2" />
+                                {user && !isAnonymous ? (
+                                    <MenuItem
+                                        icon={<LogOut size={15} className="text-[var(--az-icon)]" />}
+                                        label="Sign out"
+                                        hint={user.displayName || user.email.split('@')[0]}
+                                        onClick={closeAnd(() => logout())}
+                                    />
+                                ) : (
+                                    <MenuItem
+                                        icon={<LogIn size={15} className="text-[var(--az-accent)]" />}
+                                        label="Sign in"
+                                        onClick={closeAnd(() => navigate('/login?redirect=/app'))}
+                                    />
                                 )}
                             </div>
                         )}

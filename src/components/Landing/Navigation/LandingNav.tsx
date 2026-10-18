@@ -4,6 +4,7 @@ import { ArrowRight, Menu, X } from 'lucide-react';
 
 interface LandingNavProps {
   onEnterWorkspace: () => void;
+  onSignIn?: () => void;
 }
 
 const NAV_LINKS = [
@@ -17,7 +18,7 @@ const REVEAL_ZONE = 140;
 const HIDE_ZONE = 420;
 const DIRECTION_DEAD_ZONE = 4;
 
-export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace }) => {
+export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace, onSignIn }) => {
   // Only React state that actually drives JSX structure:
   const [activeHref, setActiveHref] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -246,6 +247,17 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
     [onEnterWorkspace],
   );
 
+  const handleSignIn = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (!onSignIn) return;
+      e.preventDefault();
+      setMobileMenuOpen(false);
+      onSignIn();
+    },
+    [onSignIn],
+  );
+
   const handleBrandClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     setMobileMenuOpen(false);
@@ -374,6 +386,13 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
         {/* Desktop CTA — styled entirely via CSS (.az-nav-enter-btn, .az-nav-scrolled) */}
         <div className="hidden items-center gap-3 md:flex">
           <a
+            href="/login"
+            onClick={handleSignIn}
+            className="rounded-full px-3 py-2 font-sans text-[13px] font-medium tracking-tight text-white/60 transition-colors duration-200 hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70"
+          >
+            Sign in
+          </a>
+          <a
             href="/app"
             onClick={handleEnterWorkspace}
             className="az-nav-enter-btn group flex items-center gap-2 rounded-full font-sans text-[13px] font-medium tracking-tight px-4 py-2 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70"
@@ -443,6 +462,14 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace })
             ))}
           </nav>
           <div className="border-t border-white/[0.07] p-3">
+            <a
+              href="/login"
+              onClick={handleSignIn}
+              tabIndex={mobileMenuOpen ? 0 : -1}
+              className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-[13px] font-medium text-white/80 transition-colors duration-200 hover:bg-white/[0.05] hover:text-white"
+            >
+              <span>Sign in</span>
+            </a>
             <a
               href="/app"
               onClick={handleEnterWorkspace}

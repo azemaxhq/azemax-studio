@@ -1300,4 +1300,50 @@ button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
   }
 }
 
+/* ============================================
+   AUTH SURFACE — shared control chrome
+   Centralised so every auth pane shares one spinner, one fade, one focus ring.
+   ============================================ */
+
+@keyframes az-spin {
+  to { transform: rotate(360deg); }
+}
+.az-spinner {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #ffffff;
+  animation: az-spin 0.7s linear infinite;
+}
+
+@keyframes az-auth-fade {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}
+.az-auth-fade { animation: az-auth-fade 160ms var(--az-ease-out); }
+
+/* One focus treatment for every interactive auth control (inputs, buttons,
+   links, toggles, checkbox). Never removed — only restyled. */
+.az-ring:focus-visible {
+  outline: none;
+  box-shadow: var(--az-focus-ring);
+  border-color: var(--az-border-focus);
+}
+
+/* Reduced motion: calm the auth surface specifically, leaving the IDE's own
+   animations untouched. */
+@media (prefers-reduced-motion: reduce) {
+  .az-auth *,
+  .az-auth *::before,
+  .az-auth *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
 

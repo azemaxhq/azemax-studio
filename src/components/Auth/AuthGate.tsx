@@ -1,7 +1,8 @@
-import React, { useState, type ReactNode, type FormEvent } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { AzemaxLogo } from '../UI/AzemaxLogo';
-import { BRAND } from '../../core/branding';
+import { LoginPage } from './LoginPage';
+import { VerifyEmailPage } from './VerifyEmailPage';
+import { navigate } from '../../utils/appRouter';
 import { AUTH_DISABLED } from '../../utils/sessionToken';
 import {
     PUBLIC_BETA,
@@ -15,11 +16,11 @@ import {
  * PUBLIC BETA (default): there is NO login wall. Children render immediately
  * for everyone — signed-in users get their account, anonymous visitors get a
  * local-only guest workspace (files persist in this browser only). Sign-in
- * stays OPTIONAL via `OptionalAuthForm` (embedded in settings / header).
+ * stays OPTIONAL via the /login route.
  *
- * HARD WALL (VITE_PUBLIC_BETA=false): the classic sign-in / sign-up form
- * blocks the workspace until authentication succeeds. Kept for deployments
- * that require accounts.
+ * HARD WALL (VITE_PUBLIC_BETA=false): the premium sign-in / sign-up flows
+ * block the workspace until authentication succeeds. Unverified accounts are
+ * routed to the verification pane.
  *
  * Legacy VITE_DISABLE_AUTH=true bypasses both and renders children directly
  * with the shared local-dev identity.
@@ -33,12 +34,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
 /**
  * Open-workspace shell: renders the editor immediately (even while the
  * session check is in flight — never a blank waiter, never a redirect) plus
- * a dismissible one-line notice that guest work lives in this browser only.
+ * dismissible notices about guest storage and pending email verification.
  */
 function BetaWorkspace({ children }: { children: ReactNode }) {
-    const { isAnonymous } = useAuth();
+    const { isAnonymous, status } = useAuth();
     const [dismissed, setDismissed] = useState<boolean>(() => isBetaBannerDismissed());
-    const showBanner = isAnonymous && !dismissed;
+    const [verifyDismissed, setVerifyDismissed] = useState(false);
+    const showGuestBanner = isAnonymous && !dismissed;
+    const showVerifyBanner = status === 'verification-required' && !verifyDismissed;
 
     const dismiss = () => {
         dismissBetaBanner();
@@ -47,27 +50,66 @@ function BetaWorkspace({ children }: { children: ReactNode }) {
 
     return (
         <>
-            {showBanner && (
+            {showGuestBanner && (
                 <div
                     role="note"
                     aria-label="Public beta guest notice"
                     data-testid="beta-anon-banner"
                     style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
-                        padding: '7px 16px', fontSize: '12px', color: '#A5B5CD',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap',
+                        padding: '7px 16px', fontSize: '12px', color: 'var(--az-text-secondary)',
                         background: 'var(--az-surface-2)', borderBottom: '1px solid var(--az-border-subtle)',
                     }}
                 >
                     <span>
-                        <strong style={{ color: '#E6EDF8', fontWeight: 600 }}>Public beta</strong>
+                        <strong style={{ color: 'var(--az-text)', fontWeight: 600 }}>Public beta</strong>
                         {' — '}guest workspace saved in this browser only; clearing site data or switching devices loses it.
-                        {' '}Sign in (optional) for higher AI &amp; execution limits.
+                        {' '}
+                        <button
+                            type="button"
+                            onClick={() => navigate('/login')}
+                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--az-accent)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                            Sign in
+                        </button>
+                        {' '}for higher AI &amp; execution limits.
                     </span>
                     <button
                         type="button"
                         onClick={dismiss}
                         aria-label="Dismiss guest notice"
-                        style={{ background: 'none', border: 'none', padding: '4px 6px', color: '#72849F', fontSize: '12px', cursor: 'pointer' }}
+                        style={{ background: 'none', border: 'none', padding: '4px 6px', color: 'var(--az-text-muted)', fontSize: '12px', cursor: 'pointer' }}
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
+            {showVerifyBanner && (
+                <div
+                    role="alert"
+                    data-testid="verify-email-banner"
+                    style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap',
+                        padding: '7px 16px', fontSize: '12px', color: 'var(--az-warning)',
+                        background: 'var(--az-surface-2)', borderBottom: '1px solid var(--az-border-subtle)',
+                    }}
+                >
+                    <span>
+                        Verify your email to secure your account and enable account-scoped features.
+                        {' '}
+                        <button
+                            type="button"
+                            onClick={() => navigate('/verify-email')}
+                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--az-accent)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                            Verify now
+                        </button>
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setVerifyDismissed(true)}
+                        aria-label="Dismiss verification notice"
+                        style={{ background: 'none', border: 'none', padding: '4px 6px', color: 'var(--az-text-muted)', fontSize: '12px', cursor: 'pointer' }}
                     >
                         Dismiss
                     </button>
@@ -79,128 +121,26 @@ function BetaWorkspace({ children }: { children: ReactNode }) {
 }
 
 /**
- * Optional sign-in / sign-up form. Rendered on demand (settings, header)
- * in public beta — never as a workspace blocker.
+ * Hard login wall (VITE_PUBLIC_BETA=false). Reuses the same premium auth
+ * panes as the /login and /verify-email routes so the experience is identical
+ * whether the wall is entered via /app or the auth routes.
  */
-export function OptionalAuthForm({ onDone }: { onDone?: () => void }) {
-    const { error, login, signup, clearError } = useAuth();
-    const [mode, setMode] = useState<'login' | 'signup'>('login');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [displayName, setDisplayName] = useState('');
-    const [busy, setBusy] = useState(false);
-    const [done, setDone] = useState(false);
-
-    const submit = async (e: FormEvent) => {
-        e.preventDefault();
-        if (busy) return;
-        setBusy(true);
-        try {
-            const ok = mode === 'login'
-                ? await login(email.trim(), password)
-                : await signup(email.trim(), password, displayName.trim() || undefined);
-            if (ok) {
-                setDone(true);
-                onDone?.();
-            }
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    if (done) {
-        return (
-            <p role="status" style={{ fontSize: '13px', color: 'var(--az-success)' }}>
-                Signed in — your workspace now syncs to your account.
-            </p>
-        );
-    }
-
-    return (
-        <div>
-            <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {mode === 'signup' && (
-                    <div>
-                        <label htmlFor="auth-name" style={labelStyle}>Display name <span style={{ color: '#72849F' }}>(optional)</span></label>
-                        <input id="auth-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-                            autoComplete="nickname" maxLength={80} style={inputStyle} />
-                    </div>
-                )}
-                <div>
-                    <label htmlFor="auth-email" style={labelStyle}>Email</label>
-                    <input id="auth-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); clearError(); }}
-                        autoComplete="email" required maxLength={254} style={inputStyle} />
-                </div>
-                <div>
-                    <label htmlFor="auth-password" style={labelStyle}>Password {mode === 'signup' && <span style={{ color: '#72849F' }}>(min 10 characters)</span>}</label>
-                    <input id="auth-password" type="password" value={password} onChange={(e) => { setPassword(e.target.value); clearError(); }}
-                        autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                        required minLength={mode === 'signup' ? 10 : 1} maxLength={256} style={inputStyle} />
-                </div>
-                {error && (
-                    <p role="alert" style={{ fontSize: '12.5px', color: 'var(--az-error)', background: 'var(--az-error-soft)', border: '1px solid var(--az-error-border)', borderRadius: '8px', padding: '9px 12px', margin: 0 }}>
-                        {error}
-                    </p>
-                )}
-                <button type="submit" disabled={busy} style={buttonStyle(busy)}>
-                    {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
-                </button>
-            </form>
-            <p style={{ fontSize: '12.5px', color: '#72849F', textAlign: 'center', marginTop: '18px' }}>
-                {mode === 'login' ? (
-                    <>New to Azemax? <button type="button" onClick={() => { setMode('signup'); clearError(); }} style={linkStyle}>Create an account</button></>
-                ) : (
-                    <>Already have an account? <button type="button" onClick={() => { setMode('login'); clearError(); }} style={linkStyle}>Sign in</button></>
-                )}
-            </p>
-        </div>
-    );
-}
-
 function GatedAuthGate({ children }: { children: ReactNode }) {
-    const { user, loading } = useAuth();
+    const { user, loading, status } = useAuth();
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#080F1C' }} role="status" aria-live="polite" aria-label="Loading">
-                <AzemaxLogo size={40} />
+            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--az-bg)' }} role="status" aria-live="polite" aria-label="Loading">
+                <div className="w-6 h-6 border-2 border-[var(--az-accent)]/25 border-t-[var(--az-accent)] rounded-full animate-spin" />
             </div>
         );
     }
 
+    if (user && status === 'verification-required') {
+        return <VerifyEmailPage onNavigate={navigate} redirectUrl="/app" />;
+    }
+
     if (user) return <>{children}</>;
 
-    return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080F1C', padding: '24px' }}>
-            <main style={{ width: '100%', maxWidth: '380px' }} aria-labelledby="auth-title">
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
-                    <AzemaxLogo size={44} />
-                    <h1 id="auth-title" style={{ fontSize: '20px', fontWeight: 650, color: '#E6EDF8', letterSpacing: '-0.01em', margin: 0 }}>{BRAND.name}</h1>
-                    <p style={{ fontSize: '13px', color: '#72849F', margin: 0 }}>
-                        Sign in to your workspace
-                    </p>
-                </div>
-                <OptionalAuthForm />
-            </main>
-        </div>
-    );
+    return <LoginPage onNavigate={navigate} redirectUrl="/app" />;
 }
-
-const labelStyle: React.CSSProperties = { display: 'block', fontSize: '12px', fontWeight: 600, color: '#A5B5CD', marginBottom: '6px' };
-
-const inputStyle: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box', fontSize: '14px', color: '#E6EDF8',
-    background: '#0A1322', border: '1px solid rgba(230,237,248,0.1)', borderRadius: '8px',
-    padding: '10px 12px', outline: 'none',
-};
-
-const buttonStyle = (busy: boolean): React.CSSProperties => ({
-    marginTop: '4px', padding: '11px 14px', fontSize: '14px', fontWeight: 600, color: '#fff',
-    background: busy ? '#294B80' : '#5B8CFF', border: 'none', borderRadius: '8px',
-    cursor: busy ? 'wait' : 'pointer',
-});
-
-const linkStyle: React.CSSProperties = {
-    background: 'none', border: 'none', padding: 0, color: '#5B8CFF', fontSize: '12.5px',
-    cursor: 'pointer', textDecoration: 'underline',
-};

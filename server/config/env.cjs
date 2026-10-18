@@ -250,6 +250,15 @@ function publicSummary() {
         allowShell: ALLOW_SHELL,
         authDisabled: DISABLE_AUTH,
         publicBeta: PUBLIC_BETA,
+        // Truthful signal: reflects whether the Admin SDK actually initialized,
+        // not merely whether FIREBASE_PROJECT_ID is present in the environment.
+        firebaseConfigured: (() => {
+            try {
+                return require('../services/auth/firebaseAdmin.cjs').isFirebaseConfigured();
+            } catch {
+                return false;
+            }
+        })(),
         corsOrigins: CORS_LIST.map(() => '[set]'),
     };
 }

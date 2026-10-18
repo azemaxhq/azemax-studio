@@ -26,7 +26,12 @@ const STORAGE_KEY = 'azemax:session_token';
  */
 export const AUTH_DISABLED: boolean = (() => {
     try {
-        const env = (import.meta as unknown as { env?: Record<string, string | undefined> })?.env;
+        // NOTE: reference `import.meta.env` literally (never `import.meta?.env`).
+        // Vite statically injects/replaces the whole `import.meta.env` object
+        // only when it appears as a plain member expression; the optional-chained
+        // form silently yields `undefined` in every build, which made this flag
+        // impossible to actually turn on.
+        const env = import.meta.env as Record<string, string | undefined> | undefined;
         return env?.VITE_DISABLE_AUTH === 'true';
     } catch {
         return false;

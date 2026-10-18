@@ -18,6 +18,19 @@ services:
         generateValue: true
       - key: CORS_ORIGIN
         sync: false
+      # --- Firebase Admin (REQUIRED for real sign-in) -----------------------
+      # From the Firebase console: Project settings -> Service accounts ->
+      # "Generate new private key". Paste the three fields from the JSON:
+      #   project_id -> FIREBASE_PROJECT_ID
+      #   client_email -> FIREBASE_CLIENT_EMAIL
+      #   private_key -> FIREBASE_PRIVATE_KEY (keep the escaped \n newlines)
+      # Leave unset to run with sign-in disabled (auth/sync returns 503).
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
       - key: NVIDIA_API_KEY
         sync: false
       - key: NVIDIA_BASE_URL

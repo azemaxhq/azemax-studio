@@ -8,7 +8,8 @@
  * Authorization is ALWAYS derived server-side from the verified session.
  * Never trust userId / owner / email from body, query, or client storage.
  */
-const { verifySession, isAdminEmail, ensureDevUser } = require('../services/auth/authService.cjs');
+const { verifySession, isAdminEmail, ensureDevUser, findUserByFirebaseUid, syncFirebaseUser } = require('../services/auth/authService.cjs');
+const { verifyIdToken, isFirebaseConfigured } = require('../services/auth/firebaseAdmin.cjs');
 const { DISABLE_AUTH, PUBLIC_BETA } = require('../config/index.cjs');
 
 const SESSION_COOKIE = 'azemax_session';
@@ -76,11 +77,11 @@ function tokenFromRequest(req) {
 }
 
 /**
- * Attaches req.user (public user object) when a valid session exists.
+ * Attaches req.user (public user object) when a valid session or Firebase token exists.
  * Does NOT reject — use requireAuth() for protected routes so /api/health
  * and other public endpoints can share the middleware safely.
  */
-function authenticateRequest(req, _res, next) {
+async function authenticateRequest(req, _res, next) {
     // Reversible login bypass: DISABLE_AUTH=true injects the fixed local dev
     // user so every request is authenticated. Real sessions still resolve
     // first when present; the dev user is only the fallback.
@@ -100,6 +101,33 @@ function authenticateRequest(req, _res, next) {
         const token = tokenFromRequest(req);
         req.sessionToken = token;
         req.user = token ? verifySession(token) : null;
+
+        // If no SQLite session matched, check if token is a Firebase ID token (JWT)
+        if (!req.user && token && token.split('.').length === 3 && isFirebaseConfigured()) {
+            try {
+                const decoded = await verifyIdToken(token);
+                if (decoded && decoded.uid) {
+                    let user = findUserByFirebaseUid(decoded.uid);
+                    // Only touch the DB when the identity is unknown or the
+                    // verification state changed — never on every request.
+                    if (!user || Boolean(user.emailVerified) !== Boolean(decoded.email_verified)) {
+                        if (decoded.email) {
+                            user = syncFirebaseUser({
+                                uid: decoded.uid,
+                                email: decoded.email,
+                                displayName: decoded.name,
+                                photoUrl: decoded.picture,
+                                emailVerified: Boolean(decoded.email_verified),
+                                providerId: decoded.firebase?.sign_in_provider || 'google.com',
+                            });
+                        }
+                    }
+                    req.user = user;
+                }
+            } catch {
+                // Token invalid or unverified, leave req.user = null
+            }
+        }
     } catch {
         req.user = null;
     }
@@ -119,6 +147,21 @@ function requireAuth(req, res, next) {
     }
     if (!req.user) {
         return res.status(401).json({ error: 'Authentication required' });
+    }
+    next();
+}
+
+/** Require verified email address for sensitive operations. */
+function requireVerifiedEmail(req, res, next) {
+    if (DISABLE_AUTH) return next();
+    if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (isAnonymousRequest(req)) {
+        return res.status(403).json({ error: 'Verified account required', code: 'auth/unverified-email' });
+    }
+    if (!req.user.emailVerified) {
+        return res.status(403).json({ error: 'Email verification required', code: 'auth/unverified-email' });
     }
     next();
 }
@@ -182,6 +225,7 @@ module.exports = {
     tokenFromRequest,
     authenticateRequest,
     requireAuth,
+    requireVerifiedEmail,
     requireAuthOrPublicBeta,
     requireAdmin,
     isAnonymousId,
