@@ -16,7 +16,7 @@ import {
     verificationTarget,
     verificationTargetLabel,
 } from '../src/core/auth/verification';
-import { AUTH_COPY, GUEST_ACTION_LABEL } from '../src/core/auth/copy';
+import { AUTH_COPY } from '../src/core/auth/copy';
 
 // ---------------------------------------------------------------------------
 // Deliverability guard (the .local fix)
@@ -75,7 +75,6 @@ import { AUTH_COPY, GUEST_ACTION_LABEL } from '../src/core/auth/copy';
 
     check('copy: login heading is "Welcome back"', AUTH_COPY.login.title === 'Welcome back');
     check('copy: verification pane says "Verify your email"', AUTH_COPY.verify.title === 'Verify your email');
-    check('copy: guest affordance is labelled consistently', GUEST_ACTION_LABEL === 'Continue as guest');
 }
 
 finish('authVerify');

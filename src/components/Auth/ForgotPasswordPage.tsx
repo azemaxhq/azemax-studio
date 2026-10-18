@@ -86,7 +86,6 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onNaviga
         <AuthLayout
             headline={copy.brandHeadline}
             subheadline={copy.brandSubheadline}
-            showGuest={false}
         >
             <AuthLinkButton subtle onClick={() => onNavigate('/login')} className="mb-5 inline-flex items-center gap-1.5">
                 <ArrowLeft size={13} aria-hidden="true" />

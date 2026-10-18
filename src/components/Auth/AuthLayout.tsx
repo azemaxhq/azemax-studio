@@ -1,8 +1,7 @@
 import React from 'react';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { BRAND } from '../../core/branding';
-import { GUEST_ACTION_LABEL } from '../../core/auth/copy';
-import { navigate } from '../../utils/appRouter';
+import { LEGAL_PATHS } from '../Legal/legalMeta';
 import { Sparkles } from 'lucide-react';
 
 interface AuthLayoutProps {
@@ -11,12 +10,10 @@ interface AuthLayoutProps {
     headline: string;
     /** Task-adapted brand-panel supporting line (desktop only). */
     subheadline: string;
-    /** Render the single guest affordance at the foot of the form column. */
-    showGuest?: boolean;
 }
 
-const TERMS_URL = `${BRAND.website}/terms`;
-const PRIVACY_URL = `${BRAND.website}/privacy`;
+const TERMS_URL = LEGAL_PATHS.terms;
+const PRIVACY_URL = LEGAL_PATHS.privacy;
 
 /**
  * Azemax authentication shell.
@@ -36,7 +33,6 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
     children,
     headline,
     subheadline,
-    showGuest = true,
 }) => {
     return (
         <div className="az-auth flex h-full w-full bg-[var(--az-bg)] text-[var(--az-text)]">
@@ -122,17 +118,6 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
                 <main className="flex flex-1 flex-col justify-center px-6 py-10 sm:px-8 lg:px-12 lg:py-12">
                     <div className="mx-auto w-full max-w-[440px]">
                         {children}
-                        {showGuest ? (
-                            <div className="mt-6 text-center">
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('/app')}
-                                    className="az-ring rounded-md px-2 py-1 text-[12px] text-[var(--az-text-muted)] transition-colors hover:text-[var(--az-text)]"
-                                >
-                                    {GUEST_ACTION_LABEL}
-                                </button>
-                            </div>
-                        ) : null}
                     </div>
                 </main>
 

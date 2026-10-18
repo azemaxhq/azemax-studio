@@ -20,6 +20,8 @@ import { AIComposer } from './AIComposer';
 import '../AI/ai-loading.css';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useAuthOptional } from '../../context/AuthContext';
+import { useAccountChatsSync } from '../../hooks/useAccountChatsSync';
 import { useDialog } from '../UI/DialogProvider';
 import {
     saveSessions,
@@ -27,6 +29,8 @@ import {
     createSession,
     saveCurrentSessionId,
     loadCurrentSessionId,
+    markChatsClearedAt,
+    recordChatTombstones,
     type ChatSession,
     type Message
 } from '../../utils/chatStorage';
@@ -647,10 +651,30 @@ export const useAutoScroll = (active: boolean = true) => {
 
 export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }> = ({ isVisible = true, onClose }) => {
     const { settings } = useSettings();
+    const auth = useAuthOptional();
     const dialog = useDialog();
     // Session State
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+    const applyRemoteChats = useCallback((nextSessions: ChatSession[], nextCurrentId: string | null) => {
+        setSessions(nextSessions);
+        setCurrentSessionId(nextCurrentId);
+    }, []);
+
+    // Account sync unions this device's history with the cloud copy on mount and
+    // persists subsequent changes. It is disabled when the user opted out of
+    // local chat persistence/session restore.
+    useAccountChatsSync({
+        userId: auth?.user?.id ?? null,
+        enabled: Boolean(auth?.user?.id)
+            && settings.privacy.localPersistence
+            && settings.privacy.saveChatHistory
+            && settings.general.restoreSession,
+        sessions,
+        currentSessionId,
+        onRemoteChats: applyRemoteChats,
+    });
 
     // Centralized AI loading lifecycle — single source via AIRequestStore (chat operation)
     // Keep current user-facing operation for contextual status
@@ -936,6 +960,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
         const newSessions = sessions.filter(s => s.id !== sessionId);
         setSessions(newSessions);
         if (settings.privacy.localPersistence && settings.privacy.saveChatHistory) {
+            recordChatTombstones([sessionId]);
             saveSessions(newSessions);
         }
 
@@ -2127,6 +2152,14 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                         <button
                             onClick={async () => {
                                 const doClear = () => {
+                                    // Tombstone every conversation and record a
+                                    // clear-all marker before the document is
+                                    // emptied. A second device then cannot
+                                    // re-upload them, and conversations this
+                                    // device never saw are filtered by the
+                                    // marker instead of being resurrected.
+                                    markChatsClearedAt();
+                                    recordChatTombstones(sessions.map(s => s.id));
                                     setSessions([]);
                                     saveSessions([]);
                                     handleNewChat();

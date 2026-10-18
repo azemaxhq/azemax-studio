@@ -8,7 +8,10 @@
  *  - never prints secret VALUES (only variable names)
  *
  * Fail-closed rules (production):
- *  - NODE_ENV=production requires AUTH_SECRET (>= 32 chars).
+ *  - NODE_ENV=production requires Firebase Admin credentials (validated in
+ *    server/index.cjs): the server refuses to boot if authentication cannot be
+ *    configured, because a production deployment with no verifiable identity
+ *    provider would expose every product route.
  *  - NODE_ENV=production requires an explicit CORS_ORIGIN (no localhost,
  *    no wildcard with credentials).
  *  - ALLOW_LOCAL_EXECUTION=true in production is a FATAL startup error.
@@ -49,51 +52,14 @@ const DATABASE_PATH = process.env.DATABASE_PATH
     ? path.resolve(process.env.DATABASE_PATH)
     : path.join(DATA_DIR, 'azemax.db');
 
-// ---- Auth bypass (reversible, login gate removal) ----------------------------
-// DISABLE_AUTH=true skips the login gate by injecting a fixed local user
-// (local-dev@azemax.local). Auth code, tables, and hashes are left intact —
-// unset the flag to restore login with zero migrations.
+// ---- Authentication (Firebase is the ONLY identity provider) ----------------
+// There is no auth-bypass switch and no anonymous/guest mode. Authentication is
+// mandatory for every product route and fails closed: if Firebase Admin cannot
+// be configured in production, the server refuses to boot (see server/index.cjs)
+// rather than silently allowing unauthenticated access.
 //
-// Fail-closed: in production DISABLE_AUTH=true additionally requires the
-// explicit acknowledgement ALLOW_PUBLIC_BYPASS=true, otherwise the server
-// refuses to boot. The acknowledgement exists because a public bypass means
-// EVERY visitor shares ONE identity: all projects, AI quota, and execution
-// are shared, and anyone can read/overwrite/delete anything. Acceptable for
-// a throwaway public beta; never for real user data.
-const DISABLE_AUTH = process.env.DISABLE_AUTH === 'true';
-const ALLOW_PUBLIC_BYPASS = process.env.ALLOW_PUBLIC_BYPASS === 'true';
-if (isProd && DISABLE_AUTH && !ALLOW_PUBLIC_BYPASS) {
-    fail('DISABLE_AUTH=true in production requires explicit acknowledgement: set ALLOW_PUBLIC_BYPASS=true. Without it the server refuses to boot, because every visitor would share one identity (all projects/AI quota/execution shared, anyone can read or delete anything). Only acknowledge for a throwaway public beta.');
-}
-if (DISABLE_AUTH && isProd) {
-    warn('PUBLIC AUTH BYPASS ACTIVE — every visitor shares the local-dev identity. Shared projects, shared AI/execution quotas, no privacy. Unset DISABLE_AUTH (or ALLOW_PUBLIC_BYPASS) and redeploy to restore login.');
-} else if (DISABLE_AUTH) {
-    warn('DISABLE_AUTH=true — login is bypassed with a fixed local user. Auth code is intact; unset to restore login. Never expose this process to untrusted users without ALSO understanding the shared-identity consequences.');
-}
-
-// ---- Public beta (anonymous workspace) --------------------------------------
-// PUBLIC_BETA=true lets unauthenticated visitors use the editor immediately:
-// workspace files persist in the browser (localStorage), while server AI and
-// code-execution endpoints accept anonymous requests attributed to the client
-// IP (never a client-supplied user id) under strict validation + rate limits.
-// Server projects (/api/projects) and admin endpoints STAY login-required, so
-// anonymous users can never read other users' private data.
-// Default ON (unset or anything but "false" enables it); set PUBLIC_BETA=false
-// to restore a hard login wall. Unlike DISABLE_AUTH this creates NO shared
-// server identity and refuses nothing at boot.
-const PUBLIC_BETA = process.env.PUBLIC_BETA !== 'false';
-if (PUBLIC_BETA) {
-    warn('PUBLIC_BETA enabled — anonymous visitors can use AI/execution under IP-based quotas; /api/projects stays login-required and anonymous workspaces persist locally in the browser. Set PUBLIC_BETA=false to restore a hard login wall.');
-}
-
-// ---- Auth secret -----------------------------------------------------------
-const AUTH_SECRET = process.env.AUTH_SECRET || '';
-if (isProd && AUTH_SECRET.length < 32) {
-    fail('AUTH_SECRET must be set to a random string of at least 32 characters in production. Generate with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64url\'))"');
-}
-if (!isProd && !isTest && AUTH_SECRET && AUTH_SECRET.length < 32) {
-    warn('AUTH_SECRET is shorter than 32 characters — sessions are weak. Use a longer secret.');
-}
+// Firebase Admin reads FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL /
+// FIREBASE_PRIVATE_KEY (service-account) or application default credentials.
 
 // ---- CORS ------------------------------------------------------------------
 const rawCORS = process.env.CORS_ORIGIN || (isProd ? '' : 'http://localhost:5173');
@@ -208,11 +174,6 @@ const LIMITS = {
     AI_MAX_TOKENS_ABSOLUTE: num('AI_MAX_TOKENS_ABSOLUTE', 8192, { min: 256, max: 32768 }),
     AI_REQUESTS_PER_MINUTE: num('AI_REQUESTS_PER_MINUTE', 20, { min: 1, max: 1000 }),
     AI_REQUESTS_PER_DAY: num('AI_REQUESTS_PER_DAY', 200, { min: 1, max: 100000 }),
-    // Anonymous (public-beta, IP-attributed) daily quotas are deliberately
-    // tighter than authenticated quotas — denial-of-wallet backstop for the
-    // unauthenticated AI/execution surface. Per-minute limits are shared.
-    AI_ANON_REQUESTS_PER_DAY: num('AI_ANON_REQUESTS_PER_DAY', 50, { min: 1, max: 100000 }),
-    EXEC_ANON_REQUESTS_PER_DAY: num('EXEC_ANON_REQUESTS_PER_DAY', 60, { min: 1, max: 100000 }),
     EXEC_REQUESTS_PER_MINUTE: num('EXEC_REQUESTS_PER_MINUTE', 30, { min: 1, max: 1000 }),
     EXEC_REQUESTS_PER_DAY: num('EXEC_REQUESTS_PER_DAY', 300, { min: 1, max: 100000 }),
     // Projects / storage quotas (per user)
@@ -221,6 +182,11 @@ const LIMITS = {
     MAX_FILE_BYTES: num('MAX_FILE_BYTES', 512 * 1024, { min: 1024, max: 10 * 1024 * 1024 }),
     MAX_FILES_PER_WORKSPACE: num('MAX_FILES_PER_WORKSPACE', 2000, { min: 10, max: 50000 }),
     MAX_USER_STORAGE_BYTES: num('MAX_USER_STORAGE_BYTES', 50 * 1024 * 1024, { min: 1024 * 1024, max: 1024 * 1024 * 1024 }),
+    // Account-synced secondary state (settings, AI chats). Kept below the
+    // 1 MB express JSON limit so the request body itself can never exhaust
+    // memory before validation runs.
+    MAX_ACCOUNT_SETTINGS_BYTES: num('MAX_ACCOUNT_SETTINGS_BYTES', 256 * 1024, { min: 1024, max: 768 * 1024 }),
+    MAX_ACCOUNT_CHATS_BYTES: num('MAX_ACCOUNT_CHATS_BYTES', 900 * 1024, { min: 1024, max: 900 * 1024 }),
     // Execution sandbox caps
     MAX_CODE_BYTES: num('MAX_CODE_BYTES', 200 * 1024, { min: 1024, max: 2 * 1024 * 1024 }),
     MAX_STDIN_BYTES: num('MAX_STDIN_BYTES', 32 * 1024, { min: 0, max: 512 * 1024 }),
@@ -248,8 +214,6 @@ function publicSummary() {
         providersConfigured: configuredProviders,
         allowLocalExecution: ALLOW_LOCAL_EXECUTION,
         allowShell: ALLOW_SHELL,
-        authDisabled: DISABLE_AUTH,
-        publicBeta: PUBLIC_BETA,
         // Truthful signal: reflects whether the Admin SDK actually initialized,
         // not merely whether FIREBASE_PROJECT_ID is present in the environment.
         firebaseConfigured: (() => {
@@ -266,14 +230,10 @@ function publicSummary() {
 module.exports = {
     isProd,
     isTest,
-    DISABLE_AUTH,
-    ALLOW_PUBLIC_BYPASS,
-    PUBLIC_BETA,
     PORT,
     DATA_DIR,
     WORKSPACES_DIR,
     DATABASE_PATH,
-    AUTH_SECRET,
     CORS_ORIGIN,
     CORS_LIST,
     ALLOW_LOCAL_EXECUTION,

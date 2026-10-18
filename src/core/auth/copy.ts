@@ -46,6 +46,3 @@ export const AUTH_COPY: Record<AuthCopyKey, AuthPageCopy> = {
         description: 'Enter your email and we will send a secure link to reset your password.',
     },
 };
-
-/** Single, consistent guest affordance used across the auth surface. */
-export const GUEST_ACTION_LABEL = 'Continue as guest';

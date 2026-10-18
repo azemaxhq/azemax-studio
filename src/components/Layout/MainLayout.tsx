@@ -38,7 +38,7 @@ const SidebarFallback = () => (
 );
 
 export const MainLayout: React.FC = () => {
-    const { user, isAnonymous } = useAuth();
+    const { user } = useAuth();
     // Workspace state drives onboarding vs. IDE. The hook itself is
     // unconditional; the early return lives AFTER every hook call (just below)
     // so hook order is identical on every render.
@@ -654,22 +654,28 @@ export const MainLayout: React.FC = () => {
 
                 <button
                     onClick={() => {
-                        if (!user || isAnonymous) {
+                        if (!user) {
                             navigate('/login?redirect=/app');
                         } else {
                             openSettings();
                         }
                     }}
                     className="az-activity-btn"
-                    title={user && !isAnonymous ? (user.displayName || user.email) : 'Sign In'}
+                    title={user ? (user.displayName || user.email) : 'Sign In'}
                     aria-label="Account"
                 >
-                    {user && !isAnonymous && user.photoUrl ? (
-                        <img src={user.photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+                    {user && user.photoUrl ? (
+                        <img src={user.photoUrl} alt="" className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                         <div className="relative flex items-center justify-center">
-                            <User size={16} strokeWidth={1.75} className="shrink-0" />
-                            {user && !isAnonymous && !user.emailVerified && (
+                            {user ? (
+                                <span className="w-4 h-4 rounded-full bg-[var(--az-accent)]/25 border border-[var(--az-accent)]/40 flex items-center justify-center text-[9px] font-semibold text-[var(--az-accent-bright)]">
+                                    {(user.displayName || user.email || '?').charAt(0).toUpperCase()}
+                                </span>
+                            ) : (
+                                <User size={16} strokeWidth={1.75} className="shrink-0" />
+                            )}
+                            {user && !user.emailVerified && (
                                 <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[var(--az-warning)] border border-[var(--az-bg)]" />
                             )}
                         </div>

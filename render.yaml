@@ -14,17 +14,17 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: AUTH_SECRET
-        generateValue: true
       - key: CORS_ORIGIN
         sync: false
-      # --- Firebase Admin (REQUIRED for real sign-in) -----------------------
+      # --- Firebase Admin (REQUIRED in production) --------------------------
+      # Firebase Authentication is the ONLY identity provider. The server
+      # refuses to boot in production unless it can verify identity, so these
+      # three values are mandatory (fail closed — there is no bypass flag).
       # From the Firebase console: Project settings -> Service accounts ->
       # "Generate new private key". Paste the three fields from the JSON:
       #   project_id -> FIREBASE_PROJECT_ID
       #   client_email -> FIREBASE_CLIENT_EMAIL
       #   private_key -> FIREBASE_PRIVATE_KEY (keep the escaped \n newlines)
-      # Leave unset to run with sign-in disabled (auth/sync returns 503).
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
@@ -49,14 +49,3 @@ services:
         value: false
       - key: ALLOW_SHELL
         value: false
-      # --- Public-beta login removal (OPTIONAL, off by default) ---
-      # To remove the login page on the public beta, set BOTH in the Render
-      # dashboard (NOT in this file — this file is committed) and redeploy:
-      #   DISABLE_AUTH=true + ALLOW_PUBLIC_BYPASS=true
-      # WARNING: every visitor then shares ONE identity (shared projects, AI
-      # quota, execution). Anyone can read/overwrite/delete anything. Only
-      # for a throwaway beta; unset both to restore login.
-      - key: DISABLE_AUTH
-        sync: false
-      - key: ALLOW_PUBLIC_BYPASS
-        sync: false

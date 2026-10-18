@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signInForE2E } from './_auth';
 
 // VS Code Dark+ token colors (as rendered rgb()).
 const PURPLE = 'rgb(197, 134, 192)'; // keyword.control
@@ -167,6 +168,11 @@ async function revealFullFile(page: import('@playwright/test').Page) {
 }
 
 test.describe('Azemax Dark+ syntax highlighting', () => {
+  test.beforeEach(async ({ page }) => {
+    // Firebase identity is required (no bypass). Skips without real credentials.
+    await signInForE2E(page);
+  });
+
   test('csharp renders VS Code Dark+ token colors on Midnight Blue', async ({ page }) => {
     await seedAndReload(page);
     await waitForHighlight(page);

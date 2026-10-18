@@ -1,60 +1,54 @@
 /**
- * Tests for the beta auth transport hardening:
- *  - sessionToken storage fallback (memory when localStorage unavailable)
- *  - authHeaders / withSessionToken credential attachment
+ * Tests for the Firebase ID-token transport:
+ *  - in-memory token cache (no localStorage/cookie persistence)
+ *  - authHeaders / withAuthToken credential attachment
  *  - authFailureMessage classification (network vs HTML-misconfig vs API errors)
  *
- * Run with: npx tsx tests/authTransport.test.ts  (or `npm test` via vitest)
+ * Run with: npm test
  */
 import { check, finish } from './_harness';
 import {
-    getSessionToken,
-    setSessionToken,
-    clearSessionToken,
+    getIdToken,
+    setIdToken,
+    clearIdToken,
     authHeaders,
-    withSessionToken,
+    withAuthToken,
     authFailureMessage,
-    AUTH_DISABLED,
-} from '../src/utils/sessionToken';
+} from '../src/utils/authToken';
 
-// --- Gate flag defaults to login-ON (removal is explicit opt-in) ---
+// --- In-memory credential cache ---
 {
-    check('AUTH_DISABLED defaults to false without VITE_DISABLE_AUTH', AUTH_DISABLED === false);
-}
+    clearIdToken();
+    check('token starts empty', getIdToken() === null);
 
-// --- Token storage (node has no localStorage: memory fallback path) ---
-{
-    clearSessionToken();
-    check('token starts empty', getSessionToken() === null);
-
-    setSessionToken('tok_abc123');
-    check('token round-trips via memory fallback', getSessionToken() === 'tok_abc123');
+    setIdToken('tok_abc123');
+    check('token round-trips via memory cache', getIdToken() === 'tok_abc123');
 
     check('authHeaders carries Bearer token', authHeaders().Authorization === 'Bearer tok_abc123');
 
     check(
-        'withSessionToken appends ?token=',
-        withSessionToken('wss://api.example.com') === 'wss://api.example.com?token=tok_abc123',
+        'withAuthToken appends ?token=',
+        withAuthToken('wss://api.example.com') === 'wss://api.example.com?token=tok_abc123',
     );
     check(
-        'withSessionToken appends &token= when query exists',
-        withSessionToken('wss://api.example.com/?x=1') === 'wss://api.example.com/?x=1&token=tok_abc123',
+        'withAuthToken appends &token= when query exists',
+        withAuthToken('wss://api.example.com/?x=1') === 'wss://api.example.com/?x=1&token=tok_abc123',
     );
 
-    clearSessionToken();
-    check('token cleared', getSessionToken() === null);
+    clearIdToken();
+    check('token cleared', getIdToken() === null);
     check('authHeaders empty without token', Object.keys(authHeaders()).length === 0);
     check(
-        'withSessionToken is identity without token',
-        withSessionToken('wss://api.example.com') === 'wss://api.example.com',
+        'withAuthToken is identity without token',
+        withAuthToken('wss://api.example.com') === 'wss://api.example.com',
     );
 
-    setSessionToken(null);
-    check('setSessionToken(null) clears', getSessionToken() === null);
-    setSessionToken(undefined);
-    check('setSessionToken(undefined) clears', getSessionToken() === null);
-    setSessionToken('');
-    check('setSessionToken(empty) clears', getSessionToken() === null);
+    setIdToken(null);
+    check('setIdToken(null) clears', getIdToken() === null);
+    setIdToken(undefined);
+    check('setIdToken(undefined) clears', getIdToken() === null);
+    setIdToken('');
+    check('setIdToken(empty) clears', getIdToken() === null);
 }
 
 // --- Failure classification ---
@@ -72,7 +66,10 @@ import {
         /API misconfigured/.test(html) && /VITE_API_URL/.test(html),
     );
 
-    check('401 maps to invalid credentials', authFailureMessage({ status: 401 }) === 'Invalid email or password.');
+    check(
+        '401 maps to session-expired',
+        authFailureMessage({ status: 401 }) === 'Your session has expired. Please sign in again.',
+    );
     check(
         '409 maps to existing-account hint',
         /already exists/.test(authFailureMessage({ status: 409 })),
@@ -81,8 +78,7 @@ import {
 
     check(
         'other API errors surface server message',
-        authFailureMessage({ status: 400, bodyError: 'Password must be at least 10 characters' }) ===
-            'Password must be at least 10 characters',
+        authFailureMessage({ status: 400, bodyError: 'Bad request detail' }) === 'Bad request detail',
     );
     check(
         'unknown status without body falls back to HTTP code',

@@ -73,6 +73,18 @@ export const setSettings = (partial: Partial<Settings>): void => {
   notify();
 };
 
+/**
+ * Replace the in-memory settings from an authoritative source (account sync /
+ * per-user reload). Kept separate from `setSettings` so callers can decide
+ * whether subscribers should react (remote hydration suppresses echo writes).
+ */
+export const hydrateSettings = (settings: Settings, notifyListeners = true): void => {
+  const sanitized = sanitizeSettings(settings);
+  if (!sanitized) return;
+  current = sanitized;
+  if (notifyListeners) notify();
+};
+
 export const updateSettings = (
   sectionOrPartial: keyof Settings | Partial<Settings>,
   updates?: Record<string, unknown>,

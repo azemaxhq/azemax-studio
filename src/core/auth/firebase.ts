@@ -10,7 +10,7 @@ import {
     sendPasswordResetEmail,
     updateProfile,
     signOut,
-    onAuthStateChanged,
+    onIdTokenChanged,
     GoogleAuthProvider,
     type ActionCodeSettings,
     type Auth,
@@ -29,9 +29,10 @@ export interface FirebaseClientConfig {
 
 function readClientConfig(): FirebaseClientConfig {
     try {
-        // Reference `import.meta.env` literally so Vite injects it (see the note
-        // in sessionToken.ts — the optional-chained form breaks env injection,
-        // which would leave Firebase unconfigured in every build).
+        // Reference `import.meta.env` literally so Vite injects it (contextual
+        // note: the optional-chained form on `import.meta` itself is fine, but
+        // an indirect reference would break env injection, leaving Firebase
+        // unconfigured in every build).
         const env = import.meta.env as Record<string, string | undefined> | undefined;
         return {
             apiKey: env?.VITE_FIREBASE_API_KEY,
@@ -138,7 +139,7 @@ export async function signInWithGoogle(): Promise<UserCredential> {
             // Fall back to redirect if popup was blocked
             await signInWithRedirect(auth, provider);
             // Will navigate away, return dummy promise that will not resolve before reload
-            return new Promise(() => {});
+            return new Promise(() => { });
         }
         throw err;
     }
@@ -223,13 +224,58 @@ export async function signOutFirebase(): Promise<void> {
     }
 }
 
-export function subscribeToAuthState(callback: (user: User | null) => void): () => void {
+/**
+ * Read the current user's Firebase ID token (the credential presented to the
+ * Azemax backend as `Authorization: Bearer`). Returns null when no user is
+ * signed in or Firebase is unavailable — never throws, so callers fail closed.
+ *
+ * `forceRefresh` mints a brand-new token (used at explicit sign-in/verification
+ * events so the server observes current claims); otherwise the SDK's cached,
+ * auto-refreshed token is used.
+ */
+export async function getCurrentIdToken(forceRefresh = false): Promise<string | null> {
+    const auth = getFirebaseAuth();
+    const current = auth?.currentUser ?? null;
+    if (!current) return null;
+    try {
+        return await current.getIdToken(forceRefresh);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Subscribe to identity AND token changes (`onIdTokenChanged` fires on
+ * sign-in, sign-out, and every ID-token refresh). The callback receives the
+ * current token alongside the user so the app credential cache always mirrors
+ * the SDK — a refreshed token can never be missed between requests.
+ */
+export function subscribeToAuthState(
+    callback: (user: User | null, token: string | null) => void,
+): () => void {
     const auth = getFirebaseAuth();
     if (!auth) {
-        callback(null);
-        return () => {};
+        callback(null, null);
+        return () => { };
     }
-    return onAuthStateChanged(auth, callback);
+    let active = true;
+    const unsubscribe = onIdTokenChanged(auth, (user) => {
+        void (async () => {
+            let token: string | null = null;
+            if (user) {
+                try {
+                    token = await user.getIdToken();
+                } catch {
+                    token = null;
+                }
+            }
+            if (active) callback(user, token);
+        })();
+    });
+    return () => {
+        active = false;
+        unsubscribe();
+    };
 }
 
 /**

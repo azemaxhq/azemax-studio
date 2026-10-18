@@ -6,9 +6,21 @@ const { attachExecutionWebSocket } = require('./websocket/executionHandler.cjs')
 const { listDetectedRuntimes } = require('./services/execution/runtimeDetection.cjs');
 const { aiRequestManager } = require('./services/ai/aiRequestManager.cjs');
 const { openDatabase, closeDatabase } = require('./db/index.cjs');
-const { pruneExpiredSessions } = require('./services/auth/authService.cjs');
 const logger = require('./lib/logger.cjs');
 const lifecycle = require('./lifecycle.cjs');
+
+// ---- Fail-closed authentication guard (production) ----
+// Firebase Authentication is the sole identity provider. A production process
+// that cannot verify identities must never boot: every product route would be
+// exposed. Missing configuration is a deployment error, never a reason to
+// allow unauthenticated access.
+const { isFirebaseConfigured } = require('./services/auth/firebaseAdmin.cjs');
+if (process.env.NODE_ENV === 'production' && !isFirebaseConfigured()) {
+    require('./config/index.cjs').fail(
+        'Firebase Admin is not configured. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY ' +
+        '(or provide application default credentials) before running in production. Authentication must never be disabled.',
+    );
+}
 
 // ---- Construction (no I/O yet) ----
 openDatabase(); // migrations run here; fatal on failure
@@ -31,17 +43,6 @@ lifecycle.installGracefulShutdown({
     onComplete,
     beforeClose: () => aiRequestManager.abortAll(),
 });
-
-// Prune expired sessions hourly (bounded, single timer).
-const pruneTimer = setInterval(() => {
-    try {
-        const removed = pruneExpiredSessions();
-        if (removed > 0) logger.info('sessions pruned', { removed });
-    } catch (err) {
-        logger.error('session prune failed', { message: err && err.message });
-    }
-}, 3600 * 1000);
-if (pruneTimer.unref) pruneTimer.unref();
 
 // ---- Startup (entrypoint owns it; exactly one listen per process) ----
 const { siblingPid } = lifecycle.acquireLock(PORT);

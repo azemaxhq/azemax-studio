@@ -1,5 +1,5 @@
 import { API_BASE } from '../../utils/apiClient';
-import { authHeaders } from '../../utils/sessionToken';
+import { authHeaders } from '../../utils/authToken';
 import { isAbortError } from './AIAbortController';
 import { streamFromBackend, streamFromOpenAI } from './AIStream';
 import type { AIStreamEvent, AIToolCall } from './types';

@@ -23,7 +23,7 @@ test.describe('Azemax Landing Page E2E', () => {
     await expect(page.locator('canvas').nth(1)).toBeVisible();
 
     // Eyebrow and badges
-    await expect(page.locator('text=BEYOND THE EDITOR').first()).toBeVisible();
+    await expect(page.locator('.az-hero-eyebrow')).toContainText('azemax beta');
     await expect(page.locator('.az-hero-metadata')).toContainText('WRITE');
     await expect(page.locator('.az-hero-metadata')).toContainText('RUN');
     await expect(page.locator('.az-hero-metadata')).toContainText('UNDERSTAND');
@@ -43,6 +43,11 @@ test.describe('Azemax Landing Page E2E', () => {
 
   test('hero discovery control preselects workspace mode and scrolls', async ({ page }) => {
     await page.goto('/');
+
+    // The Experience section is lazily mounted; wait for its tabs before
+    // clicking so the discovery event has a listener (real users reach the
+    // hero control after the section module has loaded).
+    await expect(page.locator('#tab-understand')).toBeAttached();
 
     const understandLink = page.locator('[data-discovery-mode="understand"]');
     await understandLink.scrollIntoViewIfNeeded();

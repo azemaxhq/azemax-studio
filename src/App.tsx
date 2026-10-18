@@ -15,10 +15,12 @@ import { AzemaxLogo } from './components/UI/AzemaxLogo';
 import { BRAND } from './core/branding';
 import { LandingPage } from './components/Landing/LandingPage';
 import { wakeBackend } from './utils/backendHealth';
-import { ANON_USER_ID, isAppRoutePath } from './utils/betaAccess';
-import { isAuthRoutePath, navigate } from './utils/appRouter';
+import { isAppRoutePath, isAuthRoutePath, isLegalRoutePath, navigate } from './utils/appRouter';
 
 const MainLayout = lazy(() => import('./components/Layout/MainLayout').then(m => ({ default: m.MainLayout })));
+
+// Legal documents are public and must never pull in the IDE or auth bundles.
+const LegalPage = lazy(() => import('./components/Legal/LegalPage').then(m => ({ default: m.LegalPage })));
 
 // Memoized shell around the lazy layout: a SettingsProvider value change would
 // otherwise re-render the ENTIRE MainLayout tree on every settings tweak. With
@@ -47,18 +49,20 @@ const AppLoadingFallback = () => (
 const AppProviders = composeProviders(
   DialogProvider,
   PerformanceProvider,
+  // Settings must sit above ProjectProvider: the settings store hydrates
+  // synchronously per account, and project cloud sync reads the privacy
+  // settings during its first render. Keeping it below would let the project
+  // provider briefly observe the previous account's values.
+  SettingsProvider,
   ProjectProvider,
   TerminalProvider,
   ExplanationProvider,
-  SettingsProvider,
 );
 
-// Workspace shell: open to everyone in public beta (AuthGate no longer blocks
-// anonymous visitors), and keyed by user id so ALL provider state (file tree,
-// terminals, chat, settings caches) resets when the signed-in user changes.
-// Anonymous visitors share the STABLE 'beta-anon' key: local workspace data
-// persists across refreshes and direct /app navigation, isolated from every
-// real account by construction. No cross-user state leakage.
+// Workspace shell: Firebase authentication is the only way in (AuthGate renders
+// the sign-in / verification panes otherwise). Providers are keyed by user id so
+// ALL provider state (file tree, terminals, chat, settings caches) resets when
+// the signed-in user changes — one account can never see another's state.
 function WorkspaceShell() {
   const { user } = useAuth();
   // Background warm-up for a cold (Render free-tier) backend: one lightweight
@@ -71,7 +75,7 @@ function WorkspaceShell() {
   }, []);
   return (
     <AuthGate>
-      <AppProviders key={user ? user.id : ANON_USER_ID}>
+      <AppProviders key={user?.id ?? 'unauthenticated'}>
         <AppContent />
       </AppProviders>
     </AuthGate>
@@ -127,11 +131,24 @@ export default function App() {
   // Route /app (and /app/*) mounts the IDE workspace with all context providers.
   // Routes /login, /signup, /forgot-password, /verify-email, /auth/callback
   // mount the authentication surface.
+  // Routes /privacy and /terms mount the public legal documents — no
+  // AuthProvider, no AuthGate, so they load for signed-out visitors.
   // Route / (and any other marketing route) renders the Azemax Landing Page.
-  // Direct navigation to /app always reaches the workspace — public beta has
-  // no login redirect (see isAppRoutePath, unit-tested).
+  // The workspace is behind AuthGate: an unauthenticated visitor sees the
+  // sign-in pane, never the IDE (Firebase is the sole identity provider).
   const isAppRoute = isAppRoutePath(currentPath);
   const isAuthRoute = isAuthRoutePath(currentPath);
+  const isLegalRoute = isLegalRoutePath(currentPath);
+
+  if (isLegalRoute) {
+    return (
+      <ErrorBoundary fallback={RootErrorFallback}>
+        <Suspense fallback={<AppLoadingFallback />}>
+          <LegalPage path={currentPath} />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
 
   if (!isAppRoute && !isAuthRoute) {
     return (

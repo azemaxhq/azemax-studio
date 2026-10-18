@@ -4,6 +4,7 @@ const authRoutes = require('./auth.cjs');
 const aiRoutes = require('./ai.cjs');
 const executeRoutes = require('./execute.cjs');
 const projectRoutes = require('./projects.cjs');
+const accountRoutes = require('./account.cjs');
 
 function registerRoutes(app) {
     const api = express.Router();
@@ -13,6 +14,7 @@ function registerRoutes(app) {
     api.use('/ai', aiRoutes);
     api.use(executeRoutes);
     api.use('/projects', projectRoutes);
+    api.use('/account', accountRoutes);
 
     app.use('/api', api);
 }

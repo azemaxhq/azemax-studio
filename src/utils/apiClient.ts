@@ -1,7 +1,7 @@
 // Defensive reads: Vite always provides import.meta.env, but server-side runs
 // (tests, SSR tooling) may not — never crash on a missing env bag.
 // In production VITE_API_URL should be an absolute URL like https://api.example.com/api
-import { authHeaders, AUTH_DISABLED } from './sessionToken';
+import { authHeaders } from './authToken';
 
 export const API_BASE = (import.meta.env?.VITE_API_URL || '/api').replace(/\/$/, '');
 
@@ -18,10 +18,9 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-    // Bearer fallback: harmless when the httpOnly cookie is present (the
-    // server accepts either credential); required when third-party cookies
-    // are blocked on cross-site beta deploys. Never overrides an explicit
-    // caller-provided Authorization header.
+    // Firebase ID token as a Bearer credential on every request. Empty when no
+    // user is signed in, in which case the server rejects with 401 (fail
+    // closed). Never overrides an explicit caller-provided Authorization.
     let bearer: Record<string, string> = {};
     try {
         bearer = authHeaders();
@@ -38,10 +37,10 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
         },
     });
 
-    if (response.status === 401 && !AUTH_DISABLED) {
-        // Session expired/revoked mid-use: bounce back to the login gate.
-        // Guarded so background polling cannot loop the event. Suppressed
-        // when the gate is disabled (no login screen to return to).
+    if (response.status === 401) {
+        // Session expired/revoked mid-use: clear the cached credential and
+        // bounce back to the login gate. Guarded so background polling cannot
+        // loop the event.
         window.dispatchEvent(new CustomEvent('azemax:unauthorized'));
     }
 

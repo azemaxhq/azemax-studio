@@ -13,7 +13,7 @@ import {
     PasswordField,
 } from './primitives';
 import { AUTH_COPY } from '../../core/auth/copy';
-import { BRAND } from '../../core/branding';
+import { LEGAL_PATHS } from '../Legal/legalMeta';
 import {
     PASSWORD_MIN_LENGTH,
     isValidEmail,
@@ -35,8 +35,8 @@ interface FieldErrors {
     terms?: string;
 }
 
-const TERMS_URL = `${BRAND.website}/terms`;
-const PRIVACY_URL = `${BRAND.website}/privacy`;
+const TERMS_URL = LEGAL_PATHS.terms;
+const PRIVACY_URL = LEGAL_PATHS.privacy;
 
 export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, redirectUrl = '/app' }) => {
     const { signup, loginWithGoogle, error, clearError, isFirebaseConfigured } = useAuth();

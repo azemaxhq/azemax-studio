@@ -6,20 +6,20 @@ import path from 'node:path';
 /**
  * Dedicated Playwright config for the AUTHENTICATION surface.
  *
- * The default `playwright.config.ts` runs the app in public-beta mode with the
- * server-side auth bypass (DISABLE_AUTH=true), which makes the sign-in panes
- * unreachable. This config instead boots an isolated stack:
+ * This suite runs the app in its FAIL-CLOSED state: Firebase is intentionally
+ * NOT configured on either side. That is the state every deployment must
+ * handle safely, so the tests assert:
  *
- *   - backend: DISABLE_AUTH=false, PUBLIC_BETA=false (hard login wall),
- *     ALLOW_SIGNUP=true, against a throwaway temp database — never the dev DB;
- *   - frontend: VITE_PUBLIC_BETA=false, so the workspace is gated and the
- *     /login, /signup, /forgot-password panes render.
+ *   - the workspace is gated (no guest/anonymous entry exists);
+ *   - the auth panes render and validate input client-side;
+ *   - Google sign-in is hidden (no provider configured);
+ *   - submitting credentials reports an honest "not configured" error instead
+ *     of fabricating a session.
  *
- * Firebase is intentionally NOT configured here, so these tests exercise the
- * real local password provider end to end (real accounts, real sessions,
- * cookies) — the same code path the app falls back to when Firebase keys are
- * absent. Provider-specific flows (Google, verification email delivery) cannot
- * be automated without live Firebase credentials and are documented as manual.
+ * An isolated backend (temp DB, dedicated ports) is used so a developer's own
+ * stack is never touched. Live Firebase flows (real sign-in, Google OAuth,
+ * verification-email delivery) cannot run without provider credentials and are
+ * documented as manual checks in docs/AUTHENTICATION.md.
  *
  * Run with: npm run test:e2e:auth
  */
@@ -43,8 +43,8 @@ export default defineConfig({
     },
     webServer: [
         {
-            // A dedicated port so a developer's own dev server on 3001 is never
-            // disturbed (and never reused — it runs in bypass mode).
+            // Dedicated port so a developer's own dev server on 3001 is never
+            // disturbed. No Firebase Admin credentials on purpose (fail closed).
             command: 'node server/index.cjs',
             url: 'http://127.0.0.1:3101/api/health',
             reuseExistingServer: false,
@@ -52,13 +52,12 @@ export default defineConfig({
             env: {
                 PORT: '3101',
                 NODE_ENV: 'development',
-                DISABLE_AUTH: 'false',
-                PUBLIC_BETA: 'false',
-                ALLOW_SIGNUP: 'true',
-                AUTH_SECRET: 'e2e-auth-secret-0123456789abcdef0123456789',
                 DATA_DIR,
                 DATABASE_PATH: path.join(DATA_DIR, 'e2e.db'),
                 CORS_ORIGIN: 'http://127.0.0.1:5178,http://localhost:5178',
+                FIREBASE_PROJECT_ID: '',
+                FIREBASE_CLIENT_EMAIL: '',
+                FIREBASE_PRIVATE_KEY: '',
             },
         },
         {
@@ -67,9 +66,13 @@ export default defineConfig({
             reuseExistingServer: false,
             timeout: 60_000,
             env: {
-                VITE_PUBLIC_BETA: 'false',
                 VITE_API_URL: 'http://127.0.0.1:3101/api',
                 VITE_WS_URL: 'ws://127.0.0.1:3101',
+                // Force the unconfigured state regardless of a developer's .env.
+                VITE_FIREBASE_API_KEY: '',
+                VITE_FIREBASE_AUTH_DOMAIN: '',
+                VITE_FIREBASE_PROJECT_ID: '',
+                VITE_FIREBASE_APP_ID: '',
             },
         },
     ],

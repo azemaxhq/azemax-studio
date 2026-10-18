@@ -1,9 +1,11 @@
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { nsGetItem, nsRemoveItem, nsSetItem, namespacedKey } from '../utils/userStorage';
 import { createDefaultSettings } from './settingsDefaults';
 import type { Settings } from './settingsTypes';
 import { sanitizeSettings } from './settingsValidation';
 
 export const SETTINGS_STORAGE_KEY = 'azemax-settings-v3';
+export const SETTINGS_UPDATED_AT_KEY = 'azemax-settings-updated-at';
 const LEGACY_V3_STORAGE_KEY = 'deepcontext-settings-v3';
 const V2_STORAGE_KEY = 'deepcontext-settings-v2';
 const LEGACY_STORAGE_KEY = 'editor-settings';
@@ -110,9 +112,9 @@ const migrateLegacy = (legacy: unknown): unknown => {
   return mapped;
 };
 
-const loadRaw = (key: string): unknown => {
+const loadRaw = (key: string, fallbacks: string[] = []): unknown => {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = nsGetItem(key, fallbacks);
     if (!raw) return undefined;
     return JSON.parse(raw);
   } catch {
@@ -121,7 +123,7 @@ const loadRaw = (key: string): unknown => {
 };
 
 export const loadSettings = (): Settings => {
-  const v3 = loadRaw(SETTINGS_STORAGE_KEY) ?? loadRaw(LEGACY_V3_STORAGE_KEY);
+  const v3 = loadRaw(SETTINGS_STORAGE_KEY, [LEGACY_V3_STORAGE_KEY]);
   if (v3 !== undefined) {
     const settings = sanitizeSettings(v3);
     if (settings) return settings;
@@ -142,9 +144,47 @@ export const loadSettings = (): Settings => {
   return createDefaultSettings();
 };
 
+export const loadSettingsUpdatedAt = (): number => {
+  try {
+    const raw = nsGetItem(SETTINGS_UPDATED_AT_KEY);
+    const value = raw ? Number(raw) : 0;
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+};
+
+export const markSettingsUpdatedAt = (at = Date.now()): number => {
+  try {
+    nsSetItem(SETTINGS_UPDATED_AT_KEY, String(at));
+  } catch {
+    /* best-effort */
+  }
+  return at;
+};
+
+let suppressTimestamp = false;
+
+/**
+ * Run a settings write without advancing the local "last modified" timestamp.
+ * Used when hydrating an authoritative cloud copy: the document must be
+ * persisted, but re-stamping it with `Date.now()` would make this device's
+ * stale copy look newer than a subsequent edit made on another device.
+ */
+export const withoutSettingsTimestamp = <T>(fn: () => T): T => {
+  const previous = suppressTimestamp;
+  suppressTimestamp = true;
+  try {
+    return fn();
+  } finally {
+    suppressTimestamp = previous;
+  }
+};
+
 export const saveSettings = (settings: Settings): void => {
   try {
-    debouncedLocalStorageSet(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    debouncedLocalStorageSet(namespacedKey(SETTINGS_STORAGE_KEY), JSON.stringify(settings));
+    if (!suppressTimestamp) markSettingsUpdatedAt();
   } catch {
     // Storage unavailable or full: settings stay in memory only.
   }
@@ -152,10 +192,10 @@ export const saveSettings = (settings: Settings): void => {
 
 export const clearSettingsStorage = (): void => {
   try {
-    localStorage.removeItem(SETTINGS_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_V3_STORAGE_KEY);
-    localStorage.removeItem(V2_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    for (const key of [SETTINGS_STORAGE_KEY, LEGACY_V3_STORAGE_KEY, V2_STORAGE_KEY, LEGACY_STORAGE_KEY, SETTINGS_UPDATED_AT_KEY]) {
+      nsRemoveItem(key);
+      localStorage.removeItem(key);
+    }
   } catch {
     // Ignore storage errors.
   }

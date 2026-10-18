@@ -106,7 +106,7 @@ function createApp() {
         max: LIMITS.AUTH_RATE_PER_MINUTE,
         keyOf: (req) => `auth:ip:${req.ip || req.socket.remoteAddress || 'unknown'}`,
         message: 'Too many authentication attempts. Try again later.',
-        scope: (req) => req.path.startsWith('/api/auth/login') || req.path.startsWith('/api/auth/signup') || req.path.startsWith('/api/auth/sync'),
+        scope: (req) => req.path.startsWith('/api/auth/sync'),
     }));
     // AI: per-user (or per-IP for unauthenticated, though routes require auth).
     app.use(createPolicyLimiter({
@@ -124,13 +124,13 @@ function createApp() {
         message: 'Execution rate limit exceeded. Try again shortly.',
         scope: (req) => req.path.startsWith('/api/execute'),
     }));
-    // Projects (writes hit disk/DB): per-user, generous but bounded.
+    // Projects / account sync writes hit disk/DB: per-user, generous but bounded.
     app.use(createPolicyLimiter({
         windowMs: 60 * 1000,
-        max: 120,
+        max: 180,
         keyOf: identityKey('proj'),
-        message: 'Too many project requests. Try again shortly.',
-        scope: (req) => req.path.startsWith('/api/projects'),
+        message: 'Too many sync requests. Try again shortly.',
+        scope: (req) => req.path.startsWith('/api/projects') || req.path.startsWith('/api/account/'),
     }));
 
     registerRoutes(app);

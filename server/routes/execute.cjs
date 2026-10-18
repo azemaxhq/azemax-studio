@@ -1,6 +1,6 @@
 const express = require('express');
 const { asyncHandler } = require('../lib/asyncHandler.cjs');
-const { requireAuthOrPublicBeta, isAnonymousRequest } = require('../middleware/auth.cjs');
+const { requireVerifiedEmail } = require('../middleware/auth.cjs');
 const { executeCode } = require('../services/execution/httpExecutor.cjs');
 const { listDetectedRuntimes } = require('../services/execution/runtimeDetection.cjs');
 const { getTodayUsage, recordUsage } = require('../services/auth/authService.cjs');
@@ -8,21 +8,19 @@ const { LIMITS } = require('../config/index.cjs');
 
 const router = express.Router();
 
-// Code execution spends server resources — authenticated users pass through;
-// anonymous public-beta visitors are accepted under a tighter IP-attributed
-// daily quota. Input validation + size limits below apply identically.
+// Code execution spends server resources — every route requires a verified,
+// authenticated account (401/403 before any spawn). Input validation + size
+// limits below apply to every caller.
 //
-// NOTE: this router is mounted WITHOUT a path prefix (see routes/index.cjs),
-// so router-level `router.use(gate)` would run for EVERY /api/* request that
-// reaches it — including /api/projects mounted later — and mint anonymous
-// identities downstream of strict requireAuth routers. The gate is therefore
-// applied PER-ROUTE only, never as router middleware.
-const betaGate = requireAuthOrPublicBeta;
+// NOTE: this router is mounted WITHOUT a path prefix (see routes/index.cjs), so
+// the gate is applied PER-ROUTE (never `router.use`) to keep it from leaking
+// onto unrelated routers.
+const gate = requireVerifiedEmail;
 
 const MAX_CODE_BYTES = LIMITS.MAX_CODE_BYTES;
 const MAX_STDIN_BYTES = LIMITS.MAX_STDIN_BYTES;
 
-router.get('/runtimes', betaGate, (_req, res) => {
+router.get('/runtimes', gate, (_req, res) => {
     const { ALLOW_LOCAL_EXECUTION } = require('../config/index.cjs');
     // In production with local execution disabled, advertise Wandbox-backed languages still available
     if (!ALLOW_LOCAL_EXECUTION) {
@@ -34,14 +32,11 @@ router.get('/runtimes', betaGate, (_req, res) => {
     res.json(listDetectedRuntimes());
 });
 
-router.post('/execute', betaGate, asyncHandler(async (req, res) => {
-    const anon = isAnonymousRequest(req);
-    const cap = anon ? LIMITS.EXEC_ANON_REQUESTS_PER_DAY : LIMITS.EXEC_REQUESTS_PER_DAY;
+router.post('/execute', gate, asyncHandler(async (req, res) => {
+    const cap = LIMITS.EXEC_REQUESTS_PER_DAY;
     const usage = getTodayUsage(req.user.id);
     if (usage.executions >= cap) {
-        return res.status(429).json({ error: anon
-            ? `Daily guest execution limit reached (${cap}). Sign in for a higher limit, or try again tomorrow.`
-            : `Daily execution limit reached (${cap}). Try again tomorrow.` });
+        return res.status(429).json({ error: `Daily execution limit reached (${cap}). Try again tomorrow.` });
     }
     // Input validation + size limits (beta abuse protection)
     const { language, files, stdin } = req.body || {};

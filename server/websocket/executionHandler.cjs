@@ -1,8 +1,7 @@
 const { TerminalManager, STATES, getDefaultShell, getDefaultShellArgs } = require('../services/terminal/terminalManager.cjs');
-const { verifySession, ensureDevUser } = require('../services/auth/authService.cjs');
-const { CORS_LIST, LIMITS, ALLOW_SHELL, DISABLE_AUTH, PUBLIC_BETA } = require('../config/index.cjs');
-const { buildAnonymousUser } = require('../middleware/auth.cjs');
-const { recordUsage } = require('../services/auth/authService.cjs');
+const { findUserByFirebaseUid, syncFirebaseUser, recordUsage } = require('../services/auth/authService.cjs');
+const { verifyIdToken, isFirebaseConfigured } = require('../services/auth/firebaseAdmin.cjs');
+const { CORS_LIST, LIMITS, ALLOW_SHELL } = require('../config/index.cjs');
 const logger = require('../lib/logger.cjs');
 
 // Terminal states after which the session id is safely reusable (process gone
@@ -10,24 +9,19 @@ const logger = require('../lib/logger.cjs');
 // the dying session is disposed, never blocking the next execution.
 const STATES_TERMINAL = [STATES.EXITED, STATES.FAILED, STATES.DISPOSED, STATES.STOPPING];
 
-/** Extract a session token from the WS upgrade request (cookie or ?token=). */
+/**
+ * Extract a Firebase ID token from the WS upgrade request.
+ *
+ * Browsers cannot set an Authorization header on `new WebSocket()`, so the
+ * client passes its current Firebase ID token as `?token=`. The token is
+ * verified with Firebase Admin below before any session is created.
+ */
 function tokenFromUpgrade(req) {
     try {
         const url = new URL(req.url || '/', 'http://localhost');
         const q = url.searchParams.get('token');
         if (q) return q;
     } catch { /* ignore */ }
-    const header = req.headers && req.headers.cookie;
-    if (typeof header === 'string') {
-        for (const part of header.split(';')) {
-            const idx = part.indexOf('=');
-            if (idx === -1) continue;
-            if (part.slice(0, idx).trim() === 'azemax_session') {
-                const value = decodeURIComponent(part.slice(idx + 1).trim());
-                if (value) return value;
-            }
-        }
-    }
     return null;
 }
 
@@ -35,8 +29,7 @@ function originAllowed(req) {
     const origin = req.headers && req.headers.origin;
     if (!origin) return true; // non-browser clients send no Origin; auth still required
     try {
-        const normalized = origin.trim();
-        return CORS_LIST.includes(normalized);
+        return CORS_LIST.includes(origin.trim());
     } catch {
         return false;
     }
@@ -46,14 +39,44 @@ function clientIp(req) {
     return (req.socket && req.socket.remoteAddress) || 'unknown';
 }
 
+/** Verify the socket's Firebase ID token and resolve the application user. */
+async function authenticateSocket(req) {
+    const token = tokenFromUpgrade(req);
+    if (!token || token.length > 8192 || !isFirebaseConfigured()) return null;
+    let decoded;
+    try {
+        decoded = await verifyIdToken(token);
+    } catch {
+        return null;
+    }
+    if (!decoded || !decoded.uid) return null;
+
+    let user = findUserByFirebaseUid(decoded.uid);
+    const verificationChanged = Boolean(user) && Boolean(user.emailVerified) !== Boolean(decoded.email_verified);
+    if ((!user || verificationChanged) && typeof decoded.email === 'string' && decoded.email) {
+        try {
+            user = syncFirebaseUser({
+                uid: decoded.uid,
+                email: decoded.email,
+                displayName: decoded.name,
+                photoUrl: decoded.picture,
+                emailVerified: Boolean(decoded.email_verified),
+                providerId: (decoded.firebase && decoded.firebase.sign_in_provider) || 'password',
+            });
+        } catch {
+            user = null;
+        }
+    }
+    return user;
+}
+
 /**
  * WebSocket transport layer for terminal sessions.
  *
  * Security model:
- *  - Authentication is mandatory, with ONE exception: public beta
- *    (PUBLIC_BETA, default on) accepts unauthenticated sockets as IP-bound
- *    guest identities for sandboxed `code` sessions only; `shell` sessions
- *    are always rejected for guests. Set PUBLIC_BETA=false for a hard wall.
+ *  - Authentication is MANDATORY: the handshake presents a Firebase ID token
+ *    which is verified with Firebase Admin before any session exists.
+ *  - A provider-verified email address is required.
  *  - When an Origin header is present it must be allowlisted (4403).
  *  - Every session records its owner's user id; ALL session operations verify
  *    ownership before touching the session (cross-user access impossible).
@@ -103,36 +126,45 @@ function attachExecutionWebSocket(wss) {
         ws.lastActivity = Date.now();
         ws.on('pong', () => { ws.isAlive = true; ws.lastActivity = Date.now(); });
 
-        // ---- Handshake authentication (mandatory) ----
         if (!originAllowed(req)) {
             try { ws.close(4403, 'Forbidden origin'); } catch { /* ignore */ }
             return;
         }
-        // Reversible login bypass: DISABLE_AUTH=true (local dev only, never
-        // prod — see config/env.cjs) accepts the socket as the fixed dev user.
-        let user = verifySession(tokenFromUpgrade(req));
-        let isAnonymous = false;
-        if (!user && DISABLE_AUTH) {
-            try { user = ensureDevUser(); } catch { user = null; }
-        }
-        // Public beta: unauthenticated sockets are accepted as IP-bound guest
-        // identities for sandboxed CODE execution only (Run). Interactive
-        // shells stay forbidden for guests (see session.create below).
-        if (!user && PUBLIC_BETA) {
-            try {
-                user = buildAnonymousUser({ ip: clientIp(req), socket: req.socket });
-                isAnonymous = true;
-            } catch { user = null; }
-        }
-        if (!user) {
-            try { ws.close(4401, 'Authentication required'); } catch { /* ignore */ }
-            return;
-        }
-        ws.user = user;
-        ws.isAnonymous = isAnonymous;
-        const ip = clientIp(req);
 
-        // Session ID bound to this socket for legacy execute actions.
+        // Frames that arrive before async auth settles are buffered and replayed
+        // once the socket is authenticated (avoids a handshake race that would
+        // silently drop an early client message).
+        const queuedFrames = [];
+        const queueFrame = (message) => { queuedFrames.push(message); };
+        ws.on('message', queueFrame);
+
+        void (async () => {
+            let user = null;
+            try {
+                user = await authenticateSocket(req);
+            } catch {
+                user = null;
+            }
+            if (!user) {
+                try { ws.close(4401, 'Authentication required'); } catch { /* ignore */ }
+                return;
+            }
+            if (!user.emailVerified) {
+                try { ws.close(4403, 'Email verification required'); } catch { /* ignore */ }
+                return;
+            }
+
+            ws.off('message', queueFrame);
+            ws.user = user;
+            runSessionProtocol(ws, req, user, queuedFrames);
+        })().catch(() => {
+            try { ws.close(1011, 'Authentication error'); } catch { /* ignore */ }
+        });
+    });
+
+    /** Attach the full terminal-session protocol to an authenticated socket. */
+    function runSessionProtocol(ws, req, user, queuedFrames) {
+        const ip = clientIp(req);
         let legacySessionId = null;
 
         const sendRaw = (payload) => {
@@ -147,7 +179,7 @@ function attachExecutionWebSocket(wss) {
             return Boolean(s && s.ownerId === user.id);
         };
 
-        ws.on('message', async (message) => {
+        const handleMessage = async (message) => {
             ws.lastActivity = Date.now();
             if (message && message.length > LIMITS.WS_MAX_PAYLOAD) {
                 sendRaw({ type: 'terminal.error', message: 'Message too large' });
@@ -215,16 +247,8 @@ function attachExecutionWebSocket(wss) {
                     sendRaw({ sessionId: session.id, type: 'terminal.ready', state: session.state });
 
                     if (kind === 'shell') {
-                        // Interactive shells are disabled in production by
-                        // default (fail-closed) AND always forbidden for
-                        // anonymous beta guests (host shells cannot be safely
-                        // isolated for unauthenticated users).
-                        if (ws.isAnonymous) {
-                            sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Interactive shell requires sign-in. Code execution (Run) works as a guest via sandboxed execution.\r\n' });
-                            sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
-                            manager.dispose(session.id);
-                            return;
-                        }
+                        // Interactive shells are disabled in production by default
+                        // (fail-closed): host shells cannot be safely isolated.
                         if (!ALLOW_SHELL) {
                             sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Interactive shell is unavailable in this environment. Code execution (Run) still works via sandboxed execution.\r\n' });
                             sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
@@ -342,7 +366,9 @@ function attachExecutionWebSocket(wss) {
                 logger.error('ws message error', { userId: user.id, message: err && err.message });
                 sendRaw({ type: 'terminal.error', message: 'Request failed' });
             }
-        });
+        };
+
+        ws.on('message', (message) => { void handleMessage(message); });
 
         const terminateAllForSocket = () => {
             // Disconnect policy: terminate every session attached to this socket so
@@ -366,7 +392,11 @@ function attachExecutionWebSocket(wss) {
             // so child processes are never orphaned.
             terminateAllForSocket();
         });
-    });
+
+        // Replay any frames that raced ahead of authentication.
+        for (const queued of queuedFrames) void handleMessage(queued);
+        queuedFrames.length = 0;
+    }
 
     return manager;
 }

@@ -1,28 +1,30 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Authentication surface E2E (hard login wall, local password provider).
+ * Authentication surface E2E — FAIL-CLOSED behaviour.
  *
- * Exercises the real backend: real account creation, real sessions, real
- * cookies. Firebase-backed flows (Google OAuth, verification email delivery)
- * require live provider credentials and are covered manually — see
+ * Firebase is not configured in this suite on purpose. The app must still gate
+ * the workspace, validate input, and report honestly that sign-in is
+ * unavailable — never fabricate a session or fall back to a guest identity.
+ *
+ * Live provider flows (real account creation, Google OAuth, verification email
+ * delivery) require Firebase credentials and are documented as manual checks in
  * docs/AUTHENTICATION.md.
  */
 
-let sharedEmail = '';
-
-function uniqueEmail(): string {
-    return `e2e.${Date.now()}.${Math.random().toString(36).slice(2, 8)}@example.com`;
-}
-
 const PASSWORD = 'CorrectHorseBattery9!';
 
-test.describe('Auth — unauthenticated hard wall', () => {
+test.describe('Auth — unauthenticated gate', () => {
     test('visiting the workspace without a session shows the sign-in pane', async ({ page }) => {
         await page.goto('/app');
         await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
-        // The login pane is the ONLY guest affordance (no competing links).
-        await expect(page.getByRole('button', { name: 'Continue as guest' })).toHaveCount(1);
+    });
+
+    test('there is no guest / anonymous affordance anywhere', async ({ page }) => {
+        await page.goto('/app');
+        await expect(page.getByRole('button', { name: /continue as guest/i })).toHaveCount(0);
+        await expect(page.getByText(/continue as guest/i)).toHaveCount(0);
+        await expect(page.getByText(/guest workspace/i)).toHaveCount(0);
     });
 
     test('empty submit surfaces an inline error and focuses the field', async ({ page }) => {
@@ -44,12 +46,32 @@ test.describe('Auth — unauthenticated hard wall', () => {
         await page.goto('/login');
         await expect(page.getByRole('button', { name: /google/i })).toHaveCount(0);
     });
+
+    test('valid credentials fail closed with an honest configuration error', async ({ page }) => {
+        await page.goto('/login');
+        await page.fill('#login-email', 'someone@example.com');
+        await page.fill('#login-password', PASSWORD);
+        await page.getByRole('button', { name: 'Sign in' }).click();
+        await expect(page.getByText(/Firebase Authentication is not configured/i)).toBeVisible();
+        // Never enters the workspace without a verified provider identity.
+        await expect(page).toHaveURL(/\/login/);
+        await expect(page.getByTestId('editor-root')).toHaveCount(0);
+    });
+
+    test('Enter submits the login form and stays gated', async ({ page }) => {
+        await page.goto('/login');
+        await page.fill('#login-email', 'someone@example.com');
+        await page.fill('#login-password', PASSWORD);
+        await page.locator('#login-password').press('Enter');
+        await expect(page.getByText(/Firebase Authentication is not configured/i)).toBeVisible();
+        await expect(page).toHaveURL(/\/login/);
+    });
 });
 
-test.describe.serial('Auth — sign-up and sign-in lifecycle', () => {
+test.describe('Auth — sign-up validation', () => {
     test('sign-up validates the password confirmation', async ({ page }) => {
         await page.goto('/signup');
-        await page.fill('#signup-email', uniqueEmail());
+        await page.fill('#signup-email', 'new.user@example.com');
         await page.fill('#signup-password', PASSWORD);
         await page.fill('#signup-confirm-password', 'SomethingElse123!');
         await page.check('#terms-checkbox');
@@ -59,61 +81,23 @@ test.describe.serial('Auth — sign-up and sign-in lifecycle', () => {
 
     test('sign-up requires accepting the terms', async ({ page }) => {
         await page.goto('/signup');
-        await page.fill('#signup-email', uniqueEmail());
+        await page.fill('#signup-email', 'new.user@example.com');
         await page.fill('#signup-password', PASSWORD);
         await page.fill('#signup-confirm-password', PASSWORD);
         await page.getByRole('button', { name: 'Create account' }).click();
         await expect(page.getByText(/Accept the Terms of Service/)).toBeVisible();
     });
 
-    test('sign-up creates a real account and enters the workspace', async ({ page }) => {
-        sharedEmail = uniqueEmail();
+    test('valid sign-up fails closed instead of fabricating an account', async ({ page }) => {
         await page.goto('/signup');
         await page.fill('#signup-name', 'E2E Tester');
-        await page.fill('#signup-email', sharedEmail);
+        await page.fill('#signup-email', 'new.user@example.com');
         await page.fill('#signup-password', PASSWORD);
         await page.fill('#signup-confirm-password', PASSWORD);
         await page.check('#terms-checkbox');
         await page.getByRole('button', { name: 'Create account' }).click();
-        await expect(page).toHaveURL(/\/app/, { timeout: 25_000 });
-    });
-
-    test('session persists across a reload', async ({ page }) => {
-        // Sign in fresh, then reload: the cookie session must survive.
-        await page.goto('/login');
-        await page.fill('#login-email', sharedEmail);
-        await page.fill('#login-password', PASSWORD);
-        await page.getByRole('button', { name: 'Sign in' }).click();
-        await expect(page).toHaveURL(/\/app/, { timeout: 25_000 });
-
-        await page.reload();
-        await expect(page.getByRole('heading', { name: 'Welcome back' })).toHaveCount(0);
-    });
-
-    test('duplicate email is rejected with an actionable message', async ({ page }) => {
-        await page.goto('/signup');
-        await page.fill('#signup-email', sharedEmail);
-        await page.fill('#signup-password', PASSWORD);
-        await page.fill('#signup-confirm-password', PASSWORD);
-        await page.check('#terms-checkbox');
-        await page.getByRole('button', { name: 'Create account' }).click();
-        await expect(page.getByText(/already exists/i)).toBeVisible();
-    });
-
-    test('wrong password is rejected without enumerating the account', async ({ page }) => {
-        await page.goto('/login');
-        await page.fill('#login-email', sharedEmail);
-        await page.fill('#login-password', 'definitely-the-wrong-one');
-        await page.getByRole('button', { name: 'Sign in' }).click();
-        await expect(page.getByText(/Invalid email or password/i)).toBeVisible();
-    });
-
-    test('Enter submits the login form', async ({ page }) => {
-        await page.goto('/login');
-        await page.fill('#login-email', sharedEmail);
-        await page.fill('#login-password', PASSWORD);
-        await page.locator('#login-password').press('Enter');
-        await expect(page).toHaveURL(/\/app/, { timeout: 25_000 });
+        await expect(page.getByText(/Firebase Authentication is not configured/i)).toBeVisible();
+        await expect(page).toHaveURL(/\/signup/);
     });
 });
 
@@ -122,7 +106,9 @@ test.describe('Auth — password recovery', () => {
         await page.goto('/forgot-password');
         await page.fill('#reset-email', 'someone@example.com');
         await page.getByRole('button', { name: /Send password reset link/i }).click();
-        await expect(page.getByText(/Password reset is unavailable/i)).toBeVisible();
+        await expect(page.getByText(/Firebase Authentication is not configured/i)).toBeVisible();
+        // Must not claim the message was sent when it could not be.
+        await expect(page.getByText(/Check your inbox/i)).toHaveCount(0);
     });
 
     test('rejects a malformed email before submitting', async ({ page }) => {
@@ -130,6 +116,14 @@ test.describe('Auth — password recovery', () => {
         await page.fill('#reset-email', 'nope');
         await page.getByRole('button', { name: /Send password reset link/i }).click();
         await expect(page.getByText('Enter a valid email address.')).toBeVisible();
+    });
+});
+
+test.describe('Auth — no session on the verification pane', () => {
+    test('shows an honest ended-session state', async ({ page }) => {
+        await page.goto('/verify-email');
+        await expect(page.getByRole('heading', { name: 'Your session has ended' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Return to sign in' })).toBeVisible();
     });
 });
 

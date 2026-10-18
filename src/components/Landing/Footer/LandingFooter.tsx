@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { BRAND } from '../../../core/branding';
+import { LEGAL, LEGAL_PATHS } from '../../Legal/legalMeta';
 
 interface LandingFooterProps {
   onEnterWorkspace: () => void;
@@ -36,7 +37,10 @@ export const LandingFooter: React.FC<LandingFooterProps> = memo(({ onEnterWorksp
         </div>
 
         {/* Minimal Navigation */}
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+        <nav
+          aria-label="Footer"
+          className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3"
+        >
           <button
             onClick={onEnterWorkspace}
             className="hover:text-white transition-colors cursor-pointer"
@@ -52,11 +56,24 @@ export const LandingFooter: React.FC<LandingFooterProps> = memo(({ onEnterWorksp
           <a href="#system" className="hover:text-white transition-colors">
             Architecture
           </a>
-        </div>
+          <a href={LEGAL_PATHS.privacy} className="hover:text-white transition-colors">
+            Privacy
+          </a>
+          <a href={LEGAL_PATHS.terms} className="hover:text-white transition-colors">
+            Terms
+          </a>
+          <a
+            href={`mailto:${LEGAL.supportEmail}`}
+            className="hover:text-white transition-colors"
+          >
+            Contact
+          </a>
+        </nav>
 
         {/* Technical Stamp */}
-        <div className="text-[11px] text-[var(--az-muted-dark)]">
-          Azemax Developer Environment • {BRAND.version}
+        <div className="flex flex-col items-center gap-1 text-[11px] text-[var(--az-muted-dark)] md:items-end">
+          <span>Azemax Developer Environment • {BRAND.version}</span>
+          <span>© {new Date().getFullYear()} {LEGAL.operator}</span>
         </div>
 
       </div>

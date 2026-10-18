@@ -1,146 +1,84 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { LoginPage } from './LoginPage';
 import { VerifyEmailPage } from './VerifyEmailPage';
+import { AuthButton } from './primitives';
+import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { navigate } from '../../utils/appRouter';
-import { AUTH_DISABLED } from '../../utils/sessionToken';
-import {
-    PUBLIC_BETA,
-    isBetaBannerDismissed,
-    dismissBetaBanner,
-} from '../../utils/betaAccess';
 
 /**
  * Authentication gate for the /app workspace.
  *
- * PUBLIC BETA (default): there is NO login wall. Children render immediately
- * for everyone — signed-in users get their account, anonymous visitors get a
- * local-only guest workspace (files persist in this browser only). Sign-in
- * stays OPTIONAL via the /login route.
+ * Firebase Authentication is the sole identity provider and there is no guest
+ * or anonymous mode: the workspace renders ONLY for a signed-in user whose
+ * email the provider has verified. Every other state is handled explicitly —
  *
- * HARD WALL (VITE_PUBLIC_BETA=false): the premium sign-in / sign-up flows
- * block the workspace until authentication succeeds. Unverified accounts are
- * routed to the verification pane.
+ *  - initializing  → branded spinner (never a flash of the login form)
+ *  - error         → fail-closed panel with a retry action
+ *  - verification  → the verification pane (resend / re-check / sign out)
+ *  - unauthenticated → the sign-in pane
+ *  - authenticated → the workspace
  *
- * Legacy VITE_DISABLE_AUTH=true bypasses both and renders children directly
- * with the shared local-dev identity.
+ * This is a UX gate only. The real boundary is the backend, which verifies the
+ * Firebase ID token on every request and rejects unauthenticated/unverified
+ * callers (401/403) regardless of what the client renders.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
-    if (AUTH_DISABLED) return <>{children}</>;
-    if (PUBLIC_BETA) return <BetaWorkspace>{children}</BetaWorkspace>;
-    return <GatedAuthGate>{children}</GatedAuthGate>;
-}
+    const { user, loading, status, error, refresh } = useAuth();
 
-/**
- * Open-workspace shell: renders the editor immediately (even while the
- * session check is in flight — never a blank waiter, never a redirect) plus
- * dismissible notices about guest storage and pending email verification.
- */
-function BetaWorkspace({ children }: { children: ReactNode }) {
-    const { isAnonymous, status } = useAuth();
-    const [dismissed, setDismissed] = useState<boolean>(() => isBetaBannerDismissed());
-    const [verifyDismissed, setVerifyDismissed] = useState(false);
-    const showGuestBanner = isAnonymous && !dismissed;
-    const showVerifyBanner = status === 'verification-required' && !verifyDismissed;
+    if (loading || status === 'initializing') return <GateSpinner />;
 
-    const dismiss = () => {
-        dismissBetaBanner();
-        setDismissed(true);
-    };
+    if (status === 'error') return <AuthErrorPanel message={error} onRetry={refresh} />;
 
-    return (
-        <>
-            {showGuestBanner && (
-                <div
-                    role="note"
-                    aria-label="Public beta guest notice"
-                    data-testid="beta-anon-banner"
-                    style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap',
-                        padding: '7px 16px', fontSize: '12px', color: 'var(--az-text-secondary)',
-                        background: 'var(--az-surface-2)', borderBottom: '1px solid var(--az-border-subtle)',
-                    }}
-                >
-                    <span>
-                        <strong style={{ color: 'var(--az-text)', fontWeight: 600 }}>Public beta</strong>
-                        {' — '}guest workspace saved in this browser only; clearing site data or switching devices loses it.
-                        {' '}
-                        <button
-                            type="button"
-                            onClick={() => navigate('/login')}
-                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--az-accent)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
-                        >
-                            Sign in
-                        </button>
-                        {' '}for higher AI &amp; execution limits.
-                    </span>
-                    <button
-                        type="button"
-                        onClick={dismiss}
-                        aria-label="Dismiss guest notice"
-                        style={{ background: 'none', border: 'none', padding: '4px 6px', color: 'var(--az-text-muted)', fontSize: '12px', cursor: 'pointer' }}
-                    >
-                        Dismiss
-                    </button>
-                </div>
-            )}
-            {showVerifyBanner && (
-                <div
-                    role="alert"
-                    data-testid="verify-email-banner"
-                    style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap',
-                        padding: '7px 16px', fontSize: '12px', color: 'var(--az-warning)',
-                        background: 'var(--az-surface-2)', borderBottom: '1px solid var(--az-border-subtle)',
-                    }}
-                >
-                    <span>
-                        Verify your email to secure your account and enable account-scoped features.
-                        {' '}
-                        <button
-                            type="button"
-                            onClick={() => navigate('/verify-email')}
-                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--az-accent)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
-                        >
-                            Verify now
-                        </button>
-                    </span>
-                    <button
-                        type="button"
-                        onClick={() => setVerifyDismissed(true)}
-                        aria-label="Dismiss verification notice"
-                        style={{ background: 'none', border: 'none', padding: '4px 6px', color: 'var(--az-text-muted)', fontSize: '12px', cursor: 'pointer' }}
-                    >
-                        Dismiss
-                    </button>
-                </div>
-            )}
-            {children}
-        </>
-    );
-}
-
-/**
- * Hard login wall (VITE_PUBLIC_BETA=false). Reuses the same premium auth
- * panes as the /login and /verify-email routes so the experience is identical
- * whether the wall is entered via /app or the auth routes.
- */
-function GatedAuthGate({ children }: { children: ReactNode }) {
-    const { user, loading, status } = useAuth();
-
-    if (loading) {
-        return (
-            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--az-bg)' }} role="status" aria-live="polite" aria-label="Loading">
-                <div className="w-6 h-6 border-2 border-[var(--az-accent)]/25 border-t-[var(--az-accent)] rounded-full animate-spin" />
-            </div>
-        );
-    }
-
-    if (user && status === 'verification-required') {
+    if (status === 'verification-required' || (user && !user.emailVerified)) {
         return <VerifyEmailPage onNavigate={navigate} redirectUrl="/app" />;
     }
 
     if (user) return <>{children}</>;
 
     return <LoginPage onNavigate={navigate} redirectUrl="/app" />;
+}
+
+/** Branded full-viewport spinner shown while auth state settles. */
+function GateSpinner() {
+    return (
+        <div
+            className="flex h-full w-full flex-col items-center justify-center gap-4 bg-[var(--az-bg)]"
+            role="status"
+            aria-live="polite"
+            aria-label="Loading"
+        >
+            <AzemaxLogo size={34} />
+            <div className="flex items-center gap-2.5">
+                <span className="az-spinner" aria-hidden="true" />
+                <p className="text-[13px] text-[var(--az-text-muted)]">Securing your session…</p>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Fail-closed panel for an irrecoverable client auth initialization error.
+ * Offers an explicit retry (re-runs the Firebase check) and a full reload.
+ */
+function AuthErrorPanel({ message, onRetry }: { message: string | null; onRetry: () => Promise<void> }) {
+    return (
+        <div className="flex h-full w-full items-center justify-center bg-[var(--az-bg)] px-6">
+            <div className="w-full max-w-[420px] rounded-xl border border-[var(--az-border)] bg-[var(--az-surface)] p-6 text-center">
+                <div className="mb-4 flex items-center justify-center">
+                    <AzemaxLogo size={30} />
+                </div>
+                <h1 className="text-[16px] font-semibold text-[var(--az-text)]">Sign-in is unavailable</h1>
+                <p className="mt-2 text-[13px] leading-relaxed text-[var(--az-text-muted)]">
+                    {message || 'Authentication could not be initialized. The workspace stays locked until this is resolved.'}
+                </p>
+                <div className="mt-6 space-y-3">
+                    <AuthButton onClick={() => void onRetry()}>Retry</AuthButton>
+                    <AuthButton variant="secondary" onClick={() => window.location.reload()}>
+                        Reload page
+                    </AuthButton>
+                </div>
+            </div>
+        </div>
+    );
 }

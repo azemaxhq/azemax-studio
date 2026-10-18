@@ -2,10 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { User as FirebaseUser } from 'firebase/auth';
 import { API_BASE, ApiError } from '../utils/apiClient';
 import { setCurrentUserId } from '../utils/userStorage';
-import { authHeaders, setSessionToken, clearSessionToken, authFailureMessage, AUTH_DISABLED } from '../utils/sessionToken';
-import { PUBLIC_BETA, ANON_USER_ID } from '../utils/betaAccess';
+import { resetAccountSyncStatus } from '../core/sync/syncStatus';
+import { authHeaders, setIdToken, clearIdToken, ensureIdToken, authFailureMessage } from '../utils/authToken';
 import {
     isFirebaseClientConfigured,
+    getFirebaseAuth,
     subscribeToAuthState,
     signInWithEmail,
     signUpWithEmail,
@@ -19,18 +20,13 @@ import {
 } from '../core/auth/firebase';
 
 /**
- * Fixed identity used when the login gate is disabled
- * (VITE_DISABLE_AUTH=true). Mirrors the server's ensureDevUser() row.
+ * Honest, actionable message shown when the deployment has no Firebase client
+ * configuration. Fail closed: the auth forms still render (so input validation
+ * stays testable), but every credential operation reports this instead of
+ * pretending to succeed.
  */
-const BYPASS_USER: AuthUser = {
-    id: 'local-dev',
-    email: 'local-dev@azemax.local',
-    displayName: 'Local Dev',
-    photoUrl: null,
-    emailVerified: true,
-    provider: 'local',
-    createdAt: '1970-01-01T00:00:00.000Z',
-};
+export const FIREBASE_NOT_CONFIGURED_MESSAGE =
+    'Firebase Authentication is not configured on this deployment. Set VITE_FIREBASE_API_KEY and VITE_FIREBASE_PROJECT_ID, then redeploy.';
 
 export interface AuthUser {
     id: string;
@@ -63,7 +59,6 @@ interface AuthContextValue {
     status: AuthStatus;
     loading: boolean;
     error: string | null;
-    isAnonymous: boolean;
     isFirebaseConfigured: boolean;
     login: (email: string, password: string) => Promise<AuthResult>;
     signup: (email: string, password: string, displayName?: string) => Promise<AuthResult>;
@@ -88,7 +83,33 @@ function statusForFirebaseUser(fbUser: FirebaseUser): AuthStatus {
     return fbUser.emailVerified || googleLinked ? 'authenticated' : 'verification-required';
 }
 
-async function request<T>(path: string, body?: unknown, customHeaders?: Record<string, string>): Promise<T> {
+/**
+ * Local storage is namespaced by the stable Firebase UID, not the application
+ * database row id. The backend may be unreachable during the first sign-in and
+ * reconcile later; using the provider UID means the account keeps the same
+ * local namespace across that transition instead of appearing to lose its
+ * workspace, settings, and chats.
+ */
+function withStableStorageId(profile: AuthUser, fbUser: FirebaseUser | null): AuthUser {
+    if (!fbUser) return profile;
+    return { ...profile, id: fbUser.uid, firebaseUid: fbUser.uid };
+}
+
+/** Project a provider user into the app profile when the backend is unreachable. */
+function fallbackUserFor(fbUser: FirebaseUser): AuthUser {
+    return {
+        id: fbUser.uid,
+        email: fbUser.email || '',
+        displayName: fbUser.displayName || null,
+        photoUrl: fbUser.photoURL || null,
+        emailVerified: fbUser.emailVerified,
+        provider: fbUser.providerData[0]?.providerId || 'password',
+        firebaseUid: fbUser.uid,
+        createdAt: fbUser.metadata.creationTime || new Date().toISOString(),
+    };
+}
+
+async function request<T>(path: string, body?: unknown): Promise<T> {
     let res: Response;
     try {
         res = await fetch(`${API_BASE}${path}`, {
@@ -97,7 +118,6 @@ async function request<T>(path: string, body?: unknown, customHeaders?: Record<s
             headers: {
                 'Content-Type': 'application/json',
                 ...authHeaders(),
-                ...(customHeaders || {}),
             },
             body: body === undefined ? undefined : JSON.stringify(body),
         });
@@ -130,21 +150,10 @@ async function request<T>(path: string, body?: unknown, customHeaders?: Record<s
 export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
     const hasFirebase = isFirebaseClientConfigured();
 
-    const [user, setUser] = useState<AuthUser | null>(() => {
-        if (AUTH_DISABLED) {
-            setCurrentUserId(BYPASS_USER.id);
-            return BYPASS_USER;
-        }
-        if (PUBLIC_BETA) setCurrentUserId(ANON_USER_ID);
-        return null;
-    });
-
+    const [user, setUser] = useState<AuthUser | null>(null);
     const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-    const [loading, setLoading] = useState(() => !AUTH_DISABLED);
-    const [status, setStatus] = useState<AuthStatus>(() => {
-        if (AUTH_DISABLED) return 'authenticated';
-        return 'initializing';
-    });
+    const [loading, setLoading] = useState(true);
+    const [status, setStatus] = useState<AuthStatus>('initializing');
     const [error, setError] = useState<string | null>(null);
     // Guards against duplicate provider operations (double-click / double
     // submit) — a second call while one is in flight is a no-op.
@@ -154,43 +163,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
         setUser(null);
         setFirebaseUser(null);
         setStatus('unauthenticated');
-        setCurrentUserId(PUBLIC_BETA ? ANON_USER_ID : null);
+        setCurrentUserId(null);
+        clearIdToken();
+        resetAccountSyncStatus();
     }, []);
 
-    // Sync a Firebase identity with the Azemax backend (/api/auth/sync).
+    // Sync a verified Firebase identity with the Azemax backend (/api/auth/sync).
     // forceRefresh mints a fresh ID token (used at explicit login/signup/
     // verification events so the server sees current claims); the init
     // listener uses the cached token to avoid a round trip on every load.
     const syncWithBackend = useCallback(async (fbUser: FirebaseUser, forceRefresh = false): Promise<AuthUser | null> => {
         try {
             const idToken = await fbUser.getIdToken(forceRefresh);
-            const data = await request<{ user: AuthUser; token?: string }>('/auth/sync', {
-                idToken,
-            });
-
-            if (data.user) {
-                if (data.token) {
-                    try {
-                        setSessionToken(data.token);
-                    } catch {
-                        /* ignore storage error */
-                    }
-                }
-                setUser(data.user);
-                setCurrentUserId(data.user.id);
-                return data.user;
-            }
-            return null;
+            // Cache the provider token immediately so subsequent API calls are
+            // authenticated even if the sync round trip is slow.
+            setIdToken(idToken);
+            const data = await request<{ user: AuthUser }>('/auth/sync', { idToken });
+            return data.user ?? null;
         } catch (err) {
-            console.warn('[Auth] Sync with backend error:', err);
+            console.warn('[Auth] Sync with backend failed:', err);
             return null;
         }
     }, []);
 
-    // Refresh application profile from /api/auth/me
+    // Refresh application profile from /api/auth/me (used by the retry panel).
     const refresh = useCallback(async () => {
-        if (AUTH_DISABLED) return;
+        if (!hasFirebase) {
+            applySignedOut();
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setError(null);
         try {
+            const token = await ensureIdToken(true);
+            if (!token) {
+                applySignedOut();
+                return;
+            }
             const res = await fetch(`${API_BASE}/auth/me`, {
                 credentials: 'include',
                 headers: { ...authHeaders() },
@@ -199,20 +209,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
                 applySignedOut();
                 return;
             }
-            const data = await res.json().catch(() => ({}));
+            const data = (await res.json().catch(() => ({}))) as { user?: AuthUser };
+            const activeFbUser = getFirebaseAuth()?.currentUser ?? firebaseUser ?? null;
+            if (!activeFbUser) {
+                // The provider ended the session while this request was in
+                // flight; never apply a stale profile.
+                applySignedOut();
+                return;
+            }
             if (data.user) {
-                setUser(data.user);
-                setCurrentUserId(data.user.id);
-                // Email verification is a provider concern. Only demand it when
-                // an email provider is actually configured; the local password
-                // fallback (and the DISABLE_AUTH dev identity) have no way to
-                // verify, so treating them as unverified would strand the user
-                // on a verification pane with no possible action.
-                const needsVerification =
-                    hasFirebase &&
-                    !data.user.emailVerified &&
-                    data.user.provider !== 'google.com';
-                setStatus(needsVerification ? 'verification-required' : 'authenticated');
+                // Prefer the SDK's current user if the listener state has not
+                // settled yet; both resolve to the same stable UID.
+                const profile = withStableStorageId(data.user, activeFbUser);
+                setUser(profile);
+                setCurrentUserId(profile.id);
+                setStatus(data.user.emailVerified ? 'authenticated' : 'verification-required');
             } else {
                 applySignedOut();
             }
@@ -221,66 +232,75 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
         } finally {
             setLoading(false);
         }
-    }, [applySignedOut, hasFirebase]);
+    }, [hasFirebase, firebaseUser, applySignedOut]);
 
-    // Initialize Firebase Auth listener and check redirect results
+    // Initialize the single Firebase identity listener.
     useEffect(() => {
-        if (AUTH_DISABLED) {
-            setCurrentUserId(BYPASS_USER.id);
-            setStatus('authenticated');
+        if (!hasFirebase) {
+            // Fail closed: no Firebase configuration means no verified identity
+            // can exist. The auth PANES still render (validation stays usable),
+            // and credential operations report the missing configuration.
+            applySignedOut();
             setLoading(false);
             return;
         }
 
-        let unsubscribe: (() => void) | undefined;
-
-        if (hasFirebase) {
-            // Check for redirect sign-in completion (mobile/blocked popups)
-            void checkRedirectAuth().catch(() => {});
-
-            unsubscribe = subscribeToAuthState(async (fbUser) => {
-                setFirebaseUser(fbUser);
-                if (fbUser) {
-                    const synced = await syncWithBackend(fbUser);
-                    if (synced) {
-                        setStatus(statusForFirebaseUser(fbUser));
-                    } else {
-                        // Fallback user from Firebase credentials if backend sync
-                        // fails (e.g. backend cold-start). The server still
-                        // verifies the Firebase ID token on API calls and syncs
-                        // the user on first successful request.
-                        const fallbackUser: AuthUser = {
-                            id: fbUser.uid,
-                            email: fbUser.email || '',
-                            displayName: fbUser.displayName || null,
-                            photoUrl: fbUser.photoURL || null,
-                            emailVerified: fbUser.emailVerified,
-                            provider: fbUser.providerData[0]?.providerId || 'password',
-                            firebaseUid: fbUser.uid,
-                            createdAt: fbUser.metadata.creationTime || new Date().toISOString(),
-                        };
-                        setUser(fallbackUser);
-                        setCurrentUserId(fallbackUser.id);
-                        setStatus(statusForFirebaseUser(fbUser));
-                    }
-                    setLoading(false);
-                } else {
-                    // Firebase user signed out or null: check server session as fallback
-                    void refresh();
-                }
-            });
-        } else {
-            // Local backend session check
-            void refresh();
+        if (!getFirebaseAuth()) {
+            // Configuration is present but the SDK could not initialize. Fail
+            // closed and let the user retry rather than silently pretending to
+            // be signed out or signed in.
+            setError('Firebase Authentication failed to initialize. Check the Firebase client configuration and reload.');
+            setStatus('error');
+            setLoading(false);
+            return;
         }
 
-        const onUnauthorized = () => {
-            applySignedOut();
-            try {
-                clearSessionToken();
-            } catch {
-                /* ignore */
+        // Resolve any pending redirect sign-in (popup-blocked fallback).
+        void checkRedirectAuth().catch(() => {});
+
+        const unsubscribe = subscribeToAuthState((fbUser, token) => {
+            // Keep the in-memory credential in lockstep with the SDK: a token
+            // refresh (or sign-out) is reflected here, never cached stale.
+            setIdToken(token);
+            setFirebaseUser(fbUser);
+
+            if (!fbUser) {
+                applySignedOut();
+                setLoading(false);
+                return;
             }
+
+            void (async () => {
+                const nextStatus = statusForFirebaseUser(fbUser);
+                const synced = await syncWithBackend(fbUser);
+                // A slow sync must never apply after the provider has signed
+                // out or switched identity (otherwise a stale response could
+                // resurrect the previous account's UI state).
+                if (getFirebaseAuth()?.currentUser?.uid !== fbUser.uid) return;
+                if (synced) {
+                    const profile = withStableStorageId(synced, fbUser);
+                    setUser(profile);
+                    setCurrentUserId(profile.id);
+                } else {
+                    // Backend unreachable (e.g. cold start): the provider is
+                    // still authoritative for the session, so surface the
+                    // verified provider profile. Protected APIs remain guarded
+                    // server-side and reject with 401 until a sync succeeds.
+                    const fallback = fallbackUserFor(fbUser);
+                    setUser(fallback);
+                    setCurrentUserId(fallback.id);
+                }
+                setStatus(nextStatus);
+                setLoading(false);
+            })();
+        });
+
+        const onUnauthorized = () => {
+            // The cached credential was rejected; drop it and return to the
+            // gate. End the provider session too, so a reload cannot silently
+            // restore a credential the server has already rejected.
+            applySignedOut();
+            void signOutFirebase().catch(() => {});
         };
         window.addEventListener('azemax:unauthorized', onUnauthorized);
 
@@ -288,170 +308,124 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
             unsubscribe?.();
             window.removeEventListener('azemax:unauthorized', onUnauthorized);
         };
-    }, [hasFirebase, syncWithBackend, refresh, applySignedOut]);
+    }, [hasFirebase, syncWithBackend, applySignedOut]);
 
-    const login = useCallback(async (email: string, pass: string): Promise<AuthResult> => {
-        if (AUTH_DISABLED) return { ok: true, status: 'authenticated' };
-        if (authOpRef.current) return { ok: false, status: 'error' };
+    const runCredentialOp = useCallback(async (
+        op: () => Promise<{ ok: boolean; status: AuthStatus; fbUser?: FirebaseUser | null }>,
+    ): Promise<AuthResult> => {
+        if (authOpRef.current) return { ok: false, status: 'unauthenticated' };
         authOpRef.current = true;
         setError(null);
         setLoading(true);
+        try {
+            const result = await op();
+            return { ok: result.ok, status: result.status };
+        } finally {
+            setLoading(false);
+            authOpRef.current = false;
+        }
+    }, []);
 
-        if (hasFirebase) {
+    const login = useCallback((email: string, pass: string): Promise<AuthResult> => {
+        if (!hasFirebase) {
+            setError(FIREBASE_NOT_CONFIGURED_MESSAGE);
+            return Promise.resolve({ ok: false, status: 'unauthenticated' });
+        }
+        return runCredentialOp(async () => {
             try {
                 const cred = await signInWithEmail(email, pass);
-                if (cred.user) {
-                    setFirebaseUser(cred.user);
-                    const nextStatus = statusForFirebaseUser(cred.user);
-                    const synced = await syncWithBackend(cred.user, true);
-                    setStatus(nextStatus);
-                    if (synced) setCurrentUserId(synced.id);
-                    return { ok: true, status: nextStatus };
-                }
-                return { ok: false, status: 'error' };
-            } catch (err: unknown) {
-                setError(mapFirebaseError(err));
-                setStatus('error');
-                return { ok: false, status: 'error' };
-            } finally {
-                setLoading(false);
-                authOpRef.current = false;
-            }
-        }
-
-        // Fallback to local API
-        try {
-            const data = await request<{ user: AuthUser; token?: string }>('/auth/login', { email, password: pass });
-            if (!data.user) {
-                throw new ApiError(authFailureMessage({ status: 200, bodyError: null, apiBase: API_BASE }), 200);
-            }
-            try {
-                setSessionToken(data.token ?? null);
-            } catch {
-                /* ignore */
-            }
-            setUser(data.user);
-            setCurrentUserId(data.user.id);
-            setStatus('authenticated');
-            return { ok: true, status: 'authenticated' };
-        } catch (e) {
-            setError(e instanceof ApiError ? e.message : 'Login failed');
-            setStatus('error');
-            return { ok: false, status: 'error' };
-        } finally {
-            setLoading(false);
-            authOpRef.current = false;
-        }
-    }, [hasFirebase, syncWithBackend]);
-
-    const signup = useCallback(async (email: string, pass: string, displayName?: string): Promise<AuthResult> => {
-        if (AUTH_DISABLED) return { ok: true, status: 'authenticated' };
-        if (authOpRef.current) return { ok: false, status: 'error' };
-        authOpRef.current = true;
-        setError(null);
-        setLoading(true);
-
-        if (hasFirebase) {
-            try {
-                const outcome = await signUpWithEmail(email, pass, displayName);
-                if (outcome.user) {
-                    setFirebaseUser(outcome.user);
-                    // Server-side registration via the existing contract. A new
-                    // account is NEVER treated as verified until the provider says so.
-                    const synced = await syncWithBackend(outcome.user, true);
-                    setStatus('verification-required');
-                    if (synced) setCurrentUserId(synced.id);
-                    if (!outcome.verificationSent) {
-                        setError(
-                            outcome.verificationError ||
-                            'Account created, but the verification email could not be sent. Use “Resend verification email” to try again.',
-                        );
-                    }
-                    return { ok: true, status: 'verification-required' };
-                }
-                return { ok: false, status: 'error' };
-            } catch (err: unknown) {
-                setError(mapFirebaseError(err));
-                setStatus('error');
-                return { ok: false, status: 'error' };
-            } finally {
-                setLoading(false);
-                authOpRef.current = false;
-            }
-        }
-
-        // Fallback to local API
-        try {
-            const data = await request<{ user: AuthUser; token?: string }>('/auth/signup', {
-                email,
-                password: pass,
-                displayName,
-            });
-            if (!data.user) {
-                throw new ApiError(authFailureMessage({ status: 200, bodyError: null, apiBase: API_BASE }), 200);
-            }
-            try {
-                setSessionToken(data.token ?? null);
-            } catch {
-                /* ignore */
-            }
-            setUser(data.user);
-            setCurrentUserId(data.user.id);
-            setStatus('authenticated');
-            return { ok: true, status: 'authenticated' };
-        } catch (e) {
-            setError(e instanceof ApiError ? e.message : 'Sign up failed');
-            setStatus('error');
-            return { ok: false, status: 'error' };
-        } finally {
-            setLoading(false);
-            authOpRef.current = false;
-        }
-    }, [hasFirebase, syncWithBackend]);
-
-    const loginWithGoogle = useCallback(async (): Promise<AuthResult> => {
-        if (AUTH_DISABLED) return { ok: true, status: 'authenticated' };
-        if (authOpRef.current) return { ok: false, status: 'error' };
-        authOpRef.current = true;
-        setError(null);
-        setLoading(true);
-
-        if (!hasFirebase) {
-            setError('Google sign-in requires Firebase configuration (VITE_FIREBASE_API_KEY).');
-            setLoading(false);
-            authOpRef.current = false;
-            return { ok: false, status: 'error' };
-        }
-
-        try {
-            const cred = await signInWithGoogle();
-            if (cred.user) {
+                if (!cred.user) return { ok: false, status: 'unauthenticated' as AuthStatus };
                 setFirebaseUser(cred.user);
                 const nextStatus = statusForFirebaseUser(cred.user);
                 const synced = await syncWithBackend(cred.user, true);
+                if (synced) {
+                    const profile = withStableStorageId(synced, cred.user);
+                    setUser(profile);
+                    setCurrentUserId(profile.id);
+                } else {
+                    const fallback = fallbackUserFor(cred.user);
+                    setUser(fallback);
+                    setCurrentUserId(fallback.id);
+                }
                 setStatus(nextStatus);
-                if (synced) setCurrentUserId(synced.id);
                 return { ok: true, status: nextStatus };
+            } catch (err: unknown) {
+                setError(mapFirebaseError(err));
+                return { ok: false, status: 'unauthenticated' as AuthStatus };
             }
-            return { ok: false, status: 'error' };
-        } catch (err: unknown) {
-            setError(mapFirebaseError(err));
-            setStatus('error');
-            return { ok: false, status: 'error' };
-        } finally {
-            setLoading(false);
-            authOpRef.current = false;
+        });
+    }, [hasFirebase, runCredentialOp, syncWithBackend]);
+
+    const signup = useCallback((email: string, pass: string, displayName?: string): Promise<AuthResult> => {
+        if (!hasFirebase) {
+            setError(FIREBASE_NOT_CONFIGURED_MESSAGE);
+            return Promise.resolve({ ok: false, status: 'unauthenticated' });
         }
-    }, [hasFirebase, syncWithBackend]);
+        return runCredentialOp(async () => {
+            try {
+                const outcome = await signUpWithEmail(email, pass, displayName);
+                if (!outcome.user) return { ok: false, status: 'unauthenticated' as AuthStatus };
+                setFirebaseUser(outcome.user);
+                const nextStatus = statusForFirebaseUser(outcome.user);
+                const synced = await syncWithBackend(outcome.user, true);
+                if (synced) {
+                    const profile = withStableStorageId(synced, outcome.user);
+                    setUser(profile);
+                    setCurrentUserId(profile.id);
+                } else {
+                    const fallback = fallbackUserFor(outcome.user);
+                    setUser(fallback);
+                    setCurrentUserId(fallback.id);
+                }
+                setStatus(nextStatus);
+                if (!outcome.verificationSent) {
+                    setError(
+                        outcome.verificationError ||
+                        'Account created, but the verification email could not be sent. Use "Resend verification email" to try again.',
+                    );
+                }
+                return { ok: true, status: nextStatus };
+            } catch (err: unknown) {
+                setError(mapFirebaseError(err));
+                return { ok: false, status: 'unauthenticated' as AuthStatus };
+            }
+        });
+    }, [hasFirebase, runCredentialOp, syncWithBackend]);
+
+    const loginWithGoogle = useCallback((): Promise<AuthResult> => {
+        if (!hasFirebase) {
+            setError(FIREBASE_NOT_CONFIGURED_MESSAGE);
+            return Promise.resolve({ ok: false, status: 'unauthenticated' });
+        }
+        return runCredentialOp(async () => {
+            try {
+                const cred = await signInWithGoogle();
+                if (!cred.user) return { ok: false, status: 'unauthenticated' as AuthStatus };
+                setFirebaseUser(cred.user);
+                const nextStatus = statusForFirebaseUser(cred.user);
+                const synced = await syncWithBackend(cred.user, true);
+                if (synced) {
+                    const profile = withStableStorageId(synced, cred.user);
+                    setUser(profile);
+                    setCurrentUserId(profile.id);
+                } else {
+                    const fallback = fallbackUserFor(cred.user);
+                    setUser(fallback);
+                    setCurrentUserId(fallback.id);
+                }
+                setStatus(nextStatus);
+                return { ok: true, status: nextStatus };
+            } catch (err: unknown) {
+                setError(mapFirebaseError(err));
+                return { ok: false, status: 'unauthenticated' as AuthStatus };
+            }
+        });
+    }, [hasFirebase, runCredentialOp, syncWithBackend]);
 
     const sendPasswordResetEmailAction = useCallback(async (email: string): Promise<void> => {
         setError(null);
         if (!hasFirebase) {
-            // No email provider is configured, so no reset message can actually
-            // be delivered. Surface that honestly instead of faking success.
-            throw new Error(
-                'Password reset is unavailable because email sign-in is not configured on this deployment.',
-            );
+            throw new Error(FIREBASE_NOT_CONFIGURED_MESSAGE);
         }
         try {
             await sendPasswordReset(email);
@@ -470,7 +444,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
     }, [hasFirebase]);
 
     const resendVerificationAction = useCallback(async (): Promise<void> => {
-        if (!firebaseUser) throw new Error('No user currently pending verification');
+        if (!firebaseUser) throw new Error('No user is currently pending verification.');
         setError(null);
         try {
             await resendVerificationEmail(firebaseUser);
@@ -484,33 +458,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
         if (!firebaseUser) return false;
         try {
             await reloadFirebaseUser(firebaseUser);
+            if (getFirebaseAuth()?.currentUser?.uid !== firebaseUser.uid) return false;
             if (firebaseUser.emailVerified) {
                 // Fresh token so the backend records the now-verified state.
-                await syncWithBackend(firebaseUser, true);
+                const synced = await syncWithBackend(firebaseUser, true);
+                if (getFirebaseAuth()?.currentUser?.uid !== firebaseUser.uid) return false;
+                if (synced) {
+                    const profile = withStableStorageId(synced, firebaseUser);
+                    setUser(profile);
+                    setCurrentUserId(profile.id);
+                } else {
+                    // The provider is authoritative for verification even if
+                    // the backend is cold; reflect it locally so the gate can
+                    // open. Protected APIs still fail closed until sync works.
+                    const fallback = fallbackUserFor(firebaseUser);
+                    setUser(fallback);
+                    setCurrentUserId(fallback.id);
+                }
                 setStatus('authenticated');
                 return true;
             }
             return false;
         } catch (err) {
-            console.warn('[Auth] Check verification error:', err);
+            console.warn('[Auth] Check verification failed:', err);
             return false;
         }
     }, [firebaseUser, syncWithBackend]);
 
     const logout = useCallback(async () => {
-        if (AUTH_DISABLED) return;
         setLoading(true);
         try {
             if (hasFirebase) {
                 await signOutFirebase().catch(() => {});
             }
+            // The backend holds no session; sign-out is a Firebase client
+            // operation. The call is an acknowledgement only.
             await request('/auth/logout').catch(() => {});
         } finally {
-            try {
-                clearSessionToken();
-            } catch {
-                /* ignore */
-            }
             applySignedOut();
             setLoading(false);
         }
@@ -518,15 +502,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = memo(({ children 
 
     const clearError = useCallback(() => setError(null), []);
 
-    const isAnonymous = PUBLIC_BETA && !AUTH_DISABLED && user === null;
-
     const value: AuthContextValue = {
         user,
         firebaseUser,
         status,
         loading,
         error,
-        isAnonymous,
         isFirebaseConfigured: hasFirebase,
         login,
         signup,
@@ -546,4 +527,13 @@ export function useAuth(): AuthContextValue {
     const ctx = useContext(AuthContext);
     if (!ctx) throw new Error('useAuth must be used within AuthProvider');
     return ctx;
+}
+
+/**
+ * Non-throwing variant for providers that may be rendered in isolation by
+ * unit tests/tools (ProjectProvider, SettingsProvider). In the real app the
+ * AuthProvider always wraps them, so this always returns the live context.
+ */
+export function useAuthOptional(): AuthContextValue | null {
+    return useContext(AuthContext);
 }

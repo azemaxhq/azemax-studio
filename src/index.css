@@ -1345,5 +1345,41 @@ button:hover .az-icon, .az-icon-hoverable:hover { color: var(--az-icon-hover); }
   }
 }
 
+/* ============================================
+   PUBLIC LEGAL PAGES (/privacy, /terms)
+   The IDE shell locks document scroll (body overflow:hidden, #root 100dvh).
+   Legal documents are long and must scroll normally, so the page opts in with
+   `.az-doc-active` on <html> while mounted and the shell is restored on unmount.
+   ============================================ */
+
+html.az-doc-active {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+}
+html.az-doc-active body {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 100vh;
+}
+html.az-doc-active #root {
+  height: auto !important;
+  min-height: 100vh;
+  overflow: visible !important;
+  display: block !important;
+}
+
+.az-legal-root {
+  /* Keep long-form text comfortable on wide screens. */
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .az-legal-root {
+    scroll-behavior: auto;
+  }
+}
+
+
 
 

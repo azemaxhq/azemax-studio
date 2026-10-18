@@ -18,10 +18,20 @@ export interface ChatSession {
     updatedAt: number;
 }
 
+/** Deletion marker so a conversation removed on one device is not resurrected
+ *  by the union merge from another device that still has the old copy. */
+export interface ChatTombstone {
+    id: string;
+    deletedAt: number;
+}
+
 const STORAGE_KEY = 'azemax-chat-sessions';
 const LEGACY_STORAGE_KEY = 'deepcontext-chat-sessions';
 const CURRENT_SESSION_KEY = 'azemax-current-session-id';
 const LEGACY_CURRENT_SESSION_KEY = 'deepcontext-current-session-id';
+const TOMBSTONES_KEY = 'azemax-chat-tombstones';
+const CLEARED_AT_KEY = 'azemax-chat-cleared-at';
+const MAX_TOMBSTONES = 500;
 
 // Hard bounds so persistence can never grow without limit (each save would
 // otherwise re-serialize the entire history on every message).
@@ -84,17 +94,148 @@ export const loadSessions = (): ChatSession[] => {
             // sessions so malformed/corrupt storage can never crash the panel,
             // and bound the history so a giant payload is trimmed on read too.
             if (Array.isArray(sessions)) {
-                return sessions
-                    .map(normalizeSession)
-                    .filter((s): s is ChatSession => s !== null)
-                    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                    .slice(0, MAX_SESSIONS);
+                return sanitizeSessions(sessions);
             }
         }
     } catch (e) {
         console.warn('Failed to load chat sessions:', e);
     }
     return [];
+};
+
+/** Validate + bound an untrusted list of chat sessions (storage or server). */
+export const sanitizeSessions = (sessions: unknown): ChatSession[] => {
+    if (!Array.isArray(sessions)) return [];
+    return sessions
+        .map(normalizeSession)
+        .filter((s): s is ChatSession => s !== null)
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+        .slice(0, MAX_SESSIONS);
+};
+
+/** Validate an untrusted "history cleared at" marker. */
+export const sanitizeChatsClearedAt = (value: unknown): number => {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
+    return Math.floor(value);
+};
+
+/**
+ * Union two device histories by session id, keeping the newer copy of each
+ * conversation. Used by account sync so signing in on a second device never
+ * discards conversations that only exist there. Deletion tombstones remove
+ * sessions that are not newer than the deletion marker; a `clearedAt` marker
+ * removes every session older than a "clear all chats" action, including
+ * conversations this device never saw. Sessions created after the clear have a
+ * newer `updatedAt` and survive.
+ */
+export const mergeSessions = (
+    local: unknown,
+    remote: unknown,
+    tombstones: unknown = [],
+    clearedAt: unknown = 0,
+): ChatSession[] => {
+    const tombById = new Map<string, number>();
+    for (const t of sanitizeChatTombstones(tombstones)) {
+        tombById.set(t.id, Math.max(tombById.get(t.id) ?? 0, t.deletedAt));
+    }
+    const cleared = sanitizeChatsClearedAt(clearedAt);
+    const byId = new Map<string, ChatSession>();
+    for (const session of [...sanitizeSessions(local), ...sanitizeSessions(remote)]) {
+        const updatedAt = session.updatedAt || 0;
+        if (cleared > 0 && updatedAt < cleared) continue;
+        const deletedAt = tombById.get(session.id) ?? 0;
+        if (updatedAt <= deletedAt) continue;
+        const existing = byId.get(session.id);
+        if (!existing || updatedAt >= (existing.updatedAt || 0)) {
+            byId.set(session.id, session);
+        }
+    }
+    return Array.from(byId.values())
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+        .slice(0, MAX_SESSIONS);
+};
+
+/** Validate + bound untrusted deletion markers (storage or server). */
+export const sanitizeChatTombstones = (tombstones: unknown): ChatTombstone[] => {
+    if (!Array.isArray(tombstones)) return [];
+    const byId = new Map<string, number>();
+    for (const raw of tombstones) {
+        if (!raw || typeof raw !== 'object') continue;
+        const t = raw as Record<string, unknown>;
+        if (typeof t.id !== 'string' || !t.id) continue;
+        if (typeof t.deletedAt !== 'number' || !Number.isFinite(t.deletedAt)) continue;
+        byId.set(t.id, Math.max(byId.get(t.id) ?? 0, t.deletedAt));
+    }
+    return Array.from(byId.entries())
+        .map(([id, deletedAt]) => ({ id, deletedAt }))
+        .sort((a, b) => b.deletedAt - a.deletedAt)
+        .slice(0, MAX_TOMBSTONES);
+};
+
+export const mergeChatTombstones = (local: unknown, remote: unknown): ChatTombstone[] =>
+    sanitizeChatTombstones([...sanitizeChatTombstones(local), ...sanitizeChatTombstones(remote)]);
+
+export const loadChatTombstones = (): ChatTombstone[] => {
+    try {
+        const saved = nsGetItem(TOMBSTONES_KEY);
+        if (!saved) return [];
+        return sanitizeChatTombstones(JSON.parse(saved));
+    } catch {
+        return [];
+    }
+};
+
+export const saveChatTombstones = (tombstones: ChatTombstone[]): void => {
+    try {
+        nsSetItem(TOMBSTONES_KEY, JSON.stringify(sanitizeChatTombstones(tombstones)));
+    } catch {
+        /* best-effort */
+    }
+};
+
+export const recordChatTombstones = (sessionIds: string[], at = Date.now()): void => {
+    const existing = loadChatTombstones();
+    const additions = sessionIds.map((id) => ({ id, deletedAt: at }));
+    saveChatTombstones(mergeChatTombstones(existing, additions));
+};
+
+/** Timestamp of the last explicit "clear all chat history" action. */
+export const loadChatsClearedAt = (): number => {
+    try {
+        return sanitizeChatsClearedAt(Number(nsGetItem(CLEARED_AT_KEY)));
+    } catch {
+        return 0;
+    }
+};
+
+export const saveChatsClearedAt = (at: number): void => {
+    const value = sanitizeChatsClearedAt(at);
+    if (!value) return;
+    try {
+        nsSetItem(CLEARED_AT_KEY, String(value));
+    } catch {
+        /* best-effort */
+    }
+};
+
+/**
+ * Mark an explicit clear-all. Never moves backwards: adopting an older server
+ * marker must not make previously deleted conversations eligible again.
+ */
+export const markChatsClearedAt = (at = Date.now()): number => {
+    const next = Math.max(loadChatsClearedAt(), sanitizeChatsClearedAt(at));
+    saveChatsClearedAt(next);
+    return next;
+};
+
+/** Write a bootstrap/merged history without firing the debounced local saver. */
+export const persistSessionsNow = (sessions: ChatSession[]): void => {
+    try {
+        const bounded = sanitizeSessions(sessions);
+        localStorage.setItem(namespacedKey(STORAGE_KEY), JSON.stringify(bounded));
+    } catch (e) {
+        console.warn('Failed to persist merged chat sessions:', e);
+    }
 };
 
 export const saveSessions = (sessions: ChatSession[]) => {

@@ -7,11 +7,16 @@
  * (see docs; DATABASE_URL support is the documented scale path).
  *
  * Tables:
- *   users         — id, email (unique), password_hash (scrypt), display_name,.timestamps
- *   sessions      — token_hash PK, user_id FK, expiry, last-used, ip
+ *   users         — id, firebase_uid (unique), email (unique), placeholder credential,.timestamps
  *   projects      — id, owner_id FK, name, tree_json, timestamps
  *   project_files — materialized per-file index (project_id, path) for quotas
  *   usage_daily   — per-user per-day counters (ai_requests, ai_tokens, executions)
+ *   account_state — account-synced JSON sections (settings, chat history)
+ *
+ * There is no `sessions` table: Firebase Authentication issues and refreshes the
+ * ID tokens the client presents, and the server verifies them with the Firebase
+ * Admin SDK on every request. A local session store would be a competing
+ * identity system.
  *
  * Concurrency: node:sqlite is synchronous; every multi-statement mutation runs
  * inside an explicit transaction. WAL + busy_timeout tolerate concurrent
@@ -23,7 +28,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { DATABASE_PATH, DATA_DIR } = require('../config/index.cjs');
 const logger = require('../lib/logger.cjs');
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 4;
 
 const MIGRATIONS = [
     // v1: initial schema
@@ -86,6 +91,27 @@ const MIGRATIONS = [
     ALTER TABLE users ADD COLUMN photo_url TEXT;
     ALTER TABLE users ADD COLUMN last_login_at TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
+    `,
+    // v3: Firebase is the sole identity provider. The custom opaque-token
+    // session store is removed — ID tokens verified with the Admin SDK are the
+    // only credential. User rows (incl. legacy ones) are preserved untouched.
+    `
+    DROP INDEX IF EXISTS idx_sessions_user;
+    DROP INDEX IF EXISTS idx_sessions_expiry;
+    DROP TABLE IF EXISTS sessions;
+    `,
+    // v4: account-scoped synced state. Each row is one opaque JSON document
+    // (settings, AI chat history, …) owned by exactly one user. The owner is
+    // always req.user.id; clients never supply or select another owner.
+    `
+    CREATE TABLE IF NOT EXISTS account_state (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        section TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, section)
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_state_user ON account_state(user_id);
     `,
 ];
 

@@ -2,11 +2,11 @@
  * Email-verification helpers — pure, dependency-free, unit-testable.
  *
  * The verification pane must never claim "we sent a link to <address>" for an
- * address that cannot receive mail. That happens in practice when the app runs
- * against the development auth bypass (`DISABLE_AUTH=true`), whose fixture
- * identity is `local-dev@azemax.local`, or when a session is restored without a
- * provider email at all. Centralising the deliverability rule here keeps every
- * pane honest and gives the tests a single seam.
+ * address that cannot receive mail. Firebase is the sole provider, but a
+ * session can still surface a non-deliverable address (reserved TLDs such as
+ * `*.local`/`*.invalid`, or a legacy fixture address persisted from an earlier
+ * build). Centralising the deliverability rule here keeps every pane honest and
+ * gives the tests a single seam.
  */
 
 import { EMAIL_RE, normalizeEmail } from './policy';
@@ -27,7 +27,11 @@ const NON_DELIVERABLE_TLDS = [
     '.lan',
 ];
 
-/** Known non-human fixtures that must never be shown as a real address. */
+/**
+ * Legacy fixture addresses from removed auth-bypass builds. They must never be
+ * presented as a real address (defense in depth for stale localStorage/session
+ * data — no current code path mints them).
+ */
 const PLACEHOLDER_ADDRESSES = new Set([
     'local-dev@azemax.local',
     'guest@azemax.local',

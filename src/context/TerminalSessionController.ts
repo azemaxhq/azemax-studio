@@ -1,5 +1,5 @@
 import { getWebSocketUrl } from '../utils/apiClient';
-import { withSessionToken } from '../utils/sessionToken';
+import { withAuthToken } from '../utils/authToken';
 
 /**
  * Frontend TerminalSessionController
@@ -132,10 +132,10 @@ export class TerminalSessionController {
         const generation = ++this.generation;
         let ws: WebSocket;
         try {
-            // Bearer fallback as ?token=: the WS handshake carries cookies,
-            // but cross-site third-party-cookie blocking drops them — the
-            // server accepts the same session token as a query param.
-            ws = new WebSocket(withSessionToken(getWebSocketUrl()));
+            // The WS handshake carries the Firebase ID token as ?token=.
+            // Browsers cannot set an Authorization header on `new WebSocket()`,
+            // so the server verifies the query-string token at handshake time.
+            ws = new WebSocket(withAuthToken(getWebSocketUrl()));
         } catch (err) {
             this.setState('FAILED');
             this.listeners.onError(`Failed to open WebSocket: ${(err as Error).message}`);

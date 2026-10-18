@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signInForE2E } from './_auth';
 
 const SEED_TREE = JSON.stringify([
   {
@@ -84,6 +85,9 @@ async function focusEditor(page: import('@playwright/test').Page) {
 
 test.describe('Azemax Editor E2E', () => {
   test.beforeEach(async ({ page }) => {
+    // Firebase identity is required (no bypass). Skips when no real test
+    // credentials/configuration are provided.
+    await signInForE2E(page);
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (msg) => {

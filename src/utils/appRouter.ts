@@ -10,6 +10,8 @@
  *    picks the change up (browsers do not fire popstate for pushState).
  *  - `isAuthRoutePath(pathname)` / `safeRedirectTarget(raw)`: pure predicates
  *    for the authentication surface, unit-testable under node.
+ *  - `isLegalRoutePath(pathname)`: pure predicate for the public legal pages
+ *    (`/privacy`, `/terms`), which must render without authentication.
  *
  * Security: `safeRedirectTarget` is the single gate for post-login
  * destinations. It only ever returns a same-origin, absolute-path route
@@ -26,8 +28,25 @@ export const AUTH_ROUTES = [
     '/auth/callback',
 ] as const;
 
+/**
+ * Public legal routes rendered by LegalPage. These are deliberately public:
+ * they must load for signed-out visitors and automated reviewers, so they are
+ * never wrapped in the authentication gate.
+ */
+export const LEGAL_ROUTES = ['/privacy', '/terms'] as const;
+
 /** Default post-authentication destination. */
 export const DEFAULT_AUTH_REDIRECT = '/app';
+
+/**
+ * Workspace routing predicate (pure, unit-tested): `/app` and `/app/*` mount
+ * the IDE workspace; everything else renders the landing page. Segment-exact,
+ * so `/application` never matches `/app`.
+ */
+export function isAppRoutePath(pathname: string): boolean {
+    if (typeof pathname !== 'string') return false;
+    return pathname === '/app' || pathname.startsWith('/app/');
+}
 
 /** True for the exact auth routes above (segment-exact, no prefix bleed). */
 export function isAuthRoutePath(pathname: string): boolean {
@@ -36,6 +55,18 @@ export function isAuthRoutePath(pathname: string): boolean {
         ? pathname.slice(0, -1)
         : pathname;
     return (AUTH_ROUTES as readonly string[]).includes(clean);
+}
+
+/**
+ * True for the public legal routes (`/privacy`, `/terms`). Trailing slashes are
+ * tolerated so `/privacy/` still resolves.
+ */
+export function isLegalRoutePath(pathname: string): boolean {
+    if (typeof pathname !== 'string') return false;
+    const clean = pathname.length > 1 && pathname.endsWith('/')
+        ? pathname.slice(0, -1)
+        : pathname;
+    return (LEGAL_ROUTES as readonly string[]).includes(clean);
 }
 
 /**

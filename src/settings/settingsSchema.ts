@@ -1,4 +1,12 @@
 import type { CategoryDefinition, CategoryKey, SettingDef } from './settingsTypes';
+import { nsRemoveItem } from '../utils/userStorage';
+import {
+  loadChatTombstones,
+  loadSessions,
+  markChatsClearedAt,
+  recordChatTombstones,
+  saveSessions,
+} from '../utils/chatStorage';
 
 // Actions that need to reach the settings store are registered by the store
 // itself at startup. This keeps the schema free of circular imports.
@@ -10,11 +18,18 @@ export const registerActionHandler = (id: string, handler: () => void): void => 
 const APP_STORAGE_KEYS = [
   'azemax-chat-sessions',
   'azemax-current-session-id',
+  'azemax-chat-tombstones',
+  'azemax-chat-cleared-at',
   'azemax-file-tree',
   'azemax-active-file-id',
   'azemax-bookmarked-files',
   'azemax-active-terminal-id',
   'azemax-terminals-v3',
+  'azemax-workspace-record',
+  'azemax-cloud-project-id',
+  'azemax-workspace-sync-backup',
+  'azemax-expanded-folders',
+  'azemax-open-files',
   'deepcontext-chat-sessions',
   'deepcontext-current-session-id',
   'deepcontext-file-tree',
@@ -22,6 +37,8 @@ const APP_STORAGE_KEYS = [
   'deepcontext-bookmarked-files',
   'deepcontext-active-terminal-id',
   'deepcontext-terminals-v3',
+  'deepcontext-workspace-record',
+  'deepcontext-expanded-folders',
   'codeAnalysis_history',
   'layout-ai-panel-width',
   'layout-left-sidebar-width',
@@ -616,13 +633,42 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
         actionLabel: 'Clear Chat History',
         confirmMessage: 'Delete all saved AI conversations? This cannot be undone.',
         label: 'Clear Chat History',
-        description: 'Delete all saved AI conversations from this device.',
+        description: 'Delete all saved AI conversations from this device and your account.',
         keywords: ['clear', 'chat', 'sessions', 'history', 'delete', 'data'],
         handler: () => {
+          // Record deletion markers before dropping the local history. They
+          // survive the reload, so if the immediate cloud write fails (offline
+          // or a cold backend) the next sync still deletes the conversations
+          // instead of restoring them from another device.
+          const deletedIds = loadSessions().map((session) => session.id);
+          const clearedAt = markChatsClearedAt();
+          recordChatTombstones(deletedIds, clearedAt);
+
+          nsRemoveItem('azemax-chat-sessions');
+          nsRemoveItem('azemax-current-session-id');
           localStorage.removeItem('azemax-chat-sessions');
           localStorage.removeItem('azemax-current-session-id');
           localStorage.removeItem('deepcontext-chat-sessions');
           localStorage.removeItem('deepcontext-current-session-id');
+          // Neutralize any debounced chat write that may already be queued by
+          // an in-flight response; the unload flush then writes an empty list
+          // instead of restoring the conversations we just deleted.
+          saveSessions([]);
+
+          // Push an empty document with the tombstones (rather than deleting
+          // the whole section) so other devices learn which conversations were
+          // removed and cannot resurrect them. This is best-effort: the local
+          // tombstones finish the deletion on the next successful sync even if
+          // the reload aborts this request.
+          const tombstones = loadChatTombstones();
+          void import('../core/sync/accountApi')
+            .then(({ putAccountSection }) => putAccountSection('chats', {
+              sessions: [],
+              currentSessionId: null,
+              tombstones,
+              clearedAt,
+            }))
+            .catch(() => {});
           window.location.reload();
         },
       },
@@ -635,11 +681,16 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
         description: 'Remove bookmarks, layout preferences and analysis history.',
         keywords: ['clear', 'cache', 'bookmarks', 'layout', 'analysis', 'data'],
         handler: () => {
+          nsRemoveItem('azemax-bookmarked-files');
+          nsRemoveItem('codeAnalysis_history');
           localStorage.removeItem('azemax-bookmarked-files');
           localStorage.removeItem('deepcontext-bookmarked-files');
           localStorage.removeItem('codeAnalysis_history');
           for (const key of APP_STORAGE_KEYS) {
-            if (key.startsWith('layout-')) localStorage.removeItem(key);
+            if (key.startsWith('layout-')) {
+              nsRemoveItem(key);
+              localStorage.removeItem(key);
+            }
           }
           window.location.reload();
         },
@@ -757,9 +808,20 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
         description: 'Clear chat history, workspace and layout state, then reload.',
         keywords: ['reset', 'clear', 'state', 'factory', 'data'],
         handler: () => {
+          const deletedChatIds = loadSessions().map((session) => session.id);
           for (const key of APP_STORAGE_KEYS) {
+            nsRemoveItem(key);
             localStorage.removeItem(key);
           }
+          // Re-add the chat deletion markers after the sweep; the next sync
+          // removes the cloud copies even if this device never pushed them.
+          // The clear-all marker also removes conversations this device never
+          // downloaded before the reset.
+          const clearedAt = markChatsClearedAt();
+          recordChatTombstones(deletedChatIds, clearedAt);
+          // Override a queued chat save so the unload flush cannot restore the
+          // history that this reset just removed.
+          saveSessions([]);
           window.location.reload();
         },
       },
@@ -773,10 +835,17 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
         keywords: ['clear', 'local', 'data', 'delete', 'settings', 'all'],
         handler: () => {
           for (const key of APP_STORAGE_KEYS) {
+            nsRemoveItem(key);
             localStorage.removeItem(key);
           }
+          nsRemoveItem('azemax-settings-v3');
+          nsRemoveItem('azemax-settings-updated-at');
           localStorage.removeItem('azemax-settings-v3');
+          localStorage.removeItem('azemax-settings-updated-at');
           localStorage.removeItem('deepcontext-settings-v3');
+          // A debounced chat write may be queued; make the unload flush write
+          // an empty list instead of recreating the removed history.
+          saveSessions([]);
           window.location.reload();
         },
       },

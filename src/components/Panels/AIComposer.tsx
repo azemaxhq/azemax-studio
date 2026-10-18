@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { Paperclip, Sparkles, ArrowUp, Square, X, FileCode, Hash, Zap, MessageCircle, Code2, ChevronDown, Upload, FolderSearch } from 'lucide-react';
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { getActiveEditorContext, subscribeActiveEditor } from '../../core/editor/activeEditorStore';
+import { nsGetItem, nsRemoveItem, nsSetItem } from '../../utils/userStorage';
 
 interface ContextChip {
     id: string;
@@ -48,10 +49,12 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
     const [mentionIndex, setMentionIndex] = useState(-1);
     const [showSlash, setShowSlash] = useState(false);
     const [slashIndex, setSlashIndex] = useState(0);
+    // Composer context is user data (file names/ids); keep it inside the
+    // signed-in account namespace so one account never sees another's chips.
     const CHIPS_KEY = 'azemax:composer:chips';
     const [attachedChips, setAttachedChips] = useState<ContextChip[]>(() => {
         try {
-            const raw = localStorage.getItem(CHIPS_KEY);
+            const raw = nsGetItem(CHIPS_KEY);
             if (!raw) return [];
             const parsed = JSON.parse(raw) as Array<{ id: string; label: string; detail?: string }>;
             return parsed.map(p => ({
@@ -76,7 +79,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const DISMISSED_KEY = 'azemax:composer:dismissed';
     const [dismissedAutoFile, setDismissedAutoFile] = useState<string | null>(() => {
-        try { return localStorage.getItem(DISMISSED_KEY); } catch { return null; }
+        try { return nsGetItem(DISMISSED_KEY); } catch { return null; }
     });
     const agentBtnRef = useRef<HTMLDivElement>(null);
     const attachBtnRef = useRef<HTMLDivElement>(null);
@@ -95,10 +98,10 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
     // Persist attached chips across refresh
     useEffect(() => {
         try {
-            if (attachedChips.length === 0) localStorage.removeItem(CHIPS_KEY);
+            if (attachedChips.length === 0) nsRemoveItem(CHIPS_KEY);
             else {
                 const serializable = attachedChips.map(c => ({ id: c.id, label: c.label, detail: c.detail }));
-                localStorage.setItem(CHIPS_KEY, JSON.stringify(serializable));
+                nsSetItem(CHIPS_KEY, JSON.stringify(serializable));
             }
         } catch { /* ignore */ }
     }, [attachedChips]);
@@ -128,7 +131,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
     useEffect(() => {
         const onClear = () => {
             setAttachedChips([]);
-            try { localStorage.removeItem(CHIPS_KEY); } catch { /* ignore */ }
+            try { nsRemoveItem(CHIPS_KEY); } catch { /* ignore */ }
         };
         window.addEventListener('azemax:clear-chips', onClear as EventListener);
         return () => window.removeEventListener('azemax:clear-chips', onClear as EventListener);
@@ -148,8 +151,8 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
     // Persist dismissed state so refresh doesn't resurrect a file chip the user closed
     useEffect(() => {
         try {
-            if (dismissedAutoFile) localStorage.setItem(DISMISSED_KEY, dismissedAutoFile);
-            else localStorage.removeItem(DISMISSED_KEY);
+            if (dismissedAutoFile) nsSetItem(DISMISSED_KEY, dismissedAutoFile);
+            else nsRemoveItem(DISMISSED_KEY);
         } catch { /* ignore */ }
     }, [dismissedAutoFile]);
 
@@ -164,7 +167,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
         if (prevFileIdRef.current !== currentFileId) {
             prevFileIdRef.current = currentFileId;
             setDismissedAutoFile(null);
-            try { localStorage.removeItem(DISMISSED_KEY); } catch { /* ignore */ }
+            try { nsRemoveItem(DISMISSED_KEY); } catch { /* ignore */ }
         }
     }, [currentFileId]);
 
@@ -326,7 +329,7 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
         onSend();
         // Composer draft was sent — clear attached chips (input is cleared by parent)
         setAttachedChips([]);
-        try { localStorage.removeItem(CHIPS_KEY); } catch { /* ignore */ }
+        try { nsRemoveItem(CHIPS_KEY); } catch { /* ignore */ }
     }, [disabled, input, isLoading, onSend]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

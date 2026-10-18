@@ -1,7 +1,7 @@
 // Local execution API endpoint (replaces Piston)
 // Handled by server/index.cjs local execution
 import { API_BASE } from './apiClient';
-import { authHeaders } from './sessionToken';
+import { authHeaders } from './authToken';
 
 const EXECUTION_API_URL = API_BASE;
 

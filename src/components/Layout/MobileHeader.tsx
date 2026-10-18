@@ -39,7 +39,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     const { activeFile } = useProjectFile();
     const { runCode, stopProcess, isRunning, activeTerminalId } = useTerminal();
     const { settings, updateSettings } = useSettings();
-    const { user, isAnonymous, logout } = useAuth();
+    const { user, logout } = useAuth();
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -251,7 +251,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                                 )}
 
                                 <div className="h-px bg-white/[0.06] my-1.5 mx-2" />
-                                {user && !isAnonymous ? (
+                                {user ? (
                                     <MenuItem
                                         icon={<LogOut size={15} className="text-[var(--az-icon)]" />}
                                         label="Sign out"

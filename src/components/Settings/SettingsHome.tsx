@@ -1,9 +1,10 @@
 import React, { memo } from 'react';
-import { ArrowRight, User, LogOut, CheckCircle2, AlertTriangle, LogIn } from 'lucide-react';
+import { ArrowRight, User, LogOut, CheckCircle2, AlertTriangle, LogIn, Cloud, CloudOff, Loader2, RefreshCw } from 'lucide-react';
 import { SETTINGS_CATEGORIES } from '../../settings/settingsSchema';
 import type { CategoryDefinition, CategoryKey } from '../../settings/settingsTypes';
 import { CATEGORY_ICONS } from './settingsIcons';
 import { useAuth } from '../../context/AuthContext';
+import { useAccountSyncStatus, retryAccountSync } from '../../core/sync/syncStatus';
 import { navigate } from '../../utils/appRouter';
 
 import { AzemaxLogo } from '../UI/AzemaxLogo';
@@ -33,8 +34,24 @@ const CategoryCard: React.FC<{ category: CategoryDefinition; onSelect: (id: Cate
   );
 });
 
+const formatSyncLabel = (lastSyncedAt: number | null): string => {
+  if (!lastSyncedAt) return 'Account sync ready';
+  const seconds = Math.max(0, Math.round((Date.now() - lastSyncedAt) / 1000));
+  if (seconds < 10) return 'Synced just now';
+  if (seconds < 60) return `Synced ${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Synced ${minutes}m ago`;
+  return 'Synced';
+};
+
 export const SettingsHome: React.FC<SettingsHomeProps> = ({ onSelectCategory }) => {
-  const { user, isAnonymous, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const sync = useAccountSyncStatus();
+  const syncLabel = sync.phase === 'syncing'
+    ? 'Syncing account…'
+    : sync.phase === 'error'
+      ? 'Account sync failed'
+      : formatSyncLabel(sync.lastSyncedAt);
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -42,13 +59,19 @@ export const SettingsHome: React.FC<SettingsHomeProps> = ({ onSelectCategory }) 
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-full bg-[var(--az-accent)]/20 border border-[var(--az-accent)]/40 flex items-center justify-center text-[var(--az-accent-bright)] font-semibold text-sm shrink-0">
-              {user ? (user.displayName ? user.displayName.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()) : <User size={16} />}
+            <div className="w-9 h-9 rounded-full bg-[var(--az-accent)]/20 border border-[var(--az-accent)]/40 flex items-center justify-center text-[var(--az-accent-bright)] font-semibold text-sm shrink-0 overflow-hidden">
+              {user ? (
+                user.photoUrl ? (
+                  <img src={user.photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  (user.displayName ? user.displayName.charAt(0) : user.email.charAt(0)).toUpperCase()
+                )
+              ) : <User size={16} />}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-[13px] font-medium text-white/90 truncate">
-                  {user ? (user.displayName || user.email) : 'Guest Visitor'}
+                  {user ? (user.displayName || user.email) : 'Not signed in'}
                 </span>
                 {user ? (
                   user.emailVerified ? (
@@ -64,20 +87,43 @@ export const SettingsHome: React.FC<SettingsHomeProps> = ({ onSelectCategory }) 
                       <AlertTriangle size={10} /> Unverified
                     </button>
                   )
-                ) : (
-                  <span className="text-[10px] font-mono text-white/40 bg-white/[0.06] px-1.5 py-0.5 rounded border border-white/[0.06]">
-                    Anonymous
-                  </span>
-                )}
+                ) : null}
               </div>
               <p className="text-[11px] text-white/40 truncate mt-0.5">
-                {user ? user.email : 'Local-only workspace (session not synced)'}
+                {user ? user.email : 'Sign in to sync your workspace'}
               </p>
+              {user && (
+                <div
+                  className="mt-1.5 flex items-center gap-1.5 text-[10px] min-w-0"
+                  aria-live="polite"
+                  title={sync.error || undefined}
+                >
+                  {sync.phase === 'syncing' ? (
+                    <Loader2 size={11} className="animate-spin text-[var(--az-accent-bright)] shrink-0" />
+                  ) : sync.phase === 'error' ? (
+                    <CloudOff size={11} className="text-[var(--az-warning)] shrink-0" />
+                  ) : (
+                    <Cloud size={11} className="text-[var(--az-success)] shrink-0" />
+                  )}
+                  <span className={`truncate ${sync.phase === 'error' ? 'text-[var(--az-warning)]' : 'text-white/40'}`}>
+                    {syncLabel}
+                  </span>
+                  {sync.phase === 'error' && (
+                    <button
+                      type="button"
+                      onClick={() => retryAccountSync()}
+                      className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--az-accent-bright)] hover:underline cursor-pointer shrink-0"
+                    >
+                      <RefreshCw size={10} /> Retry
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           <div>
-            {user && !isAnonymous ? (
+            {user ? (
               <button
                 type="button"
                 onClick={() => logout()}

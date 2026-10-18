@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { signInForE2E } from './_auth';
 
 const SEED_TREE = JSON.stringify([
   {
@@ -11,6 +12,11 @@ const SEED_TREE = JSON.stringify([
     ],
   },
 ]);
+
+test.beforeEach(async ({ page }) => {
+  // Firebase identity is required (no bypass). Skips without real credentials.
+  await signInForE2E(page);
+});
 
 test('repro: /// literal fast path via real keystrokes', async ({ page }) => {
   const logs: string[] = [];

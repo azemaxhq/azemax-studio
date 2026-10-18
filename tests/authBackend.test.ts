@@ -1,23 +1,25 @@
 /**
- * Backend tests for Firebase Authentication synchronization, user data model,
- * session management, authorization middleware, and the /api/auth surface.
+ * Backend tests for Firebase Authentication synchronization, the user data
+ * model, authorization middleware, and the /api/auth surface.
+ *
+ * Firebase Authentication is the SOLE identity provider: there is no local
+ * login/signup, no custom session token, and no server session. A Firebase ID
+ * token is presented as `Authorization: Bearer <idToken>` (or in the /sync
+ * body) and verified with the Firebase Admin SDK.
  *
  * Real Firebase is NEVER contacted: a deterministic verifier is injected via
  * the firebaseAdmin test seam, so the HTTP layer, middleware, and user-sync
  * logic run as in production but with controlled token claims. The database is
- * a throwaway temp file (never the development/production DB), and DISABLE_AUTH
- * is forced off so the middleware tests exercise the real code path rather than
- * the local-dev bypass from .env.
+ * a throwaway temp file (never the development/production DB).
  *
  * Covered:
  *  - syncFirebaseUser: create, idempotent repeat, email-link, verify upgrade,
- *    duplicate prevention, no plaintext secrets, no internal UID leakage
- *  - session lifecycle (create / verify / revoke) with schema-v2 fields
- *  - requireVerifiedEmail gating
+ *    duplicate prevention, pre-hijack defence, no plaintext secrets, no UID leak
+ *  - requireAuth / requireVerifiedEmail gating (401 vs 403)
  *  - Firebase Admin: configured state + classified token failures
  *  - POST /api/auth/sync (missing / invalid / expired / outage / no-email /
- *    valid), cookie issuance, idempotency, and raw ID-token bearer fallback
- *  - GET /api/auth/me, POST /api/auth/logout (+ revocation)
+ *    valid), idempotency, and NO server session issuance
+ *  - GET /api/auth/me (Bearer ID token), POST /api/auth/logout (no-op)
  *  - per-IP rate limiting on the auth surface, safe error responses
  *
  * Run with: npm test
@@ -32,12 +34,9 @@ import fs from 'node:fs';
 // import time). dotenv never overrides pre-set vars, so these win over .env.
 // ---------------------------------------------------------------------------
 process.env.NODE_ENV = 'test';
-process.env.DISABLE_AUTH = 'false';
-process.env.PUBLIC_BETA = 'true';
 // Above the number of functional requests this suite makes, so only the
 // dedicated rate-limit test (a separate app + request loop) trips 429.
 process.env.AUTH_RATE_PER_MINUTE = '30';
-process.env.AUTH_SECRET = 'test-secret-0123456789abcdef-test-secret';
 process.env.FIREBASE_PROJECT_ID = 'azemax-auth-test';
 delete process.env.FIREBASE_CLIENT_EMAIL;
 delete process.env.FIREBASE_PRIVATE_KEY;
@@ -66,11 +65,7 @@ const UNVERIFIED_CLAIMS = {
 };
 
 fb.__setVerifyIdTokenForTests(async (idToken: string) => {
-    // The request middleware only attempts Firebase verification for
-    // JWT-shaped tokens (three dot-separated segments) — real Firebase ID
-    // tokens always are. The auth routes call the verifier directly, so they
-    // accept any opaque test token.
-    if (idToken === 'jwt.verified.sig' || idToken === 'id-token-verified') return { ...VERIFIED_CLAIMS };
+    if (idToken === 'id-token-verified') return { ...VERIFIED_CLAIMS };
     if (idToken === 'id-token-unverified') return { ...UNVERIFIED_CLAIMS };
     if (idToken === 'id-token-no-email') return { uid: 'uid-no-email', email_verified: false, firebase: { sign_in_provider: 'password' } };
     if (idToken === 'id-token-conflict') {
@@ -107,19 +102,11 @@ fb.__setVerifyIdTokenForTests(async (idToken: string) => {
 
 const svcMod = await import('../server/services/auth/authService.cjs');
 const svc = (svcMod as unknown as { default?: typeof svcMod }).default ?? svcMod;
-const {
-    syncFirebaseUser,
-    findUserByFirebaseUid,
-    findUserById,
-    ensureDevUser,
-    createSession,
-    verifySession,
-    revokeSession,
-} = svc;
+const { syncFirebaseUser, findUserByFirebaseUid, findUserById } = svc;
 
 const authMod = await import('../server/middleware/auth.cjs');
 const auth = (authMod as unknown as { default?: typeof authMod }).default ?? authMod;
-const { requireVerifiedEmail } = auth;
+const { requireAuth, requireVerifiedEmail } = auth;
 
 const dbMod = await import('../server/db/index.cjs');
 const db = (dbMod as unknown as { default?: typeof dbMod }).default ?? dbMod;
@@ -136,7 +123,7 @@ const rawDb = (db as unknown as {
 // Firebase Admin Service
 // ---------------------------------------------------------------------------
 {
-    check('firebaseAdmin: project id present -> configured', fb.isFirebaseConfigured() === true);
+    check('firebaseAdmin: verifier seam -> configured', fb.isFirebaseConfigured() === true);
 
     const decoded = await fb.verifyIdToken('id-token-verified');
     check('firebaseAdmin: returns decoded claims', decoded.uid === VERIFIED_CLAIMS.uid && decoded.email === VERIFIED_CLAIMS.email);
@@ -291,15 +278,6 @@ function countByUid(uid: string): number {
 }
 
 {
-    // The development auth-bypass identity is NOT a real account and can never
-    // receive mail — it must always report as verified so the UI never prompts
-    // for verification of its fixture address (local-dev@azemax.local).
-    const dev = ensureDevUser();
-    check('dev bypass identity is id local-dev', dev.id === 'local-dev');
-    check('dev bypass identity reports emailVerified (no bogus verification prompt)', dev.emailVerified === true);
-}
-
-{
     // Concurrent-style duplicate prevention: many syncs in one tick converge on
     // one row (BEGIN IMMEDIATE serializes the writes).
     const results = await Promise.all(
@@ -324,31 +302,7 @@ function countByUid(uid: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Session lifecycle with schema-v2 fields
-// ---------------------------------------------------------------------------
-{
-    const testUser = syncFirebaseUser({
-        uid: `session-uid-${Date.now()}`,
-        email: `session-${Date.now()}@example.com`,
-        displayName: 'Session User',
-        emailVerified: true,
-        providerId: 'google.com',
-    });
-
-    const { token } = createSession(testUser.id, '127.0.0.1');
-    check('creates session token', Boolean(token && token.length > 20));
-
-    const verifiedUser = verifySession(token);
-    check('verifySession returns public user', Boolean(verifiedUser && verifiedUser.id === testUser.id));
-    check('verifySession preserves emailVerified', verifiedUser?.emailVerified === true);
-    check('verifySession preserves provider', verifiedUser?.provider === 'google.com');
-
-    revokeSession(token);
-    check('verifySession returns null after revokeSession', verifySession(token) === null);
-}
-
-// ---------------------------------------------------------------------------
-// requireVerifiedEmail Middleware
+// Authorization middleware (fail closed)
 // ---------------------------------------------------------------------------
 function mockRes() {
     const res = {
@@ -361,25 +315,31 @@ function mockRes() {
 }
 
 {
-    let nextCalled = false;
-    requireVerifiedEmail({ user: { id: 'u1', emailVerified: true } } as never, mockRes() as never, () => { nextCalled = true; });
-    check('requireVerifiedEmail allows verified user', nextCalled === true);
+    let next = false;
+    const res = mockRes();
+    requireAuth({ user: null } as never, res as never, () => { next = true; });
+    check('requireAuth rejects unauthenticated with 401', res.statusCode === 401 && !next);
+
+    let next2 = false;
+    requireAuth({ user: { id: 'u1', emailVerified: true } } as never, mockRes() as never, () => { next2 = true; });
+    check('requireAuth allows an authenticated user', next2 === true);
+}
+
+{
+    let next = false;
+    requireVerifiedEmail({ user: { id: 'u1', emailVerified: true } } as never, mockRes() as never, () => { next = true; });
+    check('requireVerifiedEmail allows verified user', next === true);
 
     let next2 = false;
     const res2 = mockRes();
-    requireVerifiedEmail({ user: { id: 'u2', emailVerified: false } } as never, res2 as never, () => { next2 = true; });
+    requireVerifiedEmail({ user: { id: 'u2', email: 'pending@example.com', emailVerified: false } } as never, res2 as never, () => { next2 = true; });
     check('requireVerifiedEmail rejects unverified with 403', res2.statusCode === 403 && !next2);
     check('requireVerifiedEmail returns unverified code', (res2.body as { code?: string })?.code === 'auth/unverified-email');
 
     let next3 = false;
     const res3 = mockRes();
-    requireVerifiedEmail({ user: { id: 'anon:1.2.3.4', email: null, emailVerified: false } } as never, res3 as never, () => { next3 = true; });
-    check('requireVerifiedEmail rejects anonymous with 403', res3.statusCode === 403 && !next3);
-
-    let next4 = false;
-    const res4 = mockRes();
-    requireVerifiedEmail({ user: null } as never, res4 as never, () => { next4 = true; });
-    check('requireVerifiedEmail rejects unauthenticated with 401', res4.statusCode === 401 && !next4);
+    requireVerifiedEmail({ user: null } as never, res3 as never, () => { next3 = true; });
+    check('requireVerifiedEmail rejects unauthenticated with 401', res3.statusCode === 401 && !next3);
 }
 
 // ---------------------------------------------------------------------------
@@ -435,12 +395,10 @@ const A = await listen(createApp());
 
     const ok = await call(A.base, 'POST', '/api/auth/sync', { idToken: 'id-token-verified' });
     const okUser = (ok.json as { user?: { id: string; email: string; emailVerified: boolean; provider: string } }).user;
-    const sessionToken = (ok.json as { token?: string }).token;
     check('sync with valid token -> 200', ok.status === 200);
     check('sync returns normalized user', okUser?.email === 'verified.user@example.com' && okUser?.emailVerified === true);
-    check('sync returns a session token', typeof sessionToken === 'string' && (sessionToken?.length ?? 0) > 20);
-    check('sync sets an httpOnly session cookie',
-        /azemax_session=/.test(ok.headers.get('set-cookie') || '') && /HttpOnly/i.test(ok.headers.get('set-cookie') || ''));
+    check('sync issues NO server session token (Firebase owns the credential)',
+        !('token' in (ok.json as object)) && !(ok.headers.get('set-cookie') || '').includes('azemax_session'));
 
     // Idempotent: a second sync for the same identity returns the same user.
     const ok2 = await call(A.base, 'POST', '/api/auth/sync', { idToken: 'id-token-verified' });
@@ -463,23 +421,22 @@ const A = await listen(createApp());
     check('409 response leaks no internal detail',
         !JSON.stringify(conflictRes.json).includes('scrypt') && !('stack' in (conflictRes.json as object)));
 
-    const me = await call(A.base, 'GET', '/api/auth/me', undefined, sessionToken);
-    check('/me with session -> 200', me.status === 200);
+    const me = await call(A.base, 'GET', '/api/auth/me', undefined, 'id-token-verified');
+    check('/me with a Firebase ID token -> 200', me.status === 200);
     check('/me returns the synced user', (me.json as { user?: { email: string } }).user?.email === 'verified.user@example.com');
 
-    const meAnon = await call(A.base, 'GET', '/api/auth/me');
-    check('/me without session -> 401', meAnon.status === 401);
+    const meNoAuth = await call(A.base, 'GET', '/api/auth/me');
+    check('/me without a token -> 401', meNoAuth.status === 401);
 
-    // Firebase ID token used directly as a Bearer credential (cross-site
-    // fallback path through authenticateRequest). Real ID tokens are JWTs.
-    const meFirebase = await call(A.base, 'GET', '/api/auth/me', undefined, 'jwt.verified.sig');
-    check('/me accepts a raw Firebase ID token (middleware verify+sync)', meFirebase.status === 200);
+    const meBad = await call(A.base, 'GET', '/api/auth/me', undefined, 'garbage');
+    check('/me with an invalid token -> 401', meBad.status === 401);
 
-    // Logout revokes the server session; the token must stop working.
-    const out = await call(A.base, 'POST', '/api/auth/logout', undefined, sessionToken);
-    check('logout -> 200', out.status === 200);
-    const meAfter = await call(A.base, 'GET', '/api/auth/me', undefined, sessionToken);
-    check('session revoked after logout -> 401', meAfter.status === 401);
+    // Sign-out is a client-side Firebase operation; the endpoint is an
+    // authenticated-free acknowledgement and holds no server session to revoke.
+    const out = await call(A.base, 'POST', '/api/auth/logout');
+    check('logout -> 200 (client-side sign-out acknowledgement)', out.status === 200);
+    const meAfter = await call(A.base, 'GET', '/api/auth/me', undefined, 'id-token-verified');
+    check('/me still valid after logout (no server session to revoke)', meAfter.status === 200);
 }
 
 // ---------------------------------------------------------------------------

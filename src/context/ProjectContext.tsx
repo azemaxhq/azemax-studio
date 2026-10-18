@@ -3,8 +3,17 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { initialFileTree, type FileNode } from '../utils/mockFileSystem';
 import { ROOT_NODE_ID } from '../utils/mockFileSystem';
 import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
-import { nsGetItem, nsSetItem, nsRemoveItem, namespacedKey } from '../utils/userStorage';
-import { getSettings } from '../settings/settingsStore';
+import { nsGetItem, nsSetItem, nsRemoveItem, namespacedKey, getStorageGeneration } from '../utils/userStorage';
+import { getSettings, useSettingsStore } from '../settings/settingsStore';
+import { useAuthOptional } from './AuthContext';
+import { useAccountWorkspaceSync, type WorkspaceCloudSync } from '../hooks/useAccountWorkspaceSync';
+import {
+    FILE_TREE_KEY as STORAGE_KEY,
+    LEGACY_FILE_TREE_KEY as LEGACY_STORAGE_KEY,
+    loadWorkspaceRecord,
+    saveWorkspaceRecord,
+    type WorkspaceRecord,
+} from '../core/workspace/workspaceStorage';
 import {
     createFile as opCreateFile,
     createFolder as opCreateFolder,
@@ -33,8 +42,6 @@ import { noopResult } from '../core/filesystem';
 import { findNodeById, resolvePath, isDescendantOf, findChildByName, pathOf } from '../utils/safeTree';
 import { setActiveEditor as syncActiveEditor, getActiveEditor as getSyncedEditor, getActiveMonaco as getSyncedMonaco, updateActiveFileMeta } from '../core/editor/activeEditorStore';
 
-const STORAGE_KEY = 'azemax-file-tree';
-const LEGACY_STORAGE_KEY = 'deepcontext-file-tree';
 const ACTIVE_FILE_KEY = 'azemax-active-file-id';
 const LEGACY_ACTIVE_FILE_KEY = 'deepcontext-active-file-id';
 const EXPANDED_KEY = 'azemax-expanded-folders';
@@ -306,47 +313,25 @@ const WorkspaceStateContext = createContext<{
     metadata: WorkspaceMetadata | null;
     projectName: string | null;
     projectType: string | null;
+    cloudSync: WorkspaceCloudSync;
 } | undefined>(undefined);
 
-// Persisted workspace record (stable identity + provenance). Created ONLY
-// when a real project exists — never for the empty state — and read back on
-// restore so reloads keep the same id. Unrelated keys are untouched.
-const WORKSPACE_RECORD_KEY = 'azemax-workspace-record';
-const LEGACY_WORKSPACE_RECORD_KEY = 'deepcontext-workspace-record';
-interface WorkspaceRecord {
-    id: string;
-    createdAt: number;
-    origin: WorkspaceOrigin;
-}
-
-const loadWorkspaceRecord = (): WorkspaceRecord | null => {
-    try {
-        const saved = nsGetItem(WORKSPACE_RECORD_KEY, [LEGACY_WORKSPACE_RECORD_KEY]);
-        if (!saved) return null;
-        const parsed = JSON.parse(saved) as Partial<WorkspaceRecord>;
-        if (typeof parsed.id === 'string' && parsed.id && typeof parsed.createdAt === 'number') {
-            return {
-                id: parsed.id,
-                createdAt: parsed.createdAt,
-                origin: parsed.origin === 'blank' || parsed.origin === 'template' || parsed.origin === 'import' || parsed.origin === 'restored' ? parsed.origin : 'unknown',
-            };
-        }
-    } catch { /* corrupt record is dropped; identity is re-created, data untouched */ }
-    return null;
-};
-
-const saveWorkspaceRecord = (record: WorkspaceRecord) => {
-    try {
-        nsSetItem(WORKSPACE_RECORD_KEY, JSON.stringify(record));
-    } catch { /* best-effort */ }
-};
+// Persisted workspace record (stable identity + provenance) lives in
+// core/workspace/workspaceStorage so account sync and the runtime agree on the
+// schema and per-user keys.
 
 // The initial load is computed once and shared across the (possibly twice-run)
 // StrictMode initializers, so the repair + immediate-persist boundary is hit
-// exactly once per app boot.
+// exactly once per app boot. The cache is invalidated whenever the signed-in
+// account changes, so it can never hand one user's tree to another.
 let initialLoadCache: RepairResult | null = null;
+let initialLoadCacheKey = '';
 const getInitialLoad = (): RepairResult => {
-    if (!initialLoadCache) initialLoadCache = loadFileTree();
+    const cacheKey = `${getStorageGeneration()}`;
+    if (!initialLoadCache || initialLoadCacheKey !== cacheKey) {
+        initialLoadCache = loadFileTree();
+        initialLoadCacheKey = cacheKey;
+    }
     return initialLoadCache;
 };
 
@@ -369,6 +354,8 @@ const useTreeMutation = (
     }, [latestTreeRef, setFileTree]);
 
 export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ children }) => {
+    const auth = useAuthOptional();
+    const saveWorkspaceState = useSettingsStore((s) => s.privacy.saveWorkspaceState);
     const initial = getInitialLoad();
     const [fileTree, setFileTree] = useState<FileNode[]>(initial.tree);
     // Bootstrapping phase: the tree itself loads synchronously above, but
@@ -390,14 +377,37 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     // Whether the boot tree already held real content (restored workspace).
     const bootContentRef = useRef(initial.tree.some((n) => n.id !== ROOT_NODE_ID));
     // Wall-clock of the last committed tree mutation (effect, never render).
-    const [workspaceUpdatedAt, setWorkspaceUpdatedAt] = useState<number>(() => Date.now());
+    // Seeded from the persisted record so a reload compares against the cloud
+    // project honestly instead of always looking "newer" than it is.
+    const [workspaceUpdatedAt, setWorkspaceUpdatedAt] = useState<number>(() => loadWorkspaceRecord()?.updatedAt ?? 0);
     const firstTreeSeenRef = useRef(false);
+    const remoteApplyRef = useRef<{ json: string; updatedAt: number } | null>(null);
     useEffect(() => {
         if (!firstTreeSeenRef.current) {
             firstTreeSeenRef.current = true;
             return;
         }
-        setWorkspaceUpdatedAt(Date.now());
+        // A tree just restored from the cloud is not a local mutation; keep the
+        // server timestamp so the next reconciliation does not think this device
+        // is newer merely because it rendered the pull. Consume the marker even
+        // if the content did not change, otherwise a later identical tree could
+        // be misclassified as a remote application.
+        const remoteApply = remoteApplyRef.current;
+        if (remoteApply) {
+            remoteApplyRef.current = null;
+            if (JSON.stringify(fileTree) === remoteApply.json) {
+                setWorkspaceUpdatedAt(remoteApply.updatedAt);
+                return;
+            }
+        }
+        const now = Date.now();
+        setWorkspaceUpdatedAt(now);
+        setMetaRecord((prev) => {
+            if (!prev) return prev;
+            const next = { ...prev, updatedAt: now };
+            saveWorkspaceRecord(next);
+            return next;
+        });
     }, [fileTree]);
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
         try {
@@ -502,11 +512,12 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
         const record: WorkspaceRecord = {
             id: generateWorkspaceId(),
             createdAt: Date.now(),
+            updatedAt: workspaceUpdatedAt || Date.now(),
             origin: originRef.current !== 'unknown' ? originRef.current : (bootContentRef.current ? 'restored' : 'unknown'),
         };
         saveWorkspaceRecord(record);
         setMetaRecord(record);
-    }, [hasProject, metaRecord]);
+    }, [hasProject, metaRecord, workspaceUpdatedAt]);
 
     // Human-readable project name: the single top-level entry's name. With
     // several top-level roots there is no single project name — report null.
@@ -563,14 +574,55 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
                 displayName: projectName,
                 origin: metaRecord.origin,
                 createdAt: metaRecord.createdAt,
-                updatedAt: metaRecord.createdAt,
+                updatedAt: workspaceUpdatedAt || metaRecord.updatedAt || metaRecord.createdAt,
             },
             workspaceUpdatedAt,
         );
     }, [hasProject, metaRecord, projectName, workspaceUpdatedAt]);
+
+    // Apply an authoritative cloud tree. The hook has already set its
+    // last-synced fingerprint, so this state update will not echo back as a new
+    // local mutation. Active/open file ids are re-validated against the tree.
+    const applyRemoteWorkspace = useCallback((nextTree: FileNode[], updatedAt: number) => {
+        // Record the applied payload unconditionally. Even when the cloud tree
+        // equals the local one, rendering it must not advance the local edit
+        // timestamp and make this device look newer than the server.
+        remoteApplyRef.current = { json: JSON.stringify(nextTree), updatedAt };
+        latestTreeRef.current = nextTree;
+        setFileTree(nextTree);
+        setWorkspaceUpdatedAt(updatedAt);
+        setMetaRecord((prev) => {
+            if (!prev) return prev;
+            const next = { ...prev, updatedAt };
+            saveWorkspaceRecord(next);
+            return next;
+        });
+
+        const active = stateRef.current.activeFile;
+        if (active && !findNodeById(nextTree, active.id)) {
+            setActiveFileState(null);
+            setActiveFileMeta(null);
+            nsRemoveItem(ACTIVE_FILE_KEY);
+        }
+        setOpenFileIds((prev) => prev.filter((id) => {
+            const node = findNodeById(nextTree, id);
+            return Boolean(node && node.type === 'file');
+        }));
+    }, []);
+
+    const cloudSync = useAccountWorkspaceSync({
+        userId: auth?.user?.id ?? null,
+        enabled: Boolean(auth?.user?.id) && saveWorkspaceState,
+        tree: fileTree,
+        record: metaRecord,
+        hasProject,
+        preferRemote: initial.repaired && initial.tree.length === 0,
+        onRemoteWorkspace: applyRemoteWorkspace,
+    });
+
     const workspaceValue = useMemo(
-        () => ({ state: workspaceState, status, metadata, projectName, projectType }),
-        [workspaceState, status, metadata, projectName, projectType],
+        () => ({ state: workspaceState, status, metadata, projectName, projectType, cloudSync }),
+        [workspaceState, status, metadata, projectName, projectType, cloudSync],
     );
 
     const applyTreeMutation = useTreeMutation(latestTreeRef, setFileTree);
@@ -579,10 +631,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = memo(({ childr
     // persistence is disabled in Privacy settings). fileTree only ever contains
     // validated, structurally sound data — expansion/selection never touch it.
     useEffect(() => {
-        if (getSettings().privacy.saveWorkspaceState) {
+        if (saveWorkspaceState) {
             saveFileTree(fileTree);
         }
-    }, [fileTree]);
+    }, [fileTree, saveWorkspaceState]);
 
     // Persist expanded folders so collapse/expand survives refresh and never appears stuck
     useEffect(() => {

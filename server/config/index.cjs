@@ -11,12 +11,6 @@ module.exports = {
     AI_MODELS: env.AI_MODELS,
     CORS_ORIGIN: env.CORS_ORIGIN,
     ALLOW_LOCAL_EXECUTION: env.ALLOW_LOCAL_EXECUTION,
-    // Re-exported for new code (auth, limits, storage).
-    DISABLE_AUTH: env.DISABLE_AUTH,
-    ALLOW_PUBLIC_BYPASS: env.ALLOW_PUBLIC_BYPASS,
-    PUBLIC_BETA: env.PUBLIC_BETA,
-    AUTH_SECRET: env.AUTH_SECRET,
-    FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || '',
     CORS_LIST: env.CORS_LIST,
     ALLOW_SHELL: env.ALLOW_SHELL,
     LIMITS: env.LIMITS,

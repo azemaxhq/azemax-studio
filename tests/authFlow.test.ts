@@ -15,6 +15,7 @@ import { check, finish } from './_harness';
 import {
     AUTH_ROUTES,
     DEFAULT_AUTH_REDIRECT,
+    isAppRoutePath,
     isAuthRoutePath,
     readRedirectParam,
     safeRedirectTarget,
@@ -45,6 +46,20 @@ import { mapFirebaseError } from '../src/core/auth/firebase';
     check('routes: /signup/extra is NOT an auth route', isAuthRoutePath('/signup/extra') === false);
     check('routes: non-string is safe', isAuthRoutePath(undefined as unknown as string) === false);
     check('routes: catalog is non-empty', AUTH_ROUTES.length >= 5);
+}
+
+// ---------------------------------------------------------------------------
+// Workspace route classification (isAppRoutePath)
+// ---------------------------------------------------------------------------
+{
+    check('workspace: /app is the workspace', isAppRoutePath('/app') === true);
+    check('workspace: /app/ is the workspace', isAppRoutePath('/app/') === true);
+    check('workspace: /app/file is the workspace', isAppRoutePath('/app/notes.md') === true);
+    check('workspace: / is the landing page', isAppRoutePath('/') === false);
+    check('workspace: /login is not the workspace', isAppRoutePath('/login') === false);
+    check('workspace: /application is NOT the workspace (segment-exact)', isAppRoutePath('/application') === false);
+    check('workspace: /ap is the landing page', isAppRoutePath('/ap') === false);
+    check('workspace: non-string is safe', isAppRoutePath(undefined as unknown as string) === false);
 }
 
 // ---------------------------------------------------------------------------
