@@ -15,7 +15,7 @@ services:
       - key: PORT
         value: 10000
       - key: CORS_ORIGIN
-        sync: false
+        value: https://azemax-studio.vercel.app
       # --- Firebase Admin (REQUIRED in production) --------------------------
       # Firebase Authentication is the ONLY identity provider. The server
       # refuses to boot in production unless it can verify identity, so these

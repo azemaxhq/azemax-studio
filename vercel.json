@@ -8,6 +8,9 @@
       "destination": "/index.html"
     }
   ],
+  "env": {
+    "VITE_API_URL": "https://azemax-backend-vzox.onrender.com/api"
+  },
   "headers": [
     {
       "source": "/assets/(.*)",
