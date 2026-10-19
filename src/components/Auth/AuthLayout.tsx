@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { BRAND } from '../../core/branding';
 import { LEGAL_PATHS } from '../Legal/legalMeta';
@@ -34,6 +34,21 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
     headline,
     subheadline,
 }) => {
+    // Prevent indexing of auth pages
+    useEffect(() => {
+        const head = document.head;
+        let robots = head.querySelector('meta[name="robots"]');
+        if (!robots) {
+            robots = document.createElement('meta');
+            robots.setAttribute('name', 'robots');
+            head.appendChild(robots);
+        }
+        robots.setAttribute('content', 'noindex, nofollow');
+        return () => {
+            robots.setAttribute('content', 'index, follow');
+        };
+    }, []);
+
     return (
         <div className="az-auth flex h-full w-full bg-[var(--az-bg)] text-[var(--az-text)]">
             {/* ---------------------------------------------------- brand column */}

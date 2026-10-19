@@ -1,0 +1,29 @@
+{
+  "name": "Azemax",
+  "short_name": "Azemax",
+  "description": "Build, code, and create with Azemax Studio, an AI-powered coding workspace designed to help developers turn ideas into working software.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080F1C",
+  "theme_color": "#080F1C",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/img/azemax_logo_wbg.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["developer", "productivity", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Open Workspace",
+      "short_name": "Workspace",
+      "description": "Open the Azemax coding workspace",
+      "url": "/app",
+      "icons": [{ "src": "/img/azemax_logo_wbg.png", "sizes": "192x192" }]
+    }
+  ]
+}

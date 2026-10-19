@@ -1,0 +1,19 @@
+# Azemax robots.txt
+# Allow all crawlers to access public pages
+User-agent: *
+Allow: /
+
+# Disallow private/auth routes
+Disallow: /app
+Disallow: /app/
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot-password
+Disallow: /verify-email
+Disallow: /auth/callback
+
+# Disallow API endpoints
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://www.azemax.com/sitemap.xml

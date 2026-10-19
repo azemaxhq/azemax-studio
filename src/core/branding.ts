@@ -6,10 +6,10 @@ import azemaxLogoSrc from '../assets/azemax_logo_wbg.png';
 export const BRAND = {
   name: 'Azemax',
   version: '1.0.0-beta',
-  tagline: 'Fast, intelligent developer environment',
+  tagline: 'Build beyond limits.',
   logoSrc: azemaxLogoSrc,
   logoPublicPath: '/img/azemax_logo_wbg.png',
-  website: 'https://azemax.dev',
+  website: 'https://www.azemax.com',
 } as const;
 
 export const PRODUCT_NAME = BRAND.name;

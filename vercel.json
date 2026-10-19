@@ -8,6 +8,19 @@
       "destination": "/index.html"
     }
   ],
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "azemax.com"
+        }
+      ],
+      "destination": "https://www.azemax.com/$1",
+      "permanent": true
+    }
+  ],
   "env": {
     "VITE_API_URL": "https://azemax-backend-vzox.onrender.com/api"
   },

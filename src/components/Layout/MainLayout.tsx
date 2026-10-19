@@ -1,4 +1,4 @@
-import React, { lazy } from 'react';
+import React, { lazy, useEffect } from 'react';
 import { Layers, BookOpen, Settings, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '../Sidebar/Sidebar';
@@ -44,6 +44,21 @@ export const MainLayout: React.FC = () => {
     // so hook order is identical on every render.
     const { state } = useWorkspaceState();
     const hasProject = state !== 'no-project';
+
+    // Prevent indexing of private workspace routes
+    useEffect(() => {
+        const head = document.head;
+        let robots = head.querySelector('meta[name="robots"]');
+        if (!robots) {
+            robots = document.createElement('meta');
+            robots.setAttribute('name', 'robots');
+            head.appendChild(robots);
+        }
+        robots.setAttribute('content', 'noindex, nofollow');
+        return () => {
+            robots.setAttribute('content', 'index, follow');
+        };
+    }, []);
 
     // Developer diagnostics overlay (gated by the Advanced setting)
     const developerDiagnostics = useSettingsSelector((s) => s.advanced.developerDiagnostics);

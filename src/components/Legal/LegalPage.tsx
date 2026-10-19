@@ -4,6 +4,7 @@ import { navigate } from '../../utils/appRouter';
 import {
     LEGAL,
     LEGAL_PATHS,
+    LEGAL_ABSOLUTE,
     type LegalBlock,
     type LegalBullet,
     type LegalDocument,
@@ -321,6 +322,12 @@ function LegalFooter({ doc }: { doc: LegalDocument }) {
  */
 export const LegalPage: React.FC<{ path: string }> = ({ path }) => {
     const doc = useMemo(() => legalDocumentForPath(path) ?? null, [path]);
+    const isPrivacy = path === '/privacy';
+    const canonicalUrl = isPrivacy ? LEGAL_ABSOLUTE.privacy : LEGAL_ABSOLUTE.terms;
+    const ogTitle = isPrivacy ? 'Privacy Policy — Azemax Studio' : 'Terms of Service — Azemax Studio';
+    const ogDescription = isPrivacy
+        ? 'How Azemax Studio collects, uses, and protects your data. Transparent privacy practices for developers.'
+        : 'Terms of Service for Azemax Studio. Your rights and responsibilities when using the AI-powered code editor.';
 
     // The IDE shell locks page scroll (body overflow:hidden, #root 100dvh).
     // Legal pages are long documents, so opt into normal document scrolling
@@ -330,6 +337,92 @@ export const LegalPage: React.FC<{ path: string }> = ({ path }) => {
         html.classList.add('az-doc-active');
         return () => html.classList.remove('az-doc-active');
     }, []);
+
+    // Inject SEO metadata for legal pages
+    useLayoutEffect(() => {
+        if (!doc) return;
+        const head = document.head;
+        // Canonical link
+        let canonical = head.querySelector('link[rel="canonical"]');
+        if (!canonical) {
+            canonical = document.createElement('link');
+            canonical.setAttribute('rel', 'canonical');
+            head.appendChild(canonical);
+        }
+        canonical.setAttribute('href', canonicalUrl);
+        // Meta description
+        let metaDesc = head.querySelector('meta[name="description"]');
+        if (!metaDesc) {
+            metaDesc = document.createElement('meta');
+            metaDesc.setAttribute('name', 'description');
+            head.appendChild(metaDesc);
+        }
+        metaDesc.setAttribute('content', doc.intro);
+        // Robots: index, follow (legal pages are public and should be discoverable)
+        let robots = head.querySelector('meta[name="robots"]');
+        if (!robots) {
+            robots = document.createElement('meta');
+            robots.setAttribute('name', 'robots');
+            head.appendChild(robots);
+        }
+        robots.setAttribute('content', 'index, follow');
+        // Open Graph
+        let ogTitleEl = head.querySelector('meta[property="og:title"]');
+        if (!ogTitleEl) {
+            ogTitleEl = document.createElement('meta');
+            ogTitleEl.setAttribute('property', 'og:title');
+            head.appendChild(ogTitleEl);
+        }
+        ogTitleEl.setAttribute('content', ogTitle);
+        let ogDescEl = head.querySelector('meta[property="og:description"]');
+        if (!ogDescEl) {
+            ogDescEl = document.createElement('meta');
+            ogDescEl.setAttribute('property', 'og:description');
+            head.appendChild(ogDescEl);
+        }
+        ogDescEl.setAttribute('content', ogDescription);
+        let ogUrlEl = head.querySelector('meta[property="og:url"]');
+        if (!ogUrlEl) {
+            ogUrlEl = document.createElement('meta');
+            ogUrlEl.setAttribute('property', 'og:url');
+            head.appendChild(ogUrlEl);
+        }
+        ogUrlEl.setAttribute('content', canonicalUrl);
+        let ogTypeEl = head.querySelector('meta[property="og:type"]');
+        if (!ogTypeEl) {
+            ogTypeEl = document.createElement('meta');
+            ogTypeEl.setAttribute('property', 'og:type');
+            head.appendChild(ogTypeEl);
+        }
+        ogTypeEl.setAttribute('content', 'article');
+        // Twitter
+        let twitterCard = head.querySelector('meta[name="twitter:card"]');
+        if (!twitterCard) {
+            twitterCard = document.createElement('meta');
+            twitterCard.setAttribute('name', 'twitter:card');
+            head.appendChild(twitterCard);
+        }
+        twitterCard.setAttribute('content', 'summary');
+        let twitterTitle = head.querySelector('meta[name="twitter:title"]');
+        if (!twitterTitle) {
+            twitterTitle = document.createElement('meta');
+            twitterTitle.setAttribute('name', 'twitter:title');
+            head.appendChild(twitterTitle);
+        }
+        twitterTitle.setAttribute('content', ogTitle);
+        let twitterDesc = head.querySelector('meta[name="twitter:description"]');
+        if (!twitterDesc) {
+            twitterDesc = document.createElement('meta');
+            twitterDesc.setAttribute('name', 'twitter:description');
+            head.appendChild(twitterDesc);
+        }
+        twitterDesc.setAttribute('content', ogDescription);
+
+        return () => {
+            // Cleanup: restore original meta tags if needed
+            // We don't remove them to avoid flicker; index.html defaults apply on unmount
+        };
+    }, [doc, path, canonicalUrl, ogTitle, ogDescription]);
 
     useEffect(() => {
         if (!doc) return;
