@@ -1,8 +1,16 @@
-import React, { Suspense, lazy, memo, useLayoutEffect } from 'react';
+import React, { Suspense, lazy, memo, useLayoutEffect, useEffect } from 'react';
 import './Landing.css';
 import { LandingNav } from './Navigation/LandingNav';
 import { Hero } from './Hero/Hero';
 import { LandingFooter } from './Footer/LandingFooter';
+
+const WEBSITE_SCHEMA = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'Azemax',
+  alternateName: ['Azemax', 'azemax.com'],
+  url: 'https://www.azemax.com/',
+};
 
 // Render-budget split: Hero + Nav are above the fold and stay in the initial
 // chunk. Everything below the fold is code-split so Blink/WebKit parse +
@@ -83,6 +91,17 @@ export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp, 
           // History API unavailable on restore — non-fatal.
         }
       }
+    };
+  }, []);
+
+  // Inject WebSite JSON-LD structured data for SEO (homepage only)
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.text = JSON.stringify(WEBSITE_SCHEMA);
+    document.head.appendChild(script);
+    return () => {
+      document.head.removeChild(script);
     };
   }, []);
 
