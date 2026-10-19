@@ -3,7 +3,17 @@
 // In production VITE_API_URL should be an absolute URL like https://api.example.com/api
 import { authHeaders } from './authToken';
 
-export const API_BASE = (import.meta.env?.VITE_API_URL || '/api').replace(/\/$/, '');
+const rawApiBase = (import.meta.env?.VITE_API_URL || '/api').replace(/\/$/, '');
+
+// Runtime validation: in production, API_BASE must be an absolute URL ending in /api
+// This catches misconfiguration where Vercel fails to inject the build-time env var.
+if (import.meta.env?.PROD && !/^https?:\/\/.*\/api$/i.test(rawApiBase)) {
+  console.error('[azemax] API_BASE misconfigured:', rawApiBase);
+  console.error('VITE_API_URL must be an absolute URL ending in /api (e.g. https://azemax-backend-vzox.onrender.com/api)');
+  console.error('Set VITE_API_URL in Vercel Project Settings → Environment Variables (Production)');
+}
+
+export const API_BASE = rawApiBase;
 
 export class ApiError extends Error {
     status: number;

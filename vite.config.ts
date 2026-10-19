@@ -39,10 +39,35 @@ function productionSecretGuard() {
   };
 }
 
+function validateApiUrl() {
+  return {
+    name: 'azemax-validate-api-url',
+    configResolved(config: { command: string; mode: string }) {
+      if (config.command !== 'build' || config.mode !== 'production') return;
+      const apiUrl = process.env.VITE_API_URL;
+      if (!apiUrl) {
+        console.error('\n❌ [azemax] VITE_API_URL is not set! The production build will use the fallback "/api" which points to the frontend domain, not the backend.');
+        console.error('   Set VITE_API_URL to your backend URL ending in /api (e.g. https://azemax-backend-vzox.onrender.com/api)');
+        console.error('   In Vercel: Project Settings → Environment Variables → Add VITE_API_URL for Production\n');
+        process.exit(1);
+      }
+      if (!/^https?:\/\/.*\/api$/i.test(apiUrl)) {
+        console.error('\n❌ [azemax] VITE_API_URL must be an absolute URL ending in "/api"');
+        console.error(`   Current value: "${apiUrl}"`);
+        console.error('   Example: https://azemax-backend-vzox.onrender.com/api');
+        console.error('   In Vercel: Project Settings → Environment Variables → Edit VITE_API_URL for Production\n');
+        process.exit(1);
+      }
+      console.log(`\n✅ [azemax] VITE_API_URL validated: ${apiUrl}\n`);
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
     productionSecretGuard(),
+    validateApiUrl(),
     ...(process.env.ANALYZE ? [visualizer({
       filename: 'dist/stats.html',
       open: false,
