@@ -3,6 +3,20 @@ import react from '@vitejs/plugin-react'
 import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'node:path'
 
+// Plugin to prevent vendor-motion from being modulepreloaded (it's only needed for workspace)
+function preventMotionPreload() {
+  return {
+    name: 'azemax-prevent-motion-preload',
+    enforce: 'post' as const,
+    transformIndexHtml(html: string) {
+      return html.replace(
+        /<link rel="modulepreload" crossorigin href="\/assets\/js\/vendor-motion-[^"]+\.js">\n?/g,
+        ''
+      );
+    },
+  };
+}
+
 // https://vite.dev/config/
 function productionSecretGuard() {
   return {
@@ -68,6 +82,7 @@ export default defineConfig({
     react(),
     productionSecretGuard(),
     validateApiUrl(),
+    preventMotionPreload(),
     ...(process.env.ANALYZE ? [visualizer({
       filename: 'dist/stats.html',
       open: false,

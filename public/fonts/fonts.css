@@ -1,0 +1,80 @@
+/* ============================================================
+   AZEMAX SELF-HOSTED FONTS
+   Variable fonts for Inter, JetBrains Mono, Newsreader
+   Static TTF for Playfair Display (no variable font available)
+   ============================================================ */
+
+/* Inter Variable Font - weights 300-700 */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-var.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  font-stretch: 100%;
+}
+
+/* JetBrains Mono Variable Font - weights 400-500 */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono-var.woff2') format('woff2');
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+  font-stretch: 100%;
+}
+
+/* Newsreader Variable Font - weights 300-600, italic */
+@font-face {
+  font-family: 'Newsreader';
+  src: url('/fonts/newsreader-var.woff2') format('woff2');
+  font-weight: 300 600;
+  font-style: normal;
+  font-display: swap;
+  font-stretch: 100%;
+}
+@font-face {
+  font-family: 'Newsreader';
+  src: url('/fonts/newsreader-var.woff2') format('woff2');
+  font-weight: 300 600;
+  font-style: italic;
+  font-display: swap;
+  font-stretch: 100%;
+}
+
+/* Playfair Display - static weights (no variable font available) */
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-semibold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-medium-italic.ttf') format('truetype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}

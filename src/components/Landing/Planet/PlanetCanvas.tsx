@@ -73,6 +73,10 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
     const isLowPower = isCoarsePointer || isSmallViewport;
     const maxDpr = isLowPower ? 1 : Math.min(window.devicePixelRatio || 1, 2);
 
+    // On low-power devices, skip animation loop entirely - paint once and stop.
+    // This avoids continuous main-thread work on mobile.
+    const shouldAnimate = !isLowPower && !prefersReducedMotion;
+
     // Mouse parallax tracking with spring physics.
     let mouseX = 0;
     let mouseY = 0;
@@ -80,13 +84,13 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
     let targetMouseY = 0;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (prefersReducedMotion || isCoarsePointer) return;
+      if (prefersReducedMotion || isCoarsePointer || !shouldAnimate) return;
       const { innerWidth, innerHeight } = window;
       targetMouseX = (e.clientX / innerWidth - 0.5) * 2; // -1 to 1
       targetMouseY = (e.clientY / innerHeight - 0.5) * 2; // -1 to 1
     };
 
-    if (!isCoarsePointer) {
+    if (!isCoarsePointer && shouldAnimate) {
       window.addEventListener('mousemove', handleMouseMove, { passive: true });
     }
 
@@ -436,7 +440,7 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
     }
 
     let running = false;
-    const canRun = () => isVisible && isTabVisible && !prefersReducedMotion;
+    const canRun = () => isVisible && isTabVisible && !prefersReducedMotion && shouldAnimate;
 
     const start = () => {
       if (running || !canRun()) return;
@@ -488,15 +492,11 @@ export const PlanetCanvas: React.FC<PlanetCanvasProps> = memo(({ className = '' 
       }
     };
 
-    if (prefersReducedMotion) {
-      running = true;
-      animationFrameId = requestAnimationFrame((t) => {
-        lastFrameTime = t - 16;
-        paintStars(0.016);
-        running = false;
-      });
-    } else {
+    if (shouldAnimate) {
       start();
+    } else {
+      // Low-power / reduced motion: paint stars once (static) and don't animate
+      paintStars(0.016);
     }
 
     return () => {
