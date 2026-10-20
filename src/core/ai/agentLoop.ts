@@ -33,6 +33,7 @@
 
 import { sendChatResult } from './AIClient';
 import { executeTool, parseToolArguments, toolSchema, toolDefinitions, type AgentToolDeps, type ToolResult } from './agentTools';
+import { isAbortError } from './AIAbortController';
 import {
     AGENT_SYSTEM_PROMPT,
     DEFAULT_AGENT_BUDGET,
@@ -89,9 +90,6 @@ export interface AgentLoopRequest {
     /** Optional status callback for richer UI. */
     onStatus?: (status: 'thinking' | 'tool' | 'verifying' | 'done') => void;
 }
-
-const isAbort = (e: unknown): boolean =>
-    e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message));
 
 /** Tools whose arguments carry file content (used for duplicate detection). */
 const WRITE_TOOLS = new Set(['create_file', 'write_file', 'replace_range', 'insert_text']);
@@ -232,7 +230,7 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                     toolChoice: 'auto',
                 });
             } catch (e) {
-                if (isAbort(e) && req.signal?.aborted) return finish('cancelled', false);
+                if (isAbortError(e) && req.signal?.aborted) return finish('cancelled', false);
                 // Provider failure — surface honestly; partial work is reported
                 // truthfully via changedWorkspace.
                 return finish('error', false, e instanceof Error ? e.message : String(e));
@@ -252,7 +250,7 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                     toolChoice: 'auto',
                 });
             } catch (e) {
-                if (isAbort(e)) return finish('cancelled', false);
+                if (isAbortError(e)) return finish('cancelled', false);
                 return finish('error', false, e instanceof Error ? e.message : String(e));
             }
         }
@@ -386,7 +384,7 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                 (r) => { p.result = r; },
                 (e) => {
                     p.result = { ok: false, data: {}, error: e instanceof Error ? e.message : String(e) };
-                    if (isAbort(e)) throw e;
+                    if (isAbortError(e)) throw e;
                 },
             );
 
@@ -416,7 +414,7 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                     await executePlan(plans[i] as CallPlan);
                 }
             } catch (e) {
-                if (isAbort(e)) return finish('cancelled', false);
+                if (isAbortError(e)) return finish('cancelled', false);
                 // Concurrent worker failures remain in the outcomes below.
             }
             i = Math.max(j, i + 1);

@@ -393,6 +393,48 @@ export async function executeActionPlan(
             candidates.filter(c => !c.plan.actions.some(a => ['create_file', 'rename_file'].includes(a.action))),
             readLatest,
         );
+        // Also verify create_file and rename_file actions separately
+        if (!verifyFail) {
+            for (const c of candidates) {
+                const createAction = c.plan.actions.find(a => a.action === 'create_file');
+                if (createAction) {
+                    const actual = readLatest(c.filePath);
+                    if (actual === null) {
+                        verifyFail = { filePath: c.filePath, reason: 'File was not created' };
+                        break;
+                    }
+                    const expectedContent = String((createAction as any).content ?? '');
+                    const normalize = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
+                    if (normalize(actual) !== normalize(expectedContent)) {
+                        verifyFail = { filePath: c.filePath, reason: 'Created file content does not match expected' };
+                        break;
+                    }
+                }
+                const renameAction = c.plan.actions.find(a => a.action === 'rename_file');
+                if (renameAction) {
+                    // Check old file is gone
+                    const oldPath = (renameAction as any).path;
+                    const oldActual = readLatest(oldPath);
+                    if (oldActual !== null) {
+                        verifyFail = { filePath: oldPath, reason: 'Renamed file still exists at old path' };
+                        break;
+                    }
+                    // Check new file exists with correct content
+                    const newPath = (renameAction as any).newPath;
+                    const newActual = readLatest(newPath);
+                    if (newActual === null) {
+                        verifyFail = { filePath: newPath, reason: 'Renamed file not found at new path' };
+                        break;
+                    }
+                    const expectedContent = String((renameAction as any).content ?? '');
+                    const normalize = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
+                    if (normalize(newActual) !== normalize(expectedContent)) {
+                        verifyFail = { filePath: newPath, reason: 'Renamed file content does not match expected' };
+                        break;
+                    }
+                }
+            }
+        }
         // Fallback: Monaco model may lag behind fileTree (React state async). If Monaco mismatches
         // but fileTree matches candidate, treat as success — Monaco will sync via effect.
         if (verifyFail && deps.getFileTree) {
