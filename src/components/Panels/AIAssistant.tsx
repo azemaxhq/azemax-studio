@@ -37,6 +37,7 @@ import {
 import { streamChat } from '../../core/ai/AIClient';
 import { cleanResponse } from '../../core/ai/AIResponseParser';
 import type { ChatMessage } from '../../core/ai/types';
+import { buildBudgetedMessages, DEFAULT_MODEL } from '../../core/ai/AIContextBuilder';
 import { parseArtifacts } from './ai/artifactParser';
 import { AI_ERROR_CODES } from '../../core/ai/AIError';
 import { AIRequestStore } from '../../core/ai/aiRequestStore';
@@ -1655,14 +1656,18 @@ ${fileContent ? 'Code:\n```' + language + '\n' + fileContent.slice(0, 12000) + '
 User wants explanation: "${userMessageText}"
 
 Provide a warm, concise explanation. Keep to 2-4 bullets or short paragraphs. Do NOT modify code.`;
-                    const messagesForChat: ChatMessage[] = [
-                        { role: 'system', content: explainPrompt },
-                        ...historyForPipeline.slice(-4),
-                        { role: 'user', content: userMessageText },
-                    ];
+                    // Build budgeted messages for explanation task
+                    const explainMessages = buildBudgetedMessages({
+                        userMessage: userMessageText,
+                        history: historyForPipeline,
+                        systemPrompt: explainPrompt,
+                        fileContext: '', // Explanation doesn't need file context in user message
+                        task: 'explanation',
+                        model: DEFAULT_MODEL,
+                    });
                     let fullResponse = '';
                     let hasSetStreaming = false;
-                    for await (const event of streamChat(messagesForChat, { signal: abortController.signal, task: 'explanation', temperature: 0.3, maxTokens: 2048 })) {
+                    for await (const event of streamChat(explainMessages, { signal: abortController.signal, task: 'explanation', temperature: 0.3, maxTokens: 2048 })) {
                         if (event.type === 'delta' && event.content) {
                             if (!hasSetStreaming) { hasSetStreaming = true; aiLoading.setStreaming(); }
                             fullResponse += event.content;
@@ -1726,15 +1731,19 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                     scheduleStreamUpdate(requestId, responseText);
                     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
                 } else {
-                    const messagesForChat: ChatMessage[] = [
-                        { role: 'system', content: systemPrompt },
-                        ...historyForPipeline.slice(-4),
-                        { role: 'user', content: fileContext },
-                    ];
+                    // Build budgeted messages for chat task
+                    const chatMessages = buildBudgetedMessages({
+                        userMessage: fileContext,
+                        history: historyForPipeline,
+                        systemPrompt,
+                        fileContext: '', // fileContext is already in user message
+                        task: isFastChat ? 'fast_chat' : 'chat',
+                        model: DEFAULT_MODEL,
+                    });
 
                     let fullResponse = '';
                     let hasSetStreaming = false;
-                    for await (const event of streamChat(messagesForChat, { signal: abortController.signal, task: isFastChat ? 'fast_chat' : 'chat', temperature: isFastChat ? 0.4 : 0.7, maxTokens: isFastChat ? 512 : 2048 })) {
+                    for await (const event of streamChat(chatMessages, { signal: abortController.signal, task: isFastChat ? 'fast_chat' : 'chat', temperature: isFastChat ? 0.4 : 0.7, maxTokens: isFastChat ? 512 : 2048 })) {
                         if (event.type === 'delta' && event.content) {
                             if (!hasSetStreaming) { hasSetStreaming = true; aiLoading.setStreaming(); }
                             fullResponse += event.content;
