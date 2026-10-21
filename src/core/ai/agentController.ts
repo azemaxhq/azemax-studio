@@ -36,6 +36,8 @@ import {
     extendTask,
     addConstraint,
     addMentionedPath,
+    computeRemainingPaths,
+    pathExistsInTree,
     recordPlan,
     recordValidationFailure,
     DEFAULT_AGENT_BUDGET,
@@ -478,7 +480,16 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
 
     // ── [8] SUMMARIZE — a final user-facing answer is MANDATORY ────────
     setPhase('summarizing', STAGE_LABELS.summarize);
-    const message = buildFinalResponse(loop, validation, Boolean(proposedChanges?.length), Boolean(req.preview));
+    // Work the model announced but that is still missing from the workspace.
+    // Computed against the AUTHORITATIVE tree for this run (shadow tree in
+    // preview mode, real tree otherwise) so a proposed-but-not-yet-applied
+    // file is not reported as outstanding.
+    const remainingPaths = computeRemainingPaths(
+        loop.taskContext,
+        p => pathExistsInTree(getEffectiveTree(), p),
+    );
+    loop.taskContext = { ...loop.taskContext, remainingPaths };
+    const message = buildFinalResponse(loop, validation, Boolean(proposedChanges?.length), Boolean(req.preview), remainingPaths);
 
     // ── [9] TERMINAL STATE ─────────────────────────────────────────────
     // 'completed' is only asserted here, AFTER the loop finished and the
@@ -713,10 +724,14 @@ function buildDiffs(
  * Compose the FINAL user-facing response.
  *
  * Priority order:
- *   1. The model's own summary — but only when the loop actually finished
+ *   1. The VERIFIED state — what actually happened to the workspace.
+ *   2. The model's own summary — but only when the loop actually finished
  *      normally, so a half-finished run is never dressed up as success.
- *   2. A deterministic summary built ONLY from verified results (real tool
- *      outcomes, real diagnostics, real file paths).
+ *
+ * The verified state comes FIRST. The model's narrative is a claim; the
+ * operation log is a record. Putting the claim in the headline is what made
+ * "Created index.html, styles.css and script.js" appear in the chat when
+ * only one of those files existed.
  *
  * It never claims a check passed unless the check ran, never claims a file was
  * written unless a write succeeded, and never returns empty.
@@ -726,17 +741,12 @@ function buildFinalResponse(
     validation: Array<{ path: string; isError: boolean; markers: Array<{ message: string }>; checked?: boolean }>,
     hasProposal: boolean,
     preview: boolean,
+    remainingPaths: string[] = [],
 ): string {
     const changed = [...new Set(loop.taskContext.touchedPaths)];
     const failed = loop.taskContext.operations.filter(o => o.status === 'error');
     const validationErrors = validation.filter(v => v.isError);
     const parts: string[] = [];
-
-    // A clean exit means the model produced its own summary.
-    const modelSummary = loop.content?.trim();
-    if (loop.stopReason === 'done' && modelSummary) {
-        parts.push(modelSummary);
-    }
 
     if (loop.stopReason === 'cancelled') {
         parts.push(
@@ -753,12 +763,20 @@ function buildFinalResponse(
         return parts.join('\n\n');
     }
 
+    // ---- VERIFIED STATE FIRST ------------------------------------------
     if (hasProposal) {
         parts.push(`Prepared ${changed.length} change${changed.length === 1 ? '' : 's'}. Review below and Accept to apply, or Reject to discard.`);
     } else if (changed.length) {
         parts.push(`${preview ? 'Prepared changes to' : 'Created/updated'}: ${changed.join(', ')}.`);
     } else if (loop.toolCallCount > 0) {
         parts.push('I inspected the workspace and found nothing that needed changing.');
+    }
+
+    // The model's own summary, kept as supporting detail — never as the
+    // headline, because it may name files that were never created.
+    const modelSummary = loop.content?.trim();
+    if (loop.stopReason === 'done' && modelSummary) {
+        parts.push(modelSummary);
     }
 
     // Honest validation reporting — never claim a check passed unless it ran.
@@ -777,6 +795,14 @@ function buildFinalResponse(
 
     if (failed.length) {
         parts.push(`${failed.length} operation(s) failed: ${failed.slice(0, 2).map(f => `${f.tool} (${f.detail ?? 'error'})`).join(', ')}.`);
+    }
+
+    // Work the model ANNOUNCED but that is still absent from the workspace.
+    // This is what stops a partial run from reading as a finished one.
+    if (remainingPaths.length) {
+        parts.push(
+            `Not finished — ${remainingPaths.length} file(s) I said I would create do not exist yet: ${remainingPaths.join(', ')}.`,
+        );
     }
 
     if (loop.stopReason === 'approval_required') {

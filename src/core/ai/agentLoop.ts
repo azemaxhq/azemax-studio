@@ -38,7 +38,10 @@ import {
     AGENT_SYSTEM_PROMPT,
     DEFAULT_AGENT_BUDGET,
     buildAgentMessages,
+    computeRemainingPaths,
     finishTask,
+    pathExistsInTree,
+    recordAnnouncedPaths,
     recordOperation,
     recordValidationFailure,
     type AgentBudget,
@@ -175,19 +178,27 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
         stopReason: AgentLoopResult['stopReason'],
         success: boolean,
         error?: string,
-    ): AgentLoopResult => ({
-        // Fall back to the last substantive assistant text when the run did not
-        // end on a clean 'done' turn — a tool-call turn has empty content, and
-        // returning that would give the user an empty assistant bubble.
-        content: content.trim() ? content : lastModelContent,
-        success,
-        steps,
-        toolCallCount,
-        taskContext: finishTask(taskContext),
-        stopReason,
-        changedWorkspace,
-        error,
-    });
+    ): AgentLoopResult => {
+        // A run that FAILED an operation is not a successful completion, no
+        // matter how the run ended. Reporting `success: true` alongside a
+        // failed operation is exactly the "the AI says it did the work but
+        // it did not" symptom, in its purest form.
+        const hasFailure = taskContext.operations.some(o => o.status === 'error');
+        const effectiveSuccess = success && !hasFailure;
+        return {
+            // Fall back to the last substantive assistant text when the run did not
+            // end on a clean 'done' turn — a tool-call turn has empty content, and
+            // returning that would give the user an empty assistant bubble.
+            content: content.trim() ? content : lastModelContent,
+            success: effectiveSuccess,
+            steps,
+            toolCallCount,
+            taskContext: finishTask(taskContext),
+            stopReason,
+            changedWorkspace,
+            error,
+        };
+    };
 
     for (let step = 0; step < budget.maxSteps; step++) {
         if (req.signal?.aborted) return finish('cancelled', false, 'Cancelled');
@@ -267,12 +278,57 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
         content = result.content || '';
         if (content.trim()) lastModelContent = content;
 
+        // The model's own words are the record of what it intended to do.
+        // Harvesting them here is what makes the completion decision
+        // evidence-based instead of "the model stopped talking".
+        if (content.trim()) {
+            taskContext = recordAnnouncedPaths(taskContext, content);
+        }
+
         if (toolCalls.length === 0) {
-            // No tool calls → the model considers the task done. This is the
-            // natural exit of the loop and the ONLY exit that counts as a
-            // successful completion.
+            // No tool calls. This is the natural exit of the loop — but it is
+            // NOT automatically completion.
+            //
+            // The previous behaviour returned `done`/`success: true` for ANY
+            // text-only turn. Providers routinely split a turn, and models
+            // routinely emit an intermediate "now let me create the CSS
+            // file…" with no tool calls attached. The run then ended after
+            // the first file, reported `success: true`, and the final
+            // response repeated the model's claim that everything was done.
+            //
+            // The decision is now made against real evidence:
+            //   - did the model announce work that is still OUTSTANDING?
+            //   - did any operation FAIL?
+            // If either is true, the task is not finished and the model is
+            // asked to continue.
             messages.push({ role: 'assistant', content });
-            return finish('done', true);
+
+            const outstanding = computeRemainingPaths(taskContext, p => pathExistsInTree(req.deps.getFileTree(), p));
+            const hasFailure = taskContext.operations.some(o => o.status === 'error');
+
+            if (!outstanding.length && !hasFailure) {
+                return finish('done', true);
+            }
+
+            // Not complete. Continue — but only while there is budget left and
+            // the model is not stuck repeating itself.
+            if (step + 1 >= budget.maxSteps) {
+                return finish('budget_steps', changedWorkspace, 'Stopped: the agent reached its step budget before finishing.');
+            }
+            if (Date.now() >= deadline) {
+                return finish('budget_time', changedWorkspace, 'Stopped: the agent run reached its time budget.');
+            }
+
+            // Tell the model exactly what is left, so it can continue rather
+            // than repeat itself. This is real state, not a guess.
+            const remainingNote = outstanding.length
+                ? `Still to do: ${outstanding.join(', ')} — these files do not exist in the workspace yet.`
+                : 'A previous operation failed — fix that before finishing.';
+            messages.push({
+                role: 'user',
+                content: `Continue. The task is not finished yet. ${remainingNote} Use the tools to finish the work, then reply with a summary of what you actually changed.`,
+            });
+            continue;
         }
 
         if (toolCallCount + toolCalls.length > budget.maxToolCalls) {

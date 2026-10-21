@@ -650,6 +650,11 @@ export interface VerificationFailure {
  * Post-apply verification: each touched file must now contain EXACTLY the
  * validated candidate, and comment intents must be observable near their
  * targets (guards against store-level partial writes).
+ *
+ * A DELETE is verified by ABSENCE — the file being gone IS the successful
+ * outcome. The previous order checked for a missing file FIRST and reported
+ * "File disappeared during apply", which made every successful delete look
+ * like a failure (and the delete branch below it was unreachable).
  */
 export function verifyAppliedCandidates(
     candidates: BuiltCandidate[],
@@ -657,24 +662,33 @@ export function verifyAppliedCandidates(
 ): VerificationFailure | null {
     const normalize = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
     for (const c of candidates) {
-        const actual = readLatest(c.filePath);
-        if (actual === null) {
-            return { filePath: c.filePath, reason: 'File disappeared during apply' };
-        }
+        // Delete first: absence is success, not a failure.
         if (c.plan.actions.some(a => a.action === 'delete_file')) {
-            if (normalize(actual) !== '') {
+            if (readLatest(c.filePath) !== null) {
                 return { filePath: c.filePath, reason: 'Delete not reflected in store' };
             }
             continue;
         }
+        const actual = readLatest(c.filePath);
+        if (actual === null) {
+            return { filePath: c.filePath, reason: 'File disappeared during apply' };
+        }
         // Use normalized comparison to tolerate trailing newline / CRLF differences
         // and to allow AI to add a final newline without failing verification
         if (normalize(actual) !== normalize(c.candidate)) {
-            // For whole-file updates, also allow a lenient check where the candidate is a
-            // superset that contains the expected content (handles AI adding imports/header)
+            // A store may legitimately hold a SUPERSET of the validated
+            // candidate (e.g. it prepended a header). That is acceptable —
+            // everything that was validated is present.
+            //
+            // The inverse is NOT acceptable: a store holding only PART of the
+            // candidate is a truncated write and must be reported as a
+            // failure. The previous check compared in that direction, so a
+            // write that silently did nothing (the store kept the old
+            // content) was reported as a success — the "the AI said it
+            // updated the file but the file is unchanged" symptom.
             const isWholeFile = c.plan.actions.some(a => a.action === 'update_file' || a.action === 'create_file');
-            if (isWholeFile && normalize(actual).length > 0 && normalize(c.candidate).includes(normalize(actual).slice(0, 100))) {
-                // Actual contains start of candidate — likely a partial write, still consider success
+            const candidate = normalize(c.candidate);
+            if (isWholeFile && candidate.length > 0 && normalize(actual).includes(candidate)) {
                 continue;
             }
             return { filePath: c.filePath, reason: 'Stored content differs from validated candidate' };

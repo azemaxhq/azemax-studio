@@ -303,6 +303,26 @@ export async function executeActionPlan(
     // Latest-source reader (fresh at every access — never cached across calls)
     const readLatest = (path: string): string | null => deps.getFileContent(path);
 
+    /**
+     * Does a path exist in the workspace RIGHT NOW?
+     *
+     * The file TREE is authoritative for existence; the content reader is
+     * Monaco-first for the active file, and a Monaco model can outlive a
+     * delete. Verifying a delete against the content reader would therefore
+     * report "the file is still there" for a file that was really removed.
+     */
+    const pathExists = (path: string): boolean => {
+        if (deps.getFileTree) {
+            const node = resolvePath(deps.getFileTree(), path);
+            if (node) return true;
+            // The tree is authoritative when it can resolve the path; if it
+            // cannot, fall through to the content reader.
+            if (readLatest(path) === null) return false;
+            return true;
+        }
+        return readLatest(path) !== null;
+    };
+
     // Snapshot map for stale-target resolution
     const snapshots = new Map<string, FileSnapshot>();
     if (options?.snapshotMap) {
@@ -340,7 +360,22 @@ export async function executeActionPlan(
 
     // [6] APPLY — snapshot originals for rollback, then write once per file
     const rollback = new Map<string, string>(); // fileId -> pre-edit content
+    /**
+     * Files CREATED during this plan, so a failure can remove them again.
+     *
+     * The rollback map holds content for files that already existed; a created
+     * file has no prior content, so it must be tracked separately or a failed
+     * plan would leave an orphan behind.
+     */
+    const createdFileIds: string[] = [];
     const appliedActions = new Set<number>();
+    /**
+     * Renames actually performed, recorded as (oldPath, actualNewPath).
+     * The workspace's rename is a same-folder rename, so the destination is
+     * derived from the file's REAL post-rename path, not from the requested
+     * `newPath` (which may name a different folder).
+     */
+    const appliedRenames: Array<{ oldPath: string; newPath: string; fileId: string }> = [];
 
     try {
         for (const c of candidates) {
@@ -349,8 +384,22 @@ export async function executeActionPlan(
             if (wholeFile) {
                 switch (wholeFile.action) {
                     case 'create_file': {
+                        // A create over an existing path must NOT silently
+                        // de-duplicate into "name (1).ext": the workspace's
+                        // create operation renames a colliding file instead of
+                        // failing, which would leave the original stale file in
+                        // place and the new content under a name nobody asked
+                        // for. Fail loudly so the model can write the file it
+                        // actually meant, or use write_file to overwrite.
+                        if (pathExists(wholeFile.path)) {
+                            throw new Error(
+                                `A file already exists at ${wholeFile.path}. Use write_file to replace its content, or choose a different path.`,
+                            );
+                        }
                         const res = deps.createFile(wholeFile.path, wholeFile.content);
                         if (!res.success) throw new Error(res.error || `Failed to create file: ${wholeFile.path}`);
+                        const createdId = deps.getFileIdByPath(wholeFile.path);
+                        if (createdId) createdFileIds.push(createdId);
                         appliedActions.add(plan.indexOf(wholeFile));
                         break;
                     }
@@ -369,6 +418,14 @@ export async function executeActionPlan(
                         const newName = wholeFile.newPath.split('/').pop() || wholeFile.newPath;
                         const res = deps.renameNode(fileId, newName);
                         if (!res.success) throw new Error(res.error || `Failed to rename: ${wholeFile.path}`);
+                        // Record where the file ACTUALLY ended up. The workspace
+                        // renames within the parent folder, so the real
+                        // destination is the old path with the new leaf name.
+                        appliedRenames.push({
+                            oldPath: wholeFile.path,
+                            newPath: replaceLeaf(wholeFile.path, newName),
+                            fileId,
+                        });
                         appliedActions.add(plan.indexOf(wholeFile));
                         break;
                     }
@@ -390,10 +447,13 @@ export async function executeActionPlan(
 
         // [7] VERIFY — re-read everything; store must match validated candidates
         let verifyFail = verifyAppliedCandidates(
-            candidates.filter(c => !c.plan.actions.some(a => ['create_file', 'rename_file'].includes(a.action))),
+            candidates.filter(c => !c.plan.actions.some(a => ['create_file', 'rename_file', 'delete_file'].includes(a.action))),
             readLatest,
         );
-        // Also verify create_file and rename_file actions separately
+        // Whole-file operations are verified against what they MEAN:
+        //   create → the file exists at the path with the expected content
+        //   rename → the old path is gone and the file exists at its new path
+        //   delete → the path is ABSENT (the file is gone — that IS success)
         if (!verifyFail) {
             for (const c of candidates) {
                 const createAction = c.plan.actions.find(a => a.action === 'create_file');
@@ -404,32 +464,35 @@ export async function executeActionPlan(
                         break;
                     }
                     const expectedContent = String((createAction as any).content ?? '');
-                    const normalize = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
-                    if (normalize(actual) !== normalize(expectedContent)) {
+                    if (!sameContent(actual, expectedContent)) {
                         verifyFail = { filePath: c.filePath, reason: 'Created file content does not match expected' };
                         break;
                     }
                 }
                 const renameAction = c.plan.actions.find(a => a.action === 'rename_file');
                 if (renameAction) {
-                    // Check old file is gone
+                    // Verify against the path the file ACTUALLY moved to.
                     const oldPath = (renameAction as any).path;
-                    const oldActual = readLatest(oldPath);
-                    if (oldActual !== null) {
+                    const applied = appliedRenames.find(r => r.oldPath === oldPath);
+                    const newPath = applied?.newPath ?? (renameAction as any).newPath;
+                    if (pathExists(oldPath)) {
                         verifyFail = { filePath: oldPath, reason: 'Renamed file still exists at old path' };
                         break;
                     }
-                    // Check new file exists with correct content
-                    const newPath = (renameAction as any).newPath;
-                    const newActual = readLatest(newPath);
-                    if (newActual === null) {
+                    if (!pathExists(newPath)) {
                         verifyFail = { filePath: newPath, reason: 'Renamed file not found at new path' };
                         break;
                     }
-                    const expectedContent = String((renameAction as any).content ?? '');
-                    const normalize = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
-                    if (normalize(newActual) !== normalize(expectedContent)) {
-                        verifyFail = { filePath: newPath, reason: 'Renamed file content does not match expected' };
+                }
+                const deleteAction = c.plan.actions.find(a => a.action === 'delete_file');
+                if (deleteAction) {
+                    // A delete is verified by ABSENCE. The old check required
+                    // the file to still be readable and empty, which no store
+                    // ever satisfies — so every delete was reported as a
+                    // failure even though the file really was removed.
+                    const path = (deleteAction as any).path;
+                    if (pathExists(path)) {
+                        verifyFail = { filePath: path, reason: 'File was not deleted' };
                         break;
                     }
                 }
@@ -443,7 +506,7 @@ export async function executeActionPlan(
                 return node && typeof node.content === 'string' ? node.content : null;
             };
             const retryFail = verifyAppliedCandidates(
-                candidates.filter(c => !c.plan.actions.some(a => ['create_file', 'rename_file'].includes(a.action))),
+                candidates.filter(c => !c.plan.actions.some(a => ['create_file', 'rename_file', 'delete_file'].includes(a.action))),
                 readFromTreeOnly,
             );
             if (!retryFail) {
@@ -476,17 +539,49 @@ export async function executeActionPlan(
                 rollbackFailures++;
             }
         }
+        // Undo renames by restoring the original name, so a failed plan does
+        // not leave a file renamed.
+        for (const r of appliedRenames) {
+            const oldName = r.oldPath.split('/').pop() || r.oldPath;
+            try {
+                deps.renameNode(r.fileId, oldName);
+            } catch {
+                rollbackFailures++;
+            }
+        }
+        // Remove files this plan CREATED. Without this, a plan that created a
+        // file and then failed on a later file would leave the created file
+        // behind — the "partially applied" symptom.
+        for (const id of createdFileIds) {
+            try {
+                deps.deleteNode(id);
+            } catch {
+                rollbackFailures++;
+            }
+        }
         const msg = error instanceof Error ? error.message : String(error);
-        const rolledBackCleanly = rollback.size === 0 || rollbackFailures === 0;
+        const rolledBackCleanly = rollbackFailures === 0;
         return {
             success: false,
             appliedCount: 0,
             message: rolledBackCleanly
                 ? `Edit failed and was fully rolled back — your file is unchanged. (${msg})`
                 : `Edit failed (${msg}) and the automatic rollback was NOT fully successful — ${rollbackFailures} file(s) may still contain partial changes. Please review before continuing.`,
-            rolledBack: rolledBackCleanly && rollback.size > 0,
+            rolledBack: rolledBackCleanly && (rollback.size > 0 || createdFileIds.length > 0 || appliedRenames.length > 0),
         };
     }
+}
+
+/** Normalized content comparison — tolerates CRLF and trailing whitespace. */
+function sameContent(a: string, b: string): boolean {
+    const normalize = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
+    return normalize(a) === normalize(b);
+}
+
+/** Replace the leaf (file name) of a path, keeping its folder. */
+function replaceLeaf(path: string, newName: string): string {
+    const idx = path.lastIndexOf('/');
+    return idx === -1 ? newName : `${path.slice(0, idx + 1)}${newName}`;
 }
 
 /**

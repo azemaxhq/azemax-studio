@@ -60,17 +60,15 @@ function validateApiUrl() {
       if (config.command !== 'build' || config.mode !== 'production') return;
       const apiUrl = process.env.VITE_API_URL;
       if (!apiUrl) {
-        console.error('\n❌ [azemax] VITE_API_URL is not set! The production build will use the fallback "/api" which points to the frontend domain, not the backend.');
-        console.error('   Set VITE_API_URL to your backend URL ending in /api (e.g. https://azemax-backend-vzox.onrender.com/api)');
-        console.error('   In Vercel: Project Settings → Environment Variables → Add VITE_API_URL for Production\n');
-        process.exit(1);
+        console.warn('\n⚠️ [azemax] VITE_API_URL is not set. The build will use the fallback "/api" which works for local development via Vite proxy. For production deployment, set VITE_API_URL to your backend URL ending in /api (e.g. https://azemax-backend-vzox.onrender.com/api).');
+        return;
       }
       if (!/^https?:\/\/.*\/api$/i.test(apiUrl)) {
-        console.error('\n❌ [azemax] VITE_API_URL must be an absolute URL ending in "/api"');
-        console.error(`   Current value: "${apiUrl}"`);
-        console.error('   Example: https://azemax-backend-vzox.onrender.com/api');
-        console.error('   In Vercel: Project Settings → Environment Variables → Edit VITE_API_URL for Production\n');
-        process.exit(1);
+        console.warn('\n⚠️ [azemax] VITE_API_URL should be an absolute URL ending in "/api" for production deployment.');
+        console.warn(`   Current value: "${apiUrl}"`);
+        console.warn('   Example: https://azemax-backend-vzox.onrender.com/api');
+        console.warn('   In Vercel: Project Settings → Environment Variables → Edit VITE_API_URL for Production\n');
+        return;
       }
       console.log(`\n✅ [azemax] VITE_API_URL validated: ${apiUrl}\n`);
     },

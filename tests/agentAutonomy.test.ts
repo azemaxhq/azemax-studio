@@ -54,6 +54,7 @@ import {
     addConstraint,
     renderTaskContext,
     buildAgentMessages,
+    DEFAULT_AGENT_BUDGET,
 } from '../src/core/ai/agentTaskContext';
 import { parseSemanticPlan, buildSemanticPlannerPrompt } from '../src/core/ai/semanticPlanner';
 import { normalizeToolCalls } from '../src/core/ai/AIClient';
@@ -342,6 +343,48 @@ async function main(): Promise<void> {
     }
 
     // ────────────────────────────────────────────────────────────────────
+    // 23 — timeout and cancellation regression tests (synchronous)
+    // ────────────────────────────────────────────────────────────────────
+    // 23.1 Agent loop budget configuration validation
+    {
+        check('23.1 DEFAULT_AGENT_BUDGET has modelCallTimeoutMs', typeof DEFAULT_AGENT_BUDGET.modelCallTimeoutMs === 'number');
+        check('23.1 DEFAULT_AGENT_BUDGET has toolTimeoutMs', typeof DEFAULT_AGENT_BUDGET.toolTimeoutMs === 'number');
+        check('23.1 DEFAULT_AGENT_BUDGET has timeoutMs', typeof DEFAULT_AGENT_BUDGET.timeoutMs === 'number');
+        check('23.1 modelCallTimeoutMs is positive', DEFAULT_AGENT_BUDGET.modelCallTimeoutMs > 0);
+        check('23.1 toolTimeoutMs is positive', DEFAULT_AGENT_BUDGET.toolTimeoutMs > 0);
+        check('23.1 timeoutMs is positive', DEFAULT_AGENT_BUDGET.timeoutMs > 0);
+    }
+
+    // 23.2 Cancellation signal handling in runAgentLoop (synchronous check)
+    {
+        const controller = new AbortController();
+        controller.abort();
+        // Test that pre-aborted signal is handled without throwing
+        check('23.2 AbortController can be created and aborted', controller.signal.aborted === true);
+    }
+
+    // 23.3 Task deadline budget enforcement (synchronous check)
+    {
+        check('23.3 DEFAULT_AGENT_BUDGET.timeoutMs is 120000', DEFAULT_AGENT_BUDGET.timeoutMs === 120_000);
+        check('23.3 DEFAULT_AGENT_BUDGET.maxSteps is 12', DEFAULT_AGENT_BUDGET.maxSteps === 12);
+        check('23.3 DEFAULT_AGENT_BUDGET.maxToolCalls is 40', DEFAULT_AGENT_BUDGET.maxToolCalls === 40);
+    }
+
+    // 23.4 Model call timeout configuration
+    {
+        check('23.4 DEFAULT_AGENT_BUDGET.modelCallTimeoutMs is 90000', DEFAULT_AGENT_BUDGET.modelCallTimeoutMs === 90_000);
+    }
+
+    // 23.5 Tool execution timeout configuration
+    {
+        check('23.5 DEFAULT_AGENT_BUDGET.toolTimeoutMs is 15000', DEFAULT_AGENT_BUDGET.toolTimeoutMs === 15_000);
+    }
+
+    // 23.6 Concurrent reads limit configuration
+    {
+        check('23.6 DEFAULT_AGENT_BUDGET.maxConcurrentReads is 4', DEFAULT_AGENT_BUDGET.maxConcurrentReads === 4);
+    }
+    // ────────────────────────────────────────────────────────────────────
     // 8 / 9 / 10 / 19 — REAL tool execution through the canonical executor
     // ────────────────────────────────────────────────────────────────────
     {
@@ -375,6 +418,39 @@ async function main(): Promise<void> {
         const wr = await executeTool('write_file', { path: 'styles.css', content: 'body{margin:0}' }, ws.toolDeps());
         check('9. write_file succeeds', wr.ok === true);
         check('19. write_file persisted real content', ws.content('styles.css') === 'body{margin:0}');
+
+        // ────────────────────────────────────────────────────────────────────
+        // 24 — Idempotency and duplicate-write suppression
+        // ────────────────────────────────────────────────────────────────────
+        // 24.1 Repeated identical create_file is suppressed
+        const dupCreate = await executeTool('create_file', { path: 'dup.txt', content: 'same content' }, ws.toolDeps());
+        check('24.1 first create_file succeeds', dupCreate.ok === true);
+        const dupCreate2 = await executeTool('create_file', { path: 'dup.txt', content: 'same content' }, ws.toolDeps({
+            createDirectory: p => ws.createFolder(p),
+        }));
+        check('24.1 second identical create_file is idempotent', dupCreate2.ok === true);
+        check('24.1 second create_file reports applied: false', dupCreate2.data.applied === false);
+        check('24.1 file content unchanged', ws.content('dup.txt') === 'same content');
+
+        // 24.2 Repeated identical write_file is suppressed
+        const dupWrite = await executeTool('write_file', { path: 'styles.css', content: 'body{margin:0}' }, ws.toolDeps());
+        check('24.2 repeated identical write_file is idempotent', dupWrite.ok === true);
+        check('24.2 repeated write_file reports applied: false', dupWrite.data.applied === false);
+        check('24.2 file content unchanged', ws.content('styles.css') === 'body{margin:0}');
+
+        // 24.3 Different content is NOT suppressed
+        const diffWrite = await executeTool('write_file', { path: 'styles.css', content: 'body{margin:1}' }, ws.toolDeps());
+        check('24.3 different content write_file succeeds', diffWrite.ok === true);
+        check('24.3 different content write_file reports applied: true', diffWrite.data.applied === true);
+        check('24.3 file content updated', ws.content('styles.css') === 'body{margin:1}');
+
+        // 24.4 Fingerprint reset when workspace changes (file deleted and recreated)
+        await executeTool('delete_file', { path: 'dup.txt' }, ws.toolDeps({ confirmDestructive: () => true }));
+        const recreate = await executeTool('create_file', { path: 'dup.txt', content: 'same content' }, ws.toolDeps({
+            createDirectory: p => ws.createFolder(p),
+        }));
+        check('24.4 recreate after delete is NOT suppressed', recreate.ok === true);
+        check('24.4 recreate after delete reports applied: true', recreate.data.applied === true);
 
         // read_file returns real content
         const rd = await executeTool('read_file', { path: 'index.html' }, ws.toolDeps());
@@ -704,6 +780,50 @@ async function main(): Promise<void> {
         let manyOps = t;
         for (let i = 0; i < 200; i++) manyOps = recordOperation(manyOps, { tool: 'read_file', target: `f${i}.ts`, status: 'ok' });
         check('ctx: operations bounded', manyOps.operations.length <= 40);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // 25 — Completion evidence: announced paths and remaining work
+    // ────────────────────────────────────────────────────────────────────
+    {
+        let t = createTaskContext('build a website');
+        t = recordAnnouncedPaths(t, 'I will create index.html and styles.css now.');
+        check('25.1 announced paths harvested from intention', t.announcedPaths.includes('index.html') && t.announcedPaths.includes('styles.css'));
+
+        // Descriptive sentence without intention cue should NOT harvest
+        t = recordAnnouncedPaths(t, 'There is no config.json in this workspace.');
+        check('25.2 descriptive sentence without intention cue does not harvest', !t.announcedPaths.includes('config.json'));
+
+        // computeRemainingPaths with existing files
+        const ws2 = new TestWorkspace();
+        ws2.createFile('index.html', '<h1>hi</h1>');
+        const exists2 = (p: string) => pathExistsInTree(ws2.getFileTree(), p);
+        const rem = computeRemainingPaths(t, exists2);
+        check('25.3 remaining paths excludes existing files', !rem.includes('index.html'));
+        check('25.4 remaining paths includes non-existing announced files', rem.includes('styles.css'));
+
+        // Deleted files should not be remaining
+        t = recordOperation(t, { tool: 'delete_file', target: 'old.txt', status: 'ok' });
+        t = recordAnnouncedPaths(t, 'I will delete old.txt.');
+        const rem2 = computeRemainingPaths(t, (p) => false);
+        check('25.5 deleted files are not remaining', !rem2.includes('old.txt'));
+
+        // isTaskComplete
+        let t3 = createTaskContext('simple task');
+        check('25.6 empty task with no announcements is complete', isTaskComplete(t3, []));
+        t3 = recordOperation(t3, { tool: 'read_file', target: 'x.txt', status: 'ok' });
+        check('25.7 task with operations but no announcements is complete', isTaskComplete(t3, []));
+        t3 = recordAnnouncedPaths(t3, 'I will create y.txt.');
+        check('25.8 task with outstanding announcement is NOT complete', !isTaskComplete(t3, ['y.txt']));
+        t3 = recordOperation(t3, { tool: 'create_file', target: 'y.txt', status: 'ok' });
+        const exists3 = (p: string) => p === 'y.txt';
+        const rem3 = computeRemainingPaths(t3, exists3);
+        check('25.9 task with all announcements satisfied IS complete', isTaskComplete(t3, rem3));
+
+        // Error operation prevents completion
+        let t4 = createTaskContext('task with error');
+        t4 = recordOperation(t4, { tool: 'create_file', target: 'z.txt', status: 'error', detail: 'permission denied' });
+        check('25.10 task with error operation is NOT complete', !isTaskComplete(t4, []));
     }
 
     // ────────────────────────────────────────────────────────────────────

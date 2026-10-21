@@ -22,6 +22,23 @@
  */
 
 import type { AIRequestOptions, AIToolDefinition, ChatMessage } from './types';
+import { resolvePath } from '../../utils/safeTree';
+import type { FileNode } from '../../utils/mockFileSystem';
+
+/**
+ * Does a workspace-relative path exist in the file tree?
+ *
+ * Uses the canonical tree resolver so path semantics (folders, `..`, the
+ * synthetic root) are identical to every other part of the product.
+ */
+export function pathExistsInTree(tree: FileNode[], path: string): boolean {
+    if (!Array.isArray(tree) || !path) return false;
+    try {
+        return resolvePath(tree, path) !== null;
+    } catch {
+        return false;
+    }
+}
 
 /** Single operation record — what was attempted, and what actually happened. */
 export interface TaskOperation {
@@ -59,6 +76,22 @@ export interface AgentTaskContext {
     touchedPaths: string[];
     /** Real validation failures observed after changes. */
     validationFailures: TaskValidationFailure[];
+    /**
+     * File paths the MODEL itself announced it would work on, harvested from
+     * its own messages.
+     *
+     * This is the "plan" side of the plan→completion linkage: the agent does
+     * not guess what the task required, it reads the requirement out of what
+     * the model said it was about to do. A path listed here that is neither in
+     * the workspace nor intentionally removed is outstanding work.
+     */
+    announcedPaths: string[];
+    /**
+     * Announced paths that were still ABSENT from the workspace when the run
+     * ended — the "remaining work" the final response must report instead of
+     * letting the model's narrative imply completion.
+     */
+    remainingPaths: string[];
     /** Set once the task is considered finished. */
     completed: boolean;
     startedAt: number;
@@ -72,6 +105,7 @@ const MAX_MENTIONED_PATHS = 20;
 const MAX_OPERATIONS = 40;
 const MAX_TOUCHED_PATHS = 30;
 const MAX_VALIDATION_FAILURES = 15;
+const MAX_ANNOUNCED_PATHS = 30;
 const MAX_ITEM_CHARS = 200;
 
 const clamp = (s: string, n = MAX_ITEM_CHARS): string =>
@@ -88,6 +122,8 @@ export function createTaskContext(objective: string): AgentTaskContext {
         operations: [],
         touchedPaths: [],
         validationFailures: [],
+        announcedPaths: [],
+        remainingPaths: [],
         completed: false,
         startedAt: now,
         updatedAt: now,
@@ -155,8 +191,15 @@ export function recordOperation(ctx: AgentTaskContext, op: Omit<TaskOperation, '
     return next;
 }
 
-/** Tools whose success implies the workspace was changed. */
+/**
+ * Tools whose success implies the workspace was changed.
+ *
+ * Kept in sync with `AGENT_TOOL_SCHEMAS[].mutating` (see `agentTools.ts`).
+ * `create_directory` belongs here: it mutates the workspace, so it must show
+ * up in `touchedPaths` and in the verification story.
+ */
 const MUTATING_TOOLS = new Set([
+    'create_directory',
     'create_file',
     'write_file',
     'replace_range',
@@ -164,8 +207,116 @@ const MUTATING_TOOLS = new Set([
     'delete_range',
     'rename_file',
     'delete_file',
-    'apply_patch',
 ]);
+
+/**
+ * Harvest file paths the model announced in its own prose.
+ *
+ * This is how the agent learns what work it claimed to do, without a second
+ * planner call: the requirement is read out of the model's own words.
+ *
+ * Two filters keep ordinary prose from becoming a phantom requirement:
+ *   1. the token must look like a source file (known extension);
+ *   2. the SENTENCE must contain an INTENTION cue ("I'll create X", "now
+ *      let me add X", "X still needs to be written").
+ *
+ * Without filter 2, a purely descriptive sentence ("there is no config.json
+ * in this workspace") would look like outstanding work, and the agent would
+ * chase a file it was only ever talking about.
+ */
+const ANNOUNCED_PATH_RE = /(?:^|[\s"'`([{,])((?:[\w.-]+\/)*[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,9})(?=$|[\s"'`)\]},:;])/g;
+
+/** Extensions a source file plausibly has. Keeps prose out of the harvest. */
+const ANNOUNCED_EXTENSIONS = new Set([
+    'html', 'htm', 'css', 'scss', 'sass', 'less', 'js', 'jsx', 'mjs', 'cjs',
+    'ts', 'tsx', 'json', 'py', 'java', 'kt', 'go', 'rs', 'rb', 'php', 'c', 'h',
+    'cpp', 'hpp', 'cs', 'swift', 'vue', 'svelte', 'md', 'mdx', 'txt', 'yml',
+    'yaml', 'xml', 'sh', 'sql', 'env',
+]);
+
+/**
+ * Words that signal the model is about to DO something to a file, as opposed
+ * to merely describing one.
+ */
+const INTENTION_CUE_RE = new RegExp([
+    '\\bcreat', '\\bwrit', '\\badd', '\\bbuild', '\\bmak', '\\bgenerat',
+    '\\bimplement', '\\bscaffold', '\\bset\\s?up', '\\bneed(?:s|ed)?\\s+to\\b',
+    '\\brequir', '\\bremain', '\\bstill\\b', '\\bnext\\b', '\\bnow\\b',
+    '\\bwill\\b', "\\blet'?s\\b", '\\bgoing\\s+to\\b', '\\bplan(?:ning)?\\b',
+    '\\bstart(?:ing)?\\b', '\\bproceed', '\\bthen\\b', '\\balso\\b', '\\bplus\\b',
+    '\\bupdat', '\\bmodif', '\\bedit', '\\breplac', '\\bremov', '\\bdelet',
+    '\\brenam', '\\bmov', '\\binsert',
+].join('|'), 'i');
+
+/** Split prose into sentence-ish segments so a cue must be nearby. */
+function splitSentences(text: string): string[] {
+    return text.split(/(?<=[.!?])\s+|\r?\n+/).filter(s => s.trim().length > 0);
+}
+
+export function extractAnnouncedPaths(text: string): string[] {
+    if (!text || typeof text !== 'string') return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const sentence of splitSentences(text)) {
+        if (!INTENTION_CUE_RE.test(sentence)) continue;
+        for (const m of sentence.matchAll(ANNOUNCED_PATH_RE)) {
+            const raw = m[1];
+            if (!raw) continue;
+            // Strip a trailing sentence period that is not part of the extension.
+            const cleaned = raw.replace(/\.+$/, '');
+            const dot = cleaned.lastIndexOf('.');
+            if (dot <= 0) continue;
+            const ext = cleaned.slice(dot + 1).toLowerCase();
+            if (!ANNOUNCED_EXTENSIONS.has(ext)) continue;
+            if (seen.has(cleaned)) continue;
+            seen.add(cleaned);
+            out.push(cleaned);
+        }
+    }
+    return out;
+}
+
+/**
+ * Record the paths the model said it was going to create/modify.
+ *
+ * This is the ONLY signal used to decide whether a text-only turn really
+ * means "done" — the agent is not asked to remember a plan, it is asked what
+ * it just said it would do.
+ */
+export function recordAnnouncedPaths(ctx: AgentTaskContext, text: string): AgentTaskContext {
+    const paths = extractAnnouncedPaths(text);
+    if (paths.length === 0) return ctx;
+    let next = ctx;
+    for (const p of paths) {
+        next = { ...next, announcedPaths: pushCapped(next.announcedPaths, p, MAX_ANNOUNCED_PATHS) };
+    }
+    return { ...next, updatedAt: Date.now() };
+}
+
+/**
+ * Compute the announced paths that are still absent from the workspace.
+ *
+ * `exists` answers "is this path present in the workspace right now?". A
+ * path is OUTSTANDING when the model announced it and it is neither in the
+ * workspace nor recorded as a deliberate deletion.
+ */
+export function computeRemainingPaths(
+    ctx: AgentTaskContext,
+    exists: (path: string) => boolean,
+): string[] {
+    const deleted = new Set(
+        ctx.operations
+            .filter(o => o.status === 'ok' && o.tool === 'delete_file')
+            .map(o => o.target),
+    );
+    const out: string[] = [];
+    for (const p of ctx.announcedPaths) {
+        if (deleted.has(p)) continue;
+        if (exists(p)) continue;
+        out.push(p);
+    }
+    return out;
+}
 
 /** Record a real validation failure (diagnostics/build). Never fabricated. */
 export function recordValidationFailure(ctx: AgentTaskContext, path: string, message: string): AgentTaskContext {
@@ -181,6 +332,43 @@ export function recordValidationFailure(ctx: AgentTaskContext, path: string, mes
 
 export function finishTask(ctx: AgentTaskContext): AgentTaskContext {
     return { ...ctx, completed: true, updatedAt: Date.now() };
+}
+
+/**
+ * Whether the agent may treat a text-only turn as "the task is done".
+ *
+ * The loop used to treat ANY model turn without tool calls as completion.
+ * That is wrong for a modification task: providers routinely split a turn,
+ * and the model frequently emits an intermediate "now let me create the CSS
+ * file…" message with no tool calls attached. The run then ended after the
+ * first file with `success: true`.
+ *
+ * The rule here is deliberately conservative and evidence-based:
+ *   - a task that has already FAILED an operation is not complete;
+ *   - a task that has OUTSTANDING announced work is not complete;
+ *   - a task that changed nothing and announced nothing is complete (the
+ *     model was asked a question and answered it).
+ *
+ * `outstanding` is computed from the model's own announcements and the real
+ * workspace, so this never invents work — it only refuses to call an
+ * unfinished task finished.
+ */
+export function isTaskComplete(ctx: AgentTaskContext, outstanding: string[]): boolean {
+    if (ctx.operations.some(o => o.status === 'error')) return false;
+    if (outstanding.length > 0) return false;
+    return true;
+}
+
+/**
+ * True when the run produced a real workspace change.
+ *
+ * Distinct from "complete": a run can be complete and change nothing (a
+ * question answered from real workspace state).
+ */
+export function hasRealMutations(ctx: AgentTaskContext): boolean {
+    return ctx.operations.some(
+        o => o.status === 'ok' && MUTATING_TOOLS.has(o.tool),
+    );
 }
 
 /** Successful file operations performed so far, for the completion summary. */
