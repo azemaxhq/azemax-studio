@@ -3,6 +3,8 @@ import { Paperclip, Sparkles, ArrowUp, Square, X, FileCode, Hash, Zap, MessageCi
 import { useProjectActions, useProjectUI } from '../../context/ProjectContext';
 import { getActiveEditorContext, subscribeActiveEditor } from '../../core/editor/activeEditorStore';
 import { nsGetItem, nsRemoveItem, nsSetItem } from '../../utils/userStorage';
+import { ModelSelector } from './ModelSelector';
+import { AnchorPopover } from '../UI/AnchorPopover';
 
 interface ContextChip {
     id: string;
@@ -137,16 +139,9 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
         return () => window.removeEventListener('azemax:clear-chips', onClear as EventListener);
     }, []);
 
-    // Close popovers on outside click
-    useEffect(() => {
-        const onDoc = (e: MouseEvent) => {
-            const t = e.target as HTMLElement;
-            if (showAgentMenu && agentBtnRef.current && !agentBtnRef.current.contains(t)) setShowAgentMenu(false);
-            if (showAttachMenu && attachBtnRef.current && !attachBtnRef.current.contains(t)) setShowAttachMenu(false);
-        };
-        document.addEventListener('mousedown', onDoc);
-        return () => document.removeEventListener('mousedown', onDoc);
-    }, [showAgentMenu, showAttachMenu]);
+    // NOTE: outside-click and Escape dismissal for the attach / agent menus
+    // is handled by the shared `AnchorPopover`, which knows about both the
+    // trigger and the portaled panel.
 
     // Persist dismissed state so refresh doesn't resurrect a file chip the user closed
     useEffect(() => {
@@ -458,79 +453,101 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                 </div>
             )}
 
-            {/* Attach menu */}
-            {showAttachMenu && (
-                <div className="absolute bottom-full mb-2 left-0 w-[288px] max-w-[min(288px,calc(100vw-32px))] rounded-[10px] overflow-hidden z-50 animate-fade-in" style={{ background: "var(--az-overlay)", border: "1px solid var(--az-border)", boxShadow: "0 12px 32px rgba(0,0,0,0.4)"}}>
-                    <div className="py-1.5">
-                        <button
-                            onClick={() => {
-                                const ctx = getActiveEditorContext();
-                                const name = ctx?.fileName ?? activeFileMeta?.name;
-                                const path = ctx?.filePath ?? name;
-                                if (name && path) attachFileAsChipAndMention(path);
-                                else setShowAttachMenu(false);
-                            }}
-                            className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-[var(--az-surface-hover)] transition-colors"
-                        >
-                            <span className="w-6 h-6 rounded-[6px] bg-white/[0.06] border border-white/[0.06] flex items-center justify-center shrink-0"><FileCode size={12} /></span>
-                            <span className="flex-1 min-w-0">
-                                <span className="block text-[12.5px] font-medium leading-none" style={{ color: 'var(--az-text)'}}>{(getActiveEditorContext()?.fileName ?? activeFileMeta?.name) ? `Attach ${(getActiveEditorContext()?.fileName ?? activeFileMeta?.name)}` : 'No active file'}</span>
-                                <span className="block text-[11px] leading-none mt-1 truncate" style={{ color: 'var(--az-text-muted)'}}>Add current file as context</span>
-                            </span>
-                        </button>
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-[var(--az-surface-hover)] transition-colors"
-                        >
-                            <span className="w-6 h-6 rounded-[6px] bg-white/[0.06] border border-white/[0.06] flex items-center justify-center shrink-0"><Upload size={12} /></span>
-                            <span className="flex-1 min-w-0">
-                                <span className="block text-[12.5px] font-medium leading-none" style={{ color: 'var(--az-text)'}}>Upload file</span>
-                                <span className="block text-[11px] leading-none mt-1" style={{ color: 'var(--az-text-muted)'}}>Attach local file as reference</span>
-                            </span>
-                        </button>
-                        {fileList.length > 0 && (
-                            <>
-                                <div className="h-px my-1 mx-2" style={{ background: 'rgba(230,237,248,0.06)' }} />
-                                <div className="px-3 pt-1 pb-1 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-widest" style={{ color: 'var(--az-text-faint)'}}><FolderSearch size={10} /> Workspace files</div>
-                                <div className="max-h-40 overflow-y-auto custom-scrollbar">
-                                    {fileList.slice(0,6).map(fp => (
-                                        <button key={fp} onClick={() => attachFileAsChipAndMention(fp)} className="w-full text-left px-3 py-1.5 flex items-center gap-2 text-[12.5px] text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text)] transition-colors">
-                                            <FileCode size={13} style={{ color: 'var(--az-text-muted)'}} className="shrink-0" />
-                                            <span className="truncate">{fp}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
+            {/* Attach menu — anchored to the attach button and rendered in a
+                portal, so it is never clipped by the composer. */}
+            <AnchorPopover
+                open={showAttachMenu}
+                anchorRef={attachBtnRef}
+                onClose={() => setShowAttachMenu(false)}
+                placement="auto"
+                align="start"
+                role="menu"
+                ariaLabel="Attach context"
+                style={{
+                    width: 288,
+                    maxWidth: 'min(288px, calc(100vw - 32px))',
+                }}
+            >
+                <div className="py-1.5">
+                    <button
+                        onClick={() => {
+                            const ctx = getActiveEditorContext();
+                            const name = ctx?.fileName ?? activeFileMeta?.name;
+                            const path = ctx?.filePath ?? name;
+                            if (name && path) attachFileAsChipAndMention(path);
+                            else setShowAttachMenu(false);
+                        }}
+                        className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-[var(--az-surface-hover)] transition-colors"
+                    >
+                        <span className="w-6 h-6 rounded-[6px] bg-white/[0.06] border border-white/[0.06] flex items-center justify-center shrink-0"><FileCode size={12} /></span>
+                        <span className="flex-1 min-w-0">
+                            <span className="block text-[12.5px] font-medium leading-none" style={{ color: 'var(--az-text)'}}>{(getActiveEditorContext()?.fileName ?? activeFileMeta?.name) ? `Attach ${(getActiveEditorContext()?.fileName ?? activeFileMeta?.name)}` : 'No active file'}</span>
+                            <span className="block text-[11px] leading-none mt-1 truncate" style={{ color: 'var(--az-text-muted)'}}>Add current file as context</span>
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-[var(--az-surface-hover)] transition-colors"
+                    >
+                        <span className="w-6 h-6 rounded-[6px] bg-white/[0.06] border border-white/[0.06] flex items-center justify-center shrink-0"><Upload size={12} /></span>
+                        <span className="flex-1 min-w-0">
+                            <span className="block text-[12.5px] font-medium leading-none" style={{ color: 'var(--az-text)'}}>Upload file</span>
+                            <span className="block text-[11px] leading-none mt-1" style={{ color: 'var(--az-text-muted)'}}>Attach local file as reference</span>
+                        </span>
+                    </button>
+                    {fileList.length > 0 && (
+                        <>
+                            <div className="h-px my-1 mx-2" style={{ background: 'rgba(230,237,248,0.06)' }} />
+                            <div className="px-3 pt-1 pb-1 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-widest" style={{ color: 'var(--az-text-faint)'}}><FolderSearch size={10} /> Workspace files</div>
+                            <div className="max-h-40 min-h-0 overflow-y-auto custom-scrollbar">
+                                {fileList.slice(0,6).map(fp => (
+                                    <button key={fp} onClick={() => attachFileAsChipAndMention(fp)} className="w-full text-left px-3 py-1.5 flex items-center gap-2 text-[12.5px] text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text)] transition-colors">
+                                        <FileCode size={13} style={{ color: 'var(--az-text-muted)'}} className="shrink-0" />
+                                        <span className="truncate">{fp}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    )}
                 </div>
-            )}
+            </AnchorPopover>
 
-            {/* Agent mode menu */}
-            {showAgentMenu && (
-                <div className="absolute bottom-full mb-2 left-[88px] w-[232px] rounded-[10px] overflow-hidden z-50 animate-fade-in" style={{ background: "var(--az-overlay)", border: "1px solid var(--az-border)", boxShadow: "0 12px 32px rgba(0,0,0,0.4)"}}>
-                    <div className="py-1">
-                        {(Object.keys(MODE_CONFIG) as ComposerMode[]).map(m => {
-                            const cfg = MODE_CONFIG[m];
-                            const active = m === composerMode;
-                            return (
-                                <button
-                                    key={m}
-                                    onClick={() => { setComposerMode(m); setShowAgentMenu(false); inputRef.current?.focus(); }}
-                                    className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${active ? 'bg-[var(--az-surface-3)] text-[var(--az-text)]' : 'text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text)]'}`}
-                                >
-                                    <span className={`w-6 h-6 rounded-[6px] flex items-center justify-center shrink-0 border ${active ? 'bg-white text-black border-white' : 'bg-white/[0.06] border-white/[0.06]'}`}>{cfg.icon}</span>
-                                    <span className="flex-1 min-w-0">
-                                        <span className="block text-[12.5px] font-medium leading-none">{cfg.label}</span>
-                                        <span className="block text-[11px] leading-none mt-1" style={{ color: active ? 'var(--az-text-secondary)' : 'var(--az-text-muted)'}}>{cfg.desc}</span>
-                                    </span>
-                                    {active && <span className="w-1.5 h-1.5 rounded-full bg-[var(--az-success)] shrink-0" />}
-                                </button>
-                            );
-                        })}
-                    </div>
+            {/* Agent mode menu — anchored to the Agent selector so it always
+                lines up with it, whatever the model label is. */}
+            <AnchorPopover
+                open={showAgentMenu}
+                anchorRef={agentBtnRef}
+                onClose={() => setShowAgentMenu(false)}
+                placement="auto"
+                align="start"
+                role="menu"
+                ariaLabel="Select agent mode"
+                style={{
+                    width: 232,
+                    maxWidth: 'min(232px, calc(100vw - 32px))',
+                }}
+            >
+                <div className="py-1">
+                    {(Object.keys(MODE_CONFIG) as ComposerMode[]).map(m => {
+                        const cfg = MODE_CONFIG[m];
+                        const active = m === composerMode;
+                        return (
+                            <button
+                                key={m}
+                                onClick={() => { setComposerMode(m); setShowAgentMenu(false); inputRef.current?.focus(); }}
+                                className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${active ? 'bg-[var(--az-surface-3)] text-[var(--az-text)]' : 'text-[var(--az-text-secondary)] hover:bg-[var(--az-surface-hover)] hover:text-[var(--az-text)]'}`}
+                            >
+                                <span className={`w-6 h-6 rounded-[6px] flex items-center justify-center shrink-0 border ${active ? 'bg-white text-black border-white' : 'bg-white/[0.06] border-white/[0.06]'}`}>{cfg.icon}</span>
+                                <span className="flex-1 min-w-0">
+                                    <span className="block text-[12.5px] font-medium leading-none">{cfg.label}</span>
+                                    <span className="block text-[11px] leading-none mt-1" style={{ color: active ? 'var(--az-text-secondary)' : 'var(--az-text-muted)'}}>{cfg.desc}</span>
+                                </span>
+                                {active && <span className="w-1.5 h-1.5 rounded-full bg-[var(--az-success)] shrink-0" />}
+                            </button>
+                        );
+                    })}
                 </div>
-            )}
+            </AnchorPopover>
 
             {/* Composer container */}
             <div
@@ -601,6 +618,8 @@ export const AIComposer: React.FC<AIComposerProps> = ({ input, setInput, onSend,
                                 <Paperclip size={13} strokeWidth={1.75} />
                             </button>
                         </div>
+                        <ModelSelector />
+
                         <div ref={agentBtnRef} className="relative">
                             <button
                                 onClick={() => setShowAgentMenu(v => !v)}

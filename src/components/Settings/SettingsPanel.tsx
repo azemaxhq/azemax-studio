@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { Settings, RotateCcw, ArrowRight, SearchX, ArrowLeft, X } from 'lucide-react';
 import { SETTINGS_CATEGORIES, getCategoryDefinition } from '../../settings/settingsSchema';
 import { resetAllSettings } from '../../settings/settingsStore';
@@ -6,6 +6,7 @@ import type { CategoryDefinition, CategoryKey, SettingDef } from '../../settings
 import { SettingsSearch } from './SettingsSearch';
 import { SettingsHome } from './SettingsHome';
 import { SettingsCategory } from './SettingsCategory';
+import { providerSettingsNav } from '../../core/ai/providerSettingsNav';
 import { CATEGORY_ICONS } from './settingsIcons';
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -52,6 +53,17 @@ export const SettingsPanel: React.FC<{ onClose?: () => void }> = ({ onClose }) =
 
   const results = useMemo(() => searchSettings(query), [query]);
   const searching = query.trim().length > 0;
+
+  // The in-chat model selector can ask the panel to open the AI Providers
+  // category (see `providerSettingsNav`).
+  useEffect(() => {
+    const sub = providerSettingsNav.on('open-ai-providers', () => {
+      setQuery('');
+      setActiveCategory('aiProviders');
+      setFocusedSetting(null);
+    });
+    return () => sub.dispose();
+  }, []);
 
   const openCategory = useCallback((category: CategoryKey) => {
     setQuery('');

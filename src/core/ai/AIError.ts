@@ -8,6 +8,8 @@
  * write path refuses any `AIError` outright.
  */
 
+import { redactSecrets, redactDeep } from './redaction';
+
 export const AI_ERROR_CODES = {
     AI_PROVIDER_UNAVAILABLE: 'AI_PROVIDER_UNAVAILABLE',
     AI_PROVIDER_TIMEOUT: 'AI_PROVIDER_TIMEOUT',
@@ -71,17 +73,22 @@ export class AIError extends Error {
         requestId,
         details,
     }: AIErrorInput) {
-        super(message || code);
+        // Defense in depth: the message, cause and details are redacted here
+        // so NO code path can leak a credential that a provider echoed back
+        // (several providers return a masked form of the submitted key in the
+        // error body). Everything downstream — logs, chat bubbles, diagnostic
+        // payloads — receives the redacted form.
+        super(redactSecrets(message || code));
         this.name = 'AIError';
         this.code = code || AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE;
         this.provider = provider || null;
         this.model = model || null;
         this.status = status || null;
         this.retryable = Boolean(retryable);
-        this.cause = cause ?? null;
+        this.cause = redactDeep(cause ?? null);
         this.latencyMs = latencyMs ?? null;
         this.requestId = requestId ?? null;
-        this.details = details === undefined ? null : details;
+        this.details = details === undefined ? null : redactDeep(details);
     }
 
     toJSON(): AIErrorWire {
@@ -173,7 +180,7 @@ export function classifyProviderError({
     const msg = String(message || (cause && (cause as { message?: unknown }).message) || '');
     const statusNum = Number(status) || Number((cause as { status?: unknown })?.status) || 0;
 
-    if (statusNum >= 100 && statusNum < 500) {
+    if (statusNum >= 100) {
         if (statusNum === 401 || statusNum === 403) {
             return new AIError({
                 code: AI_ERROR_CODES.AI_PROVIDER_AUTH_ERROR,
@@ -211,6 +218,7 @@ export function classifyProviderError({
                 cause, latencyMs, requestId,
             });
         }
+        // Other 1xx, 2xx, 3xx (non-standard for error responses)
         return new AIError({
             code: AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE,
             provider, model, status: statusNum, retryable: true,

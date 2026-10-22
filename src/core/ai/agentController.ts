@@ -29,6 +29,8 @@ import { recordRecentEdit } from '../workspace/liveIDEContext';
 import { createPreviewWorkspace, type PreviewWorkspace, type ProposedChange } from '../editor/previewWorkspace';
 import { createExecutorDeps, type WorkspaceBridgeActions } from '../editor/workspaceBridge';
 import { runAgentLoop, type AgentLoopResult, type AgentStepRecord } from './agentLoop';
+import { resolveByokTarget } from './byokRuntime';
+import type { ResolvedByokTarget } from './byokTypes';
 import { executeActionPlan, type AIAction, type ExecutionResult } from './aiToolExecutor';
 import type { AgentToolDeps } from './agentTools';
 import {
@@ -185,6 +187,14 @@ export interface AgentControllerRequest {
     budget?: Partial<AgentBudget>;
     /** Requested model for agent steps. */
     model?: string;
+    /**
+     * A pinned BYOK provider target for the whole task.
+     *
+     * When omitted, the controller resolves the user's selected provider
+     * ONCE at task start and pins it, so a settings change during the task
+     * cannot switch the running loop to a different provider or credential.
+     */
+    providerTarget?: ResolvedByokTarget;
 }
 
 export interface AgentControllerResult extends ExecutionResult {
@@ -222,6 +232,26 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     };
     /** Discovered workspace facts, injected into the loop's leading context. */
     let workspaceContextBlock = '';
+
+    /**
+     * Pin the BYOK provider target for the WHOLE task.
+     *
+     * The user's selected provider, model and credential are resolved once
+     * here and reused for every model call in this task. A settings change
+     * made while the task runs therefore applies to the NEXT task, not to
+     * this one — the running task keeps a consistent provider identity.
+     *
+     * A resolution failure is NOT fatal here: the loop surfaces the real
+     * error on its first model call, which keeps the failure report truthful.
+     */
+    let providerTarget: ResolvedByokTarget | undefined = req.providerTarget;
+    if (!providerTarget) {
+        try {
+            providerTarget = (await resolveByokTarget()) ?? undefined;
+        } catch {
+            providerTarget = undefined;
+        }
+    }
 
     /**
      * Task lifecycle, keyed to the request that owns this run.
@@ -331,7 +361,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
         // loop so it can INSPECT and answer from real workspace data rather
         // than from a guess. Destructive tools are hard-denied for this pass.
         if (intent.kind === 'explain' || intent.kind === 'inspect' || intent.kind === 'execute') {
-            const answer = await runReadOnlyAgent(req, taskContext, push, workspaceContextBlock, { setPhase, progress });
+            const answer = await runReadOnlyAgent(req, taskContext, push, workspaceContextBlock, { setPhase, progress }, providerTarget);
             return {
                 ...answer,
                 activities,
@@ -412,6 +442,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
         signal: req.signal,
         budget,
         model: req.model,
+        providerTarget,
         onStatus: (status) => {
             if (status === 'thinking') {
                 // Real model round-trip in flight.
@@ -523,6 +554,7 @@ async function runReadOnlyAgent(
     push: (a: AgentActivity) => void,
     workspaceContextBlock: string,
     hooks: { setPhase: (p: AgentTaskPhase, l?: string, d?: string) => void; progress: (e: { phase: AgentTaskPhase; label: string; detail?: string; tool?: string; status: 'running' | 'done' | 'error' }) => void },
+    providerTarget?: ResolvedByokTarget,
 ): Promise<Omit<AgentControllerResult, 'activities' | 'planSummary'>> {
     const readActivity: AgentActivity = { id: makeActivityId('read'), tool: 'read', status: 'running', message: STAGE_LABELS.read };
     push(readActivity);
@@ -544,6 +576,7 @@ async function runReadOnlyAgent(
         },
         signal: req.signal,
         model: req.model,
+        providerTarget,
         onStep: (step) => reportStep(step, push, hooks.progress, readActivity),
     });
 

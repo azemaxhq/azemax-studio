@@ -1,7 +1,7 @@
 import type { AIStreamEvent, AIUsage, AIToolCall } from './types';
 import { AIError, AI_ERROR_CODES, aiErrorToUserMessage } from './AIError';
 import type { AIErrorCode } from './AIError';
-import { extractToolCallsFromContent } from './AIClient';
+import { extractToolCallsFromContent } from './toolCallNormalization';
 
 /**
  * The single SSE stream parser + frame-coalesced render buffer for the AI

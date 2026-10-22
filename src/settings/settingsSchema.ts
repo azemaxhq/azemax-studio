@@ -595,6 +595,96 @@ export const SETTINGS_CATEGORIES: CategoryDefinition[] = [
         description: 'Ask for confirmation before clearing all conversations.',
         keywords: ['chat', 'clear', 'conversation', 'confirm', 'destructive'],
       },
+      // ── AI mode + provider selection (non-secret metadata only) ─────────
+      // API keys are NEVER settings: the settings object is persisted to
+      // localStorage and synced to the account, so a key stored here would
+      // be written in plaintext. Credentials live in the credential store
+      // (session-only, or AES-GCM encrypted at rest).
+      {
+        id: 'ai.mode',
+        type: 'select',
+        default: 'azemax-default',
+        choices: [
+          { value: 'azemax-default', label: 'Azemax Default' },
+          { value: 'byok', label: 'Bring Your Own Key' },
+        ],
+        label: 'AI Mode',
+        description:
+          'Azemax Default uses Azemax\u2019s own models with no API key. Bring Your Own Key calls your own provider with your credential.',
+        keywords: ['mode', 'default', 'byok', 'bring your own key', 'provider'],
+      },
+      {
+        id: 'ai.activeProvider',
+        type: 'select',
+        default: '',
+        choices: [
+          { value: '', label: 'Use Server Default' },
+          { value: 'openai', label: 'OpenAI' },
+          { value: 'anthropic', label: 'Anthropic' },
+          { value: 'google', label: 'Google Gemini' },
+          { value: 'openrouter', label: 'OpenRouter' },
+          { value: 'groq', label: 'Groq' },
+          { value: 'nvidia', label: 'NVIDIA NIM' },
+          { value: 'custom', label: 'Custom OpenAI-Compatible' },
+        ],
+        label: 'Active Provider',
+        description: 'Provider used for all AI features. "Use Server Default" uses the server-configured provider.',
+        keywords: ['provider', 'openai', 'anthropic', 'google', 'gemini', 'openrouter', 'groq', 'nvidia', 'byok'],
+      },
+      {
+        id: 'ai.azemaxModel',
+        type: 'text',
+        default: '',
+        placeholder: 'Leave empty to use Azemax\u2019s primary model',
+        label: 'Azemax Default Model',
+        description:
+          'Model id used for Azemax Default requests. Leave empty to use Azemax\u2019s primary model. Must be one of the models listed by Azemax.',
+        keywords: ['model', 'default', 'azemax', 'primary'],
+      },
+      {
+        id: 'ai.defaultModel',
+        type: 'text',
+        default: '',
+        placeholder: 'e.g., gpt-4o, claude-3-5-sonnet-20241022',
+        label: 'BYOK Model',
+        description: 'Model identifier used for your own provider. Leave empty to use the provider default.',
+        keywords: ['model', 'default', 'byok', 'gpt', 'claude', 'gemini'],
+      },
+      {
+        id: 'ai.allowServerFallback',
+        type: 'boolean',
+        default: false,
+        label: 'Fall Back To Server Provider On Error',
+        description:
+          'When your own provider fails, retry the request with the server-configured provider. Off by default so a request never silently uses a different provider credential.',
+        keywords: ['fallback', 'server', 'provider', 'error', 'byok'],
+      },
+    ],
+  },
+  {
+    // UI-only category: the provider credential panel renders its own
+    // controls. It intentionally declares NO PERSISTED settings so no
+    // credential can ever be written into the settings blob. The single
+    // entry is an ACTION (never persisted, never imported).
+    id: 'aiProviders',
+    label: 'AI Providers',
+    description: 'Configure your own AI provider credentials (BYOK)',
+    icon: 'key',
+    settings: [
+      {
+        id: 'aiProviders.clearAllCredentials',
+        type: 'action',
+        actionLabel: 'Remove All Credentials',
+        confirmMessage:
+          'Remove every stored provider API key from this device? The keys cannot be recovered.',
+        label: 'Remove All Stored Credentials',
+        description:
+          'Delete every API key stored for your providers, in memory and in the encrypted vault.',
+        keywords: ['remove', 'clear', 'credentials', 'keys', 'byok'],
+        handler: () => {
+          actionHandlers.get('aiProviders.clearAllCredentials')?.();
+        },
+      },
     ],
   },
   {

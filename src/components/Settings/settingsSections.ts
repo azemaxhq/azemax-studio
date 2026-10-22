@@ -69,7 +69,14 @@ export const CATEGORY_SECTIONS: Record<CategoryKey, SettingsSectionDef[]> = {
       title: 'Chat',
       settingIds: ['ai.autoScroll', 'ai.responseLength', 'ai.confirmClearConversation'],
     },
+    {
+      title: 'Provider',
+      settingIds: ['ai.mode', 'ai.azemaxModel', 'ai.activeProvider', 'ai.defaultModel', 'ai.allowServerFallback'],
+    },
   ],
+  // The AI Providers category renders its own credential panel; it declares
+  // no persisted settings, so it has no sections.
+  aiProviders: [],
   privacy: [
     {
       title: 'Data Storage',

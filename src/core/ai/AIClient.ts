@@ -2,7 +2,7 @@ import { API_BASE } from '../../utils/apiClient';
 import { authHeaders } from '../../utils/authToken';
 import { isAbortError } from './AIAbortController';
 import { streamFromBackend, streamFromOpenAI } from './AIStream';
-import type { AIStreamEvent, AIToolCall } from './types';
+import type { AIStreamEvent } from './types';
 import { taskDefaults, DEFAULT_MODEL } from './AIContextBuilder';
 import { cleanResponse, createVisibleContentFilter } from './AIResponseParser';
 import type { AIRequestContext, AIRequestOptions, AIResult, ChatMessage } from './types';
@@ -15,6 +15,21 @@ import {
 } from './AIError';
 import type { AIErrorCode } from './AIError';
 import { buildDirectChain, OR_PREFIX, KILO_PREFIX } from './modelRouter';
+import { providerRegistry, customProvider } from './providers/registry';
+import type { UnifiedAIRequestOptions, UnifiedStreamEvent } from './byokTypes';
+import {
+    resolveByokTarget,
+    isServerFallbackAllowed,
+    isByokMode,
+    getSelectedAzemaxModel,
+    type ResolvedByokTarget,
+} from './byokRuntime';
+import { normalizeToolCalls, extractToolCallsFromContent } from './toolCallNormalization';
+
+// Re-exported for backwards compatibility: the canonical implementation now
+// lives in `toolCallNormalization` so provider adapters can import it without
+// creating a cycle back into this module.
+export { normalizeToolCalls, extractToolCallsFromContent };
 
 /**
  * The single AI transport.
@@ -149,129 +164,6 @@ function resolveDirectEndpoint(model: string): DirectEndpoint {
 }
 
 /**
- * Normalizes a provider's raw `message.tool_calls` into our wire shape.
- *
- * Malformed entries are DROPPED, never repaired: a call with no name or a
- * non-string id is not a valid tool call and must not reach dispatch.
- */
-/**
- * Convert a single provider item (native or alternative shape) into our wire
- * type. Provider compatibility adapters across vendors use different envelopes:
- *   - OpenAI/OpenRouter/NVIDIA: { id, type, function: { name, arguments } }
- *   - Bare tool-call objects:    { id?, name, arguments? | args? | params? }
- *   - A bare object on its own is never a tool call — it must at least carry
- *     a `name` string.
- */
-function normalizeOneToolCall(item: unknown, index: number): AIToolCall | null {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
-    const obj = item as Record<string, unknown>;
-
-    let name = '';
-    let rawArgs: unknown = '';
-    let id = '';
-
-    const fn = (obj as { function?: unknown }).function;
-    if (fn && typeof fn === 'object' && !Array.isArray(fn)) {
-        const f = fn as Record<string, unknown>;
-        if (typeof f.name === 'string' && f.name) {
-            name = f.name;
-            rawArgs = f.arguments ?? f.args ?? f.parameters ?? '';
-            id = typeof obj.id === 'string' ? obj.id : '';
-        }
-    }
-    if (!name && typeof obj.name === 'string' && obj.name) {
-        name = obj.name;
-        rawArgs = obj.arguments ?? obj.args ?? obj.params ?? obj.input ?? '';
-        id = typeof obj.id === 'string' ? obj.id : '';
-    }
-    if (!name) return null;
-
-    let argumentsString = '';
-    if (typeof rawArgs === 'string') {
-        argumentsString = rawArgs;
-    } else if (rawArgs === undefined || rawArgs === null || rawArgs === '') {
-        argumentsString = '{}';
-    } else {
-        try {
-            argumentsString = JSON.stringify(rawArgs);
-        } catch {
-            argumentsString = '';
-        }
-    }
-    if (!id) id = `call_${name}_${index}`;
-    return { id, type: 'function', function: { name, arguments: argumentsString } };
-}
-
-export function normalizeToolCalls(raw: unknown): AIToolCall[] {
-    // A single bare object may be a tool call (some providers serialize one
-    // call without an array wrapper).
-    if (raw && !Array.isArray(raw) && typeof raw === 'object') {
-        const one = normalizeOneToolCall(raw, 0);
-        return one ? [one] : [];
-    }
-    if (!Array.isArray(raw)) return [];
-    const out: AIToolCall[] = [];
-    for (const item of raw) {
-        const call = normalizeOneToolCall(item, out.length);
-        if (call) out.push(call);
-    }
-    return out;
-}
-
-/**
- * Extract structured tool calls that a provider mistakenly serialized inside
- * the assistant `content` field as JSON instead of `tool_calls`.
- *
- * Only a *complete, standalone* tool-call payload is converted: the trimmed
- * content must be JSON and deserialize to one or more objects carrying a
- * string `name` (and optionally arguments/args/parameters/input). Ordinary
- * prose or fenced code blocks are never touched, so genuine code/JSON
- * answers stay intact.
- *
- * Returns `null` when the content is not a tool-call payload.
- */
-export function extractToolCallsFromContent(content: unknown): AIToolCall[] | null {
-    if (typeof content !== 'string') return null;
-    const trimmed = content.trim();
-    if (!trimmed) return null;
-    // Strip a single Markdown code fence, if present, before parsing.
-    let body = trimmed;
-    const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (fence) body = fence[1].trim();
-    if (!body.startsWith('{') && !body.startsWith('[')) return null;
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(body);
-    } catch {
-        return null;
-    }
-    const arr = Array.isArray(parsed) ? parsed : [parsed];
-    if (!arr.length) return null;
-    const calls = normalizeToolCalls(arr);
-    // Require every array entry to have survived validation as a tool call,
-    // so a stray JSON array (e.g. [{"name":"x"}]) inside a real code sample
-    // is only treated as a tool call if ALL entries look like calls.
-    if (calls.length !== arr.length) return null;
-    // A lone object without arguments is only a tool call if it also carries
-    // an explicit `arguments`/`args` field. This prevents a plain JSON object
-    // that happens to have `name` from being misclassified.
-    for (let i = 0; i < arr.length; i++) {
-        const obj = arr[i] as Record<string, unknown>;
-        if (!Object.prototype.hasOwnProperty.call(obj, 'arguments') &&
-            !Object.prototype.hasOwnProperty.call(obj, 'args') &&
-            !Object.prototype.hasOwnProperty.call(obj, 'parameters') &&
-            !Object.prototype.hasOwnProperty.call(obj, 'input')) {
-            if (arr.length === 1 && (obj as { tool_calls?: unknown }).tool_calls === undefined) {
-                // permit only if name matches a known tool? We don't have catalog here;
-                // keep strict to avoid false positives.
-                return null;
-            }
-        }
-    }
-    return calls;
-}
-
-/**
  * Serializes messages for transport, keeping the tool-calling fields that the
  * older hand-rolled JSON stringify dropped (`tool_calls`, `tool_call_id`,
  * `name`). `content` is always coerced to a string — several OpenAI-compatible
@@ -295,7 +187,7 @@ function buildBackendBody(
 ): string {
     const body: Record<string, unknown> = {
         messages: serializeMessages(messages),
-        model: options.model,
+        model: resolveDefaultModel(options.model),
         temperature: options.temperature,
         maxTokens: options.maxTokens,
         responseLength: context.responseLength || 'medium',
@@ -310,6 +202,23 @@ function buildBackendBody(
         body.toolChoice = options.toolChoice || 'auto';
     }
     return JSON.stringify(body);
+}
+
+/**
+ * The model to use for an Azemax Default request.
+ *
+ * The user may pick one of Azemax's own models from the backend catalog
+ * (`ai.azemaxModel`). When nothing is picked the backend applies its own
+ * default, exactly as before. The value is a MODEL ID — the server
+ * credential never leaves the backend.
+ *
+ * In BYOK mode the model comes from the pinned provider target instead, so
+ * this resolver is not consulted.
+ */
+function resolveDefaultModel(requested?: string): string | undefined {
+    if (requested) return requested;
+    if (isByokMode()) return undefined;
+    return getSelectedAzemaxModel() || undefined;
 }
 
 async function postBackend(
@@ -394,6 +303,72 @@ async function postDirect(
         signal: options.signal,
         body: buildDirectBody(messages, options, context, endpoint.model, stream),
     });
+}
+
+/**
+ * BYOK Provider Integration
+ * Uses the user-configured provider from the provider context
+ */
+
+/**
+ * Convert internal request options to the unified provider format.
+ */
+function buildUnifiedOptions(
+    messages: ChatMessage[],
+    options: AIRequestOptions,
+    context: AIRequestContext,
+    target: { model: string },
+    stream: boolean,
+): UnifiedAIRequestOptions {
+    const defaults = taskDefaults(options, context.responseLength);
+    return {
+        model: target.model,
+        messages: messages.map(m => ({
+            role: m.role,
+            content: m.content,
+            ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
+            ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
+            ...(m.name ? { name: m.name } : {}),
+        })),
+        temperature: options.temperature ?? defaults.temperature,
+        maxTokens: options.maxTokens || defaults.maxTokens,
+        stream,
+        tools: options.tools && options.tools.length ? options.tools : undefined,
+        toolChoice: options.toolChoice || 'auto',
+        signal: options.signal,
+    };
+}
+
+/**
+ * Convert unified stream event to internal AIStreamEvent
+ */
+function convertUnifiedEvent(event: UnifiedStreamEvent): AIStreamEvent | null {
+    switch (event.type) {
+        case 'delta':
+            return { type: 'delta', content: event.content || '' };
+        case 'tool_calls':
+            return { type: 'tool_calls', calls: event.toolCalls || [] };
+        case 'done':
+            return { 
+                type: 'done', 
+                model: event.model, 
+                usage: event.usage,
+                finishReason: event.finishReason 
+            };
+        case 'error':
+            return {
+                type: 'error',
+                message: event.error?.message || 'Provider error',
+                details: event.error?.message,
+                code: event.error?.code,
+                provider: event.error?.provider,
+                retryable: event.error?.retryable,
+            };
+        case 'start':
+            return { type: 'start', model: event.model || '' };
+        default:
+            return null;
+    }
 }
 
 function contextChars(messages: ChatMessage[]): number {
@@ -621,6 +596,50 @@ export async function* streamChat(
 ): AsyncGenerator<AIStreamEvent, void, unknown> {
     const allowFallback = options.allowFallback ?? true;
     if (isAIPerfEnabled()) aiPerfCounters.requests++;
+
+    // ── BYOK path ────────────────────────────────────────────────────────
+    // When the user selected their own provider, THAT provider runs the
+    // request. The target (provider + model + credential) is resolved once
+    // and snapshotted, so a mid-request settings change cannot swap the
+    // provider underneath a running agent task.
+    //
+    // `options.providerTarget` short-circuits resolution entirely: the agent
+    // controller pins the target for the whole task.
+    let byokTarget: ResolvedByokTarget | null = options.providerTarget ?? null;
+    if (!byokTarget) {
+        try {
+            byokTarget = await resolveByokTarget();
+        } catch (err) {
+            if (isAbortError(err)) throw err;
+            // A provider was selected but cannot be used. The server provider
+            // must NOT paper over it unless the fallback was explicitly
+            // enabled.
+            if (!isServerFallbackAllowed() || !allowFallback) throw err;
+            console.warn(
+                '[AIClient] BYOK provider could not be resolved; retrying with the server provider because "Fall Back To Server Provider On Error" is enabled:',
+                (err as Error).message,
+            );
+        }
+    }
+
+    if (byokTarget) {
+        try {
+            yield* streamChatWithBYOK(messages, options, context, byokTarget);
+            return;
+        } catch (err) {
+            if (isAbortError(err)) throw err;
+            // Falling back to the server provider would silently use a
+            // DIFFERENT credential than the one the user selected. That is
+            // opt-in only (`ai.allowServerFallback`).
+            if (!isServerFallbackAllowed()) throw err;
+            if (!allowFallback) throw err;
+            console.warn(
+                '[AIClient] BYOK stream failed; retrying with the server provider because "Fall Back To Server Provider On Error" is enabled:',
+                (err as Error).message,
+            );
+        }
+    }
+
     if (backendEnabled) {
         let sawDelta = false;
         try {
@@ -653,6 +672,183 @@ export async function* streamChat(
         // Never fall back once content has already streamed
         if (fallbackSawDelta) throw err;
         throw err;
+    }
+}
+
+/**
+ * Stream a chat completion through the user's OWN provider (BYOK).
+ *
+ * The provider, model and credential are resolved ONCE and snapshotted for the
+ * whole request, so a concurrent settings change cannot switch providers
+ * underneath a running agent task.
+ *
+ * A failure here is surfaced to the caller. It is NEVER retried against the
+ * server provider unless the user explicitly enabled
+ * `ai.allowServerFallback`.
+ */
+async function* streamChatWithBYOK(
+    messages: ChatMessage[],
+    options: AIRequestOptions,
+    context: AIRequestContext,
+    target: ResolvedByokTarget,
+): AsyncGenerator<AIStreamEvent, void, unknown> {
+    const adapter = providerRegistry.get(target.providerId);
+    if (!adapter) {
+        throw new AIError({
+            code: AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR,
+            provider: target.providerId,
+            model: target.model,
+            retryable: false,
+            message: `Provider ${target.providerId} is not available.`,
+        });
+    }
+
+    // The custom provider needs its user-supplied base URL applied before the
+    // request is built.
+    if (target.providerId === 'custom' && target.baseUrl) {
+        customProvider.configure({ ...target.config, baseUrl: target.baseUrl, model: target.model });
+    }
+
+    const unifiedOptions = buildUnifiedOptions(messages, options, context, target, true);
+
+    const tracker = new AIPerfTracker({
+        task: options.task || 'chat',
+        provider: target.providerId,
+        model: target.model,
+        contextChars: contextChars(messages),
+        contextBuildMs: context.contextBuildMs,
+    });
+
+    try {
+        tracker.providerStarted();
+        let sawContent = false;
+
+        for await (const event of adapter.streamChat(unifiedOptions, target.apiKey, target.baseUrl)) {
+            const internalEvent = convertUnifiedEvent(event);
+            if (!internalEvent) continue;
+            if (internalEvent.type === 'delta' || internalEvent.type === 'reasoning') {
+                sawContent = true;
+            }
+            if (internalEvent.type === 'error') {
+                throw new AIError({
+                    code: (internalEvent.code as AIErrorCode) || AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE,
+                    provider: target.providerId,
+                    model: target.model,
+                    retryable: Boolean(internalEvent.retryable),
+                    message: internalEvent.message,
+                });
+            }
+            yield internalEvent;
+        }
+
+        if (!sawContent) {
+            throw new AIError({
+                code: AI_ERROR_CODES.AI_INVALID_RESPONSE,
+                provider: target.providerId,
+                model: target.model,
+                retryable: false,
+                message: 'The provider returned an empty response.',
+            });
+        }
+
+        tracker.complete();
+        tracker.log();
+    } catch (err) {
+        if (isAbortError(err)) {
+            tracker.abort();
+            tracker.log();
+            throw err;
+        }
+        const aiErr = err instanceof AIError ? err : adapter.normalizeError(err, target.model);
+        tracker.fail(aiErr.message);
+        tracker.log();
+        throw aiErr;
+    }
+}
+
+/**
+ * Non-streaming chat completion through the user's OWN provider (BYOK).
+ */
+async function sendChatResultWithBYOK(
+    messages: ChatMessage[],
+    options: AIRequestOptions,
+    context: AIRequestContext,
+    target: ResolvedByokTarget,
+): Promise<AIResult> {
+    const adapter = providerRegistry.get(target.providerId);
+    if (!adapter) {
+        return {
+            ok: false,
+            error: new AIError({
+                code: AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR,
+                provider: target.providerId,
+                model: target.model,
+                retryable: false,
+                message: `Provider ${target.providerId} is not available.`,
+            }),
+        };
+    }
+
+    if (target.providerId === 'custom' && target.baseUrl) {
+        customProvider.configure({ ...target.config, baseUrl: target.baseUrl, model: target.model });
+    }
+
+    const unifiedOptions = buildUnifiedOptions(messages, options, context, target, false);
+
+    const tracker = new AIPerfTracker({
+        task: options.task || 'chat',
+        provider: target.providerId,
+        model: target.model,
+        contextChars: contextChars(messages),
+        contextBuildMs: context.contextBuildMs,
+    });
+
+    try {
+        tracker.providerStarted();
+        const response = await adapter.chat(unifiedOptions, target.apiKey, target.baseUrl);
+
+        tracker.reportUsage(
+            response.usage?.prompt_tokens,
+            response.usage?.completion_tokens,
+            response.usage?.completion_tokens_details?.reasoning_tokens,
+        );
+
+        const content = cleanResponse(response.content);
+        const toolCalls = response.toolCalls || [];
+
+        // A tool-call turn legitimately carries no visible content.
+        if (!content && toolCalls.length === 0) {
+            throw new AIError({
+                code: AI_ERROR_CODES.AI_INVALID_RESPONSE,
+                provider: target.providerId,
+                model: target.model,
+                retryable: false,
+                message: 'The provider returned an empty response.',
+            });
+        }
+
+        tracker.complete();
+        tracker.log();
+
+        return {
+            ok: true,
+            content,
+            toolCalls,
+            finishReason: response.finishReason,
+            model: response.model,
+            provider: response.provider,
+            usage: response.usage,
+        };
+    } catch (err) {
+        if (isAbortError(err)) {
+            tracker.abort();
+            tracker.log();
+            throw err;
+        }
+        const aiErr = err instanceof AIError ? err : adapter.normalizeError(err, target.model);
+        tracker.fail(aiErr.message);
+        tracker.log();
+        return { ok: false, error: aiErr };
     }
 }
 
@@ -701,6 +897,55 @@ export async function sendChatResult(
         contextBuildMs: context.contextBuildMs,
     });
     if (isAIPerfEnabled()) aiPerfCounters.requests++;
+
+    // ── BYOK path ────────────────────────────────────────────────────────
+    // Same contract as `streamChat`: the user's own provider runs the
+    // request, and a server fallback only happens with explicit consent.
+    //
+    // A resolution failure (unknown provider, no credential) is a provider
+    // failure, so it is returned through the `AIResult` union — never thrown
+    // past this function.
+    let byokTarget: ResolvedByokTarget | null = options.providerTarget ?? null;
+    let byokResolutionError: AIError | null = null;
+    if (!byokTarget) {
+        try {
+            byokTarget = await resolveByokTarget();
+        } catch (err) {
+            byokResolutionError = err instanceof AIError
+                ? err
+                : new AIError({
+                    code: AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR,
+                    retryable: false,
+                    message: err instanceof Error ? err.message : 'The AI provider could not be resolved.',
+                });
+        }
+    }
+
+    if (byokTarget) {
+        const byokResult = await sendChatResultWithBYOK(messages, options, context, byokTarget);
+        if (byokResult.ok) return byokResult;
+
+        // A failure is surfaced unless the user explicitly opted into the
+        // server-provider fallback.
+        if (!isServerFallbackAllowed() || !allowFallback) return byokResult;
+
+        console.warn(
+            '[AIClient] BYOK chat failed; retrying with the server provider because "Fall Back To Server Provider On Error" is enabled:',
+            byokResult.error.message,
+        );
+    } else if (byokResolutionError) {
+        // A provider was selected but cannot be used. This is a configuration
+        // error for the USER's provider — the server provider must not paper
+        // over it unless the fallback was explicitly enabled.
+        if (!isServerFallbackAllowed() || !allowFallback) {
+            return { ok: false, error: byokResolutionError };
+        }
+        console.warn(
+            '[AIClient] BYOK provider could not be resolved; retrying with the server provider because "Fall Back To Server Provider On Error" is enabled:',
+            byokResolutionError.message,
+        );
+    }
+
     if (backendEnabled) {
         try {
             tracker.providerStarted();

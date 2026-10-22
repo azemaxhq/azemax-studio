@@ -32,6 +32,7 @@
  */
 
 import { sendChatResult } from './AIClient';
+import type { ResolvedByokTarget } from './byokTypes';
 import { executeTool, parseToolArguments, toolSchema, toolDefinitions, type AgentToolDeps, type ToolResult } from './agentTools';
 import { isAbortError } from './AIAbortController';
 import {
@@ -88,6 +89,14 @@ export interface AgentLoopRequest {
     budget?: Partial<AgentBudget>;
     /** Requested model. Falls back to AIClient's default routing. */
     model?: string;
+    /**
+     * A pinned BYOK provider target.
+     *
+     * Resolved ONCE by the controller before the loop starts and reused for
+     * every iteration, so changing the provider/model in settings mid-task
+     * cannot switch the running task to a different provider or credential.
+     */
+    providerTarget?: ResolvedByokTarget;
     /** Optional per-step progress callback (drives the UI activity card). */
     onStep?: (step: AgentStepRecord) => void;
     /** Optional status callback for richer UI. */
@@ -239,6 +248,7 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                     signal: controller.signal,
                     tools: definitions,
                     toolChoice: 'auto',
+                    providerTarget: req.providerTarget,
                 });
             } catch (e) {
                 if (isAbortError(e) && req.signal?.aborted) return finish('cancelled', false);
@@ -259,6 +269,7 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                     signal: req.signal,
                     tools: definitions,
                     toolChoice: 'auto',
+                    providerTarget: req.providerTarget,
                 });
             } catch (e) {
                 if (isAbortError(e)) return finish('cancelled', false);

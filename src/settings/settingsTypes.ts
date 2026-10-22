@@ -66,6 +66,18 @@ export interface TerminalSettings {
   pasteProtection: boolean;
 }
 
+export interface AIProviderConfig {
+  id: string;
+  name: string;
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
+  rememberOnDevice: boolean;
+  lastValidated?: number;
+  validationStatus?: 'unknown' | 'testing' | 'valid' | 'invalid' | 'rate_limited' | 'error';
+  validationError?: string;
+}
+
 export interface AISettings {
   enabled: boolean;
   streaming: boolean;
@@ -73,6 +85,29 @@ export interface AISettings {
   inlineSuggestions: boolean;
   responseLength: ResponseLength;
   confirmClearConversation: boolean;
+  /**
+   * The active AI mode: `azemax-default` (Azemax's own models, no key) or
+   * `byok` (the user's own provider). Non-secret.
+   */
+  mode: 'azemax-default' | 'byok';
+  /**
+   * Selected BYOK provider id (empty string = not configured).
+   * Independent of the mode: a provider can be selected while the active
+   * mode is still `azemax-default`. Non-secret.
+   */
+  activeProvider: string;
+  /**
+   * Model identifier for Azemax Default requests (a server-side model id
+   * from the backend's own catalog). Non-secret. Empty = the primary model.
+   */
+  azemaxModel: string;
+  /** Model identifier for the active BYOK provider. Non-secret. */
+  defaultModel: string;
+  /**
+   * Opt-in: retry a failed BYOK request with the server-configured provider.
+   * Off by default so a request never silently uses a different credential.
+   */
+  allowServerFallback: boolean;
 }
 
 export interface PrivacySettings {
@@ -115,6 +150,7 @@ export type CategoryKey =
   | 'code'
   | 'terminal'
   | 'ai'
+  | 'aiProviders'
   | 'privacy'
   | 'performance'
   | 'keyboard'

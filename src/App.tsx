@@ -10,6 +10,7 @@ import { AuthRoutes } from './components/Auth/AuthRoutes';
 import { DialogProvider } from './components/UI/DialogProvider';
 import { ErrorBoundary } from './components/UI/ErrorBoundary';
 import { composeProviders } from './core/composeProviders';
+import { ProviderProvider } from './core/ai/providerContext';
 
 import { AzemaxLogo } from './components/UI/AzemaxLogo';
 import { BRAND } from './core/branding';
@@ -57,6 +58,8 @@ const AppProviders = composeProviders(
   ProjectProvider,
   TerminalProvider,
   ExplanationProvider,
+  // BYOK Provider context - provides active provider config to AIClient
+  ProviderProvider,
 );
 
 // Workspace shell: Firebase authentication is the only way in (AuthGate renders

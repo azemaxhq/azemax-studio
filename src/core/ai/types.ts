@@ -3,6 +3,7 @@
  */
 
 import type { AIError } from './AIError';
+import type { ResolvedByokTarget } from './byokTypes';
 
 export type AiTaskKey =
     | 'chat'
@@ -93,6 +94,15 @@ export interface AIRequestOptions {
     tools?: AIToolDefinition[];
     /** Defaults to `auto` when tools are supplied. */
     toolChoice?: AIToolChoice;
+    /**
+     * A pinned BYOK target.
+     *
+     * When present, the request uses EXACTLY this provider / model /
+     * credential and never re-resolves them. The agent controller pins the
+     * target once per task so a settings change mid-task cannot swap the
+     * provider underneath a running loop.
+     */
+    providerTarget?: ResolvedByokTarget;
 }
 
 export interface AIRequestContext {
@@ -106,6 +116,9 @@ export interface AIUsage {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    // Anthropic-compatible aliases
+    input_tokens?: number;
+    output_tokens?: number;
     completion_tokens_details?: {
         reasoning_tokens?: number;
     };

@@ -41,13 +41,16 @@ const sanitizeSettings = (input: unknown): Settings => {
   if (!input || typeof input !== 'object') return defaults;
 
   const source = input as Record<string, unknown>;
-  const result = defaults;
+  const result = defaults as unknown as Record<string, Record<string, unknown>>;
 
   for (const category of SETTINGS_CATEGORIES) {
     const section = source[category.id];
     if (!section || typeof section !== 'object') continue;
     const sectionSource = section as Record<string, unknown>;
-    const sectionTarget = result[category.id] as unknown as Record<string, unknown>;
+    // A UI-only category (e.g. the BYOK credential panel) declares no
+    // persisted settings, so it has no target to write into.
+    const sectionTarget = result[category.id];
+    if (!sectionTarget) continue;
 
     for (const def of category.settings) {
       if (def.type === 'action') continue;
@@ -58,7 +61,7 @@ const sanitizeSettings = (input: unknown): Settings => {
     }
   }
 
-  return result;
+  return result as unknown as Settings;
 };
 
 export type ImportResult = { ok: true; settings: Settings } | { ok: false; error: string };

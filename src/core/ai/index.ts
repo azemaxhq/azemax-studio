@@ -9,6 +9,7 @@
  * editor or chat unvalidated.
  */
 
+// Core AI types and utilities
 export * from './types';
 export * from './AIAbortController';
 export * from './AIError';
@@ -24,7 +25,22 @@ export * from './languageIndentation';
 export * from './AICodeNormalizer';
 export * from './AICodeValidator';
 export * from './aiPerf';
-export * from './modelRouter';
+// Re-export modelRouter but avoid conflicts with byokTypes
+export {
+  OR_PREFIX,
+  HF_PREFIX,
+  KILO_PREFIX,
+  stripPrefixes,
+  inferProvider,
+  configuredDirectProviders,
+  defaultModelFor,
+  buildDirectChain,
+  resolveModel,
+  PROVIDER_CAPABILITIES as MODEL_ROUTER_PROVIDER_CAPABILITIES,
+  type ProviderId as ModelRouterProviderId,
+  type ProviderCapabilities as ModelRouterProviderCapabilities,
+  type ResolvedModel,
+} from './modelRouter';
 export * from './taskConfigClient';
 export * from './commentSyntax';
 export * from './AIProviderNormalizer';
@@ -34,6 +50,12 @@ export * from './agentTools';
 export * from './agentLoop';
 export * from './agentController';
 export * from './intentUnderstanding';
+
+// BYOK Provider Architecture
+export { providerRegistry } from './providers/registry';
+export * from './credentialStore';
+export * from './providerContext';
+// Note: byokTypes re-exports types from './types' and './AIError', so we don't re-export them here to avoid conflicts
 
 import { AIRequestManager, aiRequestManager } from './AIRequestManager';
 import { AIMessageStore } from './AIMessageStore';

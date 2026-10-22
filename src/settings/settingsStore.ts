@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { getSettingDefinition, registerActionHandler } from './settingsSchema';
 import { defaultSettings } from './settingsDefaults';
 import { loadSettings } from './settingsPersistence';
-import type { Settings, SettingValue } from './settingsTypes';
+import type { Settings, SettingValue, CategoryKey } from './settingsTypes';
 import { sanitizeSettings, coerceSettingValue, parseImportedSettings } from './settingsValidation';
 import { dialogAlert } from '../components/UI/dialogService';
 
@@ -29,6 +29,8 @@ export const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener);
   return () => listeners.delete(listener);
 };
+
+export const subscribeSettings = subscribe;
 
 export const useSettingsStore = <S>(selector: (state: Settings) => S): S => {
   return useSyncExternalStore(
@@ -114,8 +116,8 @@ export const resetSetting = (key: string): void => {
   notify();
 };
 
-export const resetCategory = (category: keyof Settings): void => {
-  const defaults = defaultSettings[category];
+export const resetCategory = (category: CategoryKey): void => {
+  const defaults = (defaultSettings as unknown as Record<string, unknown>)[category];
   if (!defaults) return;
   current = sanitizeSettings({ ...current, [category]: defaults });
   notify();
