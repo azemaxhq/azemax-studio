@@ -14,9 +14,9 @@
  *     → caller converts to AIAction[] and executes via aiToolExecutor
  */
 
-import type { ActiveEditorContext } from '../editor/activeEditorStore';
 import type { ChatMessage } from './types';
 import { sendChat } from './AIClient';
+import type { WorkspaceSnapshot } from '../workspace/workspaceContext';
 
 export type SemanticOperation = 'chat' | 'explain' | 'edit' | 'implement';
 
@@ -124,10 +124,10 @@ function buildLineNumberedCode(code: string, maxLines = 400): string {
 
 export function buildSemanticPlannerPrompt(
     userMessage: string,
-    editorContext: ActiveEditorContext | null,
-    fileTreeString: string,
+    snapshot: WorkspaceSnapshot,
     history: ChatMessage[]
 ): { messages: ChatMessage[]; modelTask: 'chat' } {
+    const editorContext = snapshot.activeEditor;
     const fileName = editorContext?.fileName ?? '(no active file)';
     const filePath = editorContext?.filePath ?? fileName;
     const language = editorContext?.language ?? 'plaintext';
@@ -139,6 +139,7 @@ export function buildSemanticPlannerPrompt(
     const selectionRange = editorContext?.selection;
     const code = editorContext?.code ?? '';
     const lineNumbered = code ? buildLineNumberedCode(code) : '(empty)';
+    const fileTreeString = snapshot.fileTreeString;
 
     const historySnippet = history.slice(-6).map(m => `${m.role}: ${m.content.slice(0, 400)}`).join('\n');
 
@@ -355,12 +356,11 @@ export function parseSemanticPlan(raw: string): SemanticPlan | null {
 
 export async function generateSemanticPlan(
     userMessage: string,
-    editorContext: ActiveEditorContext | null,
-    fileTreeString: string,
+    snapshot: WorkspaceSnapshot,
     history: ChatMessage[],
     signal?: AbortSignal
 ): Promise<SemanticPlan | null> {
-    const { messages } = buildSemanticPlannerPrompt(userMessage, editorContext, fileTreeString, history);
+    const { messages } = buildSemanticPlannerPrompt(userMessage, snapshot, history);
     try {
         // Latency-critical: intent parsing is a small JSON task — pin it to the
         // fast Groq model instead of the default (slow) primary. Measured

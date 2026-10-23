@@ -1,93 +1,159 @@
-# Azemax — Fast, intelligent developer environment
+# Azemax Studio
 
-A browser-based IDE with Monaco, AI streaming, code execution, and interactive terminal.
-Signed-in accounts sync their workspace, settings, and AI chat history across devices.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-22%20LTS-green.svg)](.nvmrc)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](tsconfig.json)
+[![Tests](https://img.shields.io/badge/Tests-1643%20passing-brightgreen.svg)](#testing)
+
+**Azemax Studio** is a browser-based AI-native code editor with Monaco, real-time collaboration via Firebase, server-side AI provider routing, and secure code execution.
+
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Screenshots](#screenshots)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Building](#building)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Security](#security)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+| Category | Capabilities |
+|----------|--------------|
+| **Editor** | Monaco (VS Code engine), multi-tab, split view, minimap, bracket matching, multi-cursor, code folding |
+| **AI Assistant** | Streaming chat, agentic editing (read/write/search/list/diagnostics), explanation mode, inline autocomplete, multi-provider fallback (NVIDIA, Groq, OpenRouter, HuggingFace, Kilo Code) |
+| **Execution** | Local runtimes (Node, Python, C++, Java, Rust, Go, etc.) in dev; Wandbox sandbox in production; interactive terminal (PTY) in dev |
+| **Workspace** | File tree, drag-drop, create/rename/delete, search, recent edits, visible window context |
+| **Authentication** | Firebase Auth (Email/Password + Google), verified-email enforcement, no guest mode, account-scoped settings & chat sync |
+| **Terminal** | xterm.js with fit, web-links, WebGL addons; PTY shell in dev; disabled in production |
+| **Collaboration** | Cross-device workspace sync, conflict resolution, settings merge, chat history union |
+| **Security** | Fail-closed production boot, server-only provider keys, CORS allowlist, rate limits, CSP/HSTS, input validation, path-traversal guards |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Browser (Vercel static: dist/)                                              │
+│  ├─ Firebase Web SDK → ID token (in memory)                                 │
+│  ├─ Authorization: Bearer <idToken>                                         │
+│  ├─ VITE_API_URL=https://<backend>/api  →  HTTPS                            │
+│  └─ WSS derived from VITE_API_URL (?token=<idToken>)                        │
+└─────────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Express API (Render: node server/index.cjs)                                 │
+│  ├─ verifyIdToken on every protected request (Firebase Admin SDK)           │
+│  ├─ GET  /api/health              (public)                                  │
+│  ├─ POST /api/auth/sync           (verify token, upsert app user)           │
+│  ├─ POST /api/ai/chat (SSE)       (verified email; server holds keys)       │
+│  ├─ POST /api/execute / GET /api/runtimes   (verified email; Wandbox prod)  │
+│  ├─ /api/projects/*               (ownership-scoped workspace sync)         │
+│  ├─ /api/account/state/*          (verified email; settings + AI chat sync) │
+│  └─ WebSocket (ws) — token at handshake; code sessions + shell              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Build/deploy separation:** frontend is a static Vite build (`dist/`); backend is a persistent Node process. They deploy independently.
+
+## Screenshots
+
+| Editor | AI Assistant | Terminal |
+|--------|--------------|----------|
+| ![Editor](docs/screenshots/editor.png) | ![AI](docs/screenshots/ai.png) | ![Terminal](docs/screenshots/terminal.png) |
+
+*Screenshots pending — add to `docs/screenshots/`*
+
+## Prerequisites
+
+- **Node.js 22 LTS** (see `.nvmrc`) — also works on 18+
+- **npm** (bundled with Node)
+- **Firebase project** with **Email/Password** and (optionally) **Google** sign-in enabled
+- At least one **AI provider API key** for AI features (NVIDIA_API_KEY recommended)
 
 ## Quick Start
-
-### Prerequisites
-- Node.js 22 LTS (see `.nvmrc`) — also works on 18+
-- npm
-- A Firebase project with **Email/Password** and (optionally) **Google** sign-in enabled
 
 ### Local Development
 
 ```bash
+# 1. Clone and install
+git clone https://github.com/your-org/azemax-studio.git
+cd azemax-studio
 npm install
+
+# 2. Configure environment
 cp .env.example .env
-# 1. Add at least one AI key (NVIDIA_API_KEY recommended)
-# 2. Add the Firebase Admin service-account values and the Firebase Web SDK config
+# Edit .env — add at least one AI key (NVIDIA_API_KEY) and Firebase config
+
+# 3. Start dev servers (API + Vite)
 npm run dev
 ```
 
-This starts the API on **http://localhost:3001** and the UI on **http://localhost:5173** (Vite proxies `/api` → backend).
+This starts:
+- **API** on `http://localhost:3001`
+- **UI** on `http://localhost:5173` (Vite proxies `/api` → backend)
 
 Open [http://localhost:5173](http://localhost:5173). The IDE lives at `/app` and requires sign-in.
 
-> The app fails closed. If Firebase is not configured, the sign-in screen still
-> renders but no account can be created or used, and the workspace stays locked.
-> There is no guest mode or auth-bypass flag.
+> **Fail-closed behavior:** If Firebase is not configured, the sign-in screen renders but no account can be created or used, and the workspace stays locked. There is no guest mode or auth-bypass flag.
 
-| Command | What it does |
-|---------|--------------|
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
 | `npm run dev` | API + Vite together (concurrently + wait-on) |
 | `npm run server` | API only (`node --watch server/index.cjs`) |
 | `npm start` | Production API (`node server/index.cjs`) — respects `PORT`/`HOST` |
 | `npm run build` | Typecheck + Vite production build → `dist/` |
-| `npm run preview` | Serve `dist/` locally |
+| `npm run build:analyze` | Build with bundle analyzer (`dist/stats.html`) |
+| `npm run preview` | Serve `dist/` locally (`vite preview`) |
+| `npm run lint` | ESLint (0 errors, pre-existing warnings allowed) |
+| `npm run lint:server` | ESLint server-only |
 | `npm run typecheck` | `tsc -b --noEmit` |
-| `npm test` | `vitest run` (jsdom) |
+| `npm test` | `vitest run` (jsdom, 1643 tests) |
 | `npm run test:e2e:auth` | Fail-closed auth E2E (no live Firebase needed) |
 | `npx playwright test` | Editor E2E (authenticated specs skip without real credentials) |
+| `npm run db:backup` | Backup SQLite database |
 
-## Firebase Setup
+## Configuration
 
-Firebase Authentication is the **only** identity provider. The app does not
-store passwords, issue session cookies, or mint its own tokens.
+### Environment Variables
 
-1. Create a Firebase project.
-2. **Authentication → Sign-in method**: enable **Email/Password** and **Google**.
-3. **Authentication → Settings → Authorized domains**: add `localhost` and every
-   production domain (for example `your-frontend.vercel.app`). Email actions use
-   `<origin>/login` as the continue URL, so the origin must be authorized.
-4. **Project settings → Your apps → Web app**: copy the `firebaseConfig` values
-   into the `VITE_FIREBASE_*` variables.
-5. **Project settings → Service accounts → Generate new private key**: copy
-   `project_id`, `client_email`, and `private_key` into the backend variables.
-
-The `VITE_FIREBASE_*` web config is public by design. The service-account
-values are server-only secrets and must never be prefixed with `VITE_`.
-
-## Environment Variables
-
-### Public (Vite — safe for browser)
+#### Public (Vite — safe for browser)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VITE_API_URL` | `/api` (dev) | Browser → API base. **Production:** set to `https://YOUR-BACKEND.onrender.com/api` |
+| `VITE_API_URL` | `/api` (dev) | Browser → API base. **Production:** `https://YOUR-BACKEND.onrender.com/api` |
 | `VITE_USE_BACKEND_AI` | `true` | When `true`, AI goes via `/api/ai/*` (keys stay server-side) |
 | `VITE_WS_URL` | *(derived)* | Override WebSocket URL. If omitted, derived from `VITE_API_URL` (`https`→`wss`) |
 | `VITE_WS_PORT` | `3001` | Dev only |
-| `VITE_FIREBASE_API_KEY` | — | Firebase Web SDK API key (required for sign-in) |
+| `VITE_FIREBASE_API_KEY` | — | Firebase Web SDK API key (required) |
 | `VITE_FIREBASE_AUTH_DOMAIN` | — | Firebase auth domain |
-| `VITE_FIREBASE_PROJECT_ID` | — | Firebase project ID (required for sign-in) |
+| `VITE_FIREBASE_PROJECT_ID` | — | Firebase project ID (required) |
 | `VITE_FIREBASE_APP_ID` | — | Firebase web app ID |
 | `VITE_FIREBASE_STORAGE_BUCKET` | — | Optional |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | — | Optional |
 
-> Do NOT set `VITE_GROQ_API_KEY` / `VITE_OPENROUTER_API_KEY` / `VITE_HF_TOKEN` in production — the server must hold provider keys.
+> **Do NOT set** `VITE_GROQ_API_KEY` / `VITE_OPENROUTER_API_KEY` / `VITE_HF_TOKEN` / `VITE_KILO_API_KEY` in production — the server must hold provider keys. The Vite build blanks them automatically.
 
-### Server-only (never `VITE_`)
+#### Server-only (never `VITE_`)
 
 | Variable | Example | Description |
 |----------|---------|-------------|
-| `PORT` | `3001` dev / `10000` Render | Server listen port (`process.env.PORT` with fallback) |
-| `HOST` | `0.0.0.0` prod | Bind host (defaults to `0.0.0.0` in production) |
+| `PORT` | `3001` dev / `10000` Render | Server listen port |
+| `HOST` | `0.0.0.0` prod | Bind host |
 | `NODE_ENV` | `production` | Set to `production` on Render |
 | `CORS_ORIGIN` | `https://app.vercel.app` | Comma-separated allowed origins (no `*` with credentials) |
-| `FIREBASE_PROJECT_ID` | `azemax-1234` | Firebase project ID — **required in production** |
-| `FIREBASE_CLIENT_EMAIL` | `firebase-adminsdk-…@…iam.gserviceaccount.com` | Service-account email — **required in production** |
-| `FIREBASE_PRIVATE_KEY` | `"-----BEGIN PRIVATE KEY-----\n…"` | Service-account key with `\n` escapes — **required in production** |
+| `FIREBASE_PROJECT_ID` | `azemax-1234` | **Required in production** |
+| `FIREBASE_CLIENT_EMAIL` | `firebase-adminsdk-…@…iam.gserviceaccount.com` | **Required in production** |
+| `FIREBASE_PRIVATE_KEY` | `"-----BEGIN PRIVATE KEY-----\n…"` | **Required in production** (keep `\n` escapes) |
 | `NVIDIA_API_KEY` | — | Primary AI provider |
 | `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | — |
 | `NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | — |
@@ -95,9 +161,10 @@ values are server-only secrets and must never be prefixed with `VITE_`.
 | `OPENROUTER_API_KEY` | — | Fallback provider |
 | `HF_TOKEN` | — | Fallback provider |
 | `KILO_API_KEY` | — | Fallback provider |
+| `KILO_BASE_URL` | `https://api.kilocode.ai/v1` | — |
 | `ADMIN_EMAILS` | `you@example.com` | Comma-separated admin allowlist |
-| `ALLOW_LOCAL_EXECUTION` | `false` in prod | When `false`, `/api/execute` uses Wandbox sandbox (no host execution). `true` is fatal in production. |
-| `ALLOW_SHELL` | `false` in prod | When `false`, interactive shell `kind:shell` is disabled (code Run still works). `true` is fatal in production. |
+| `ALLOW_LOCAL_EXECUTION` | `false` in prod | `true` is **fatal** in production. Uses Wandbox sandbox. |
+| `ALLOW_SHELL` | `false` in prod | `true` is **fatal** in production. |
 | `MAX_CODE_BYTES` | `204800` | Max code payload |
 | `MAX_STDIN_BYTES` | `32768` | Max stdin |
 | `MAX_OUTPUT_BYTES` | `524288` | Max captured output |
@@ -105,44 +172,123 @@ values are server-only secrets and must never be prefixed with `VITE_`.
 
 See `.env.example` (development) and `.env.production.example` (hosting).
 
-## Production Architecture
+### Firebase Setup
+
+1. Create a Firebase project.
+2. **Authentication → Sign-in method**: enable **Email/Password** and **Google**.
+3. **Authentication → Settings → Authorized domains**: add `localhost` and every production domain (e.g., `your-frontend.vercel.app`). Email actions use `<origin>/login` as the continue URL.
+4. **Project settings → Your apps → Web app**: copy the `firebaseConfig` values into the `VITE_FIREBASE_*` variables.
+5. **Project settings → Service accounts → Generate new private key**: copy `project_id`, `client_email`, and `private_key` into the backend variables.
+
+The `VITE_FIREBASE_*` web config is public by design. The service-account values are server-only secrets and must never be prefixed with `VITE_`.
+
+## Development
+
+### Project Structure
 
 ```
-Browser (Vercel static: dist/)
-  │  Firebase Web SDK → ID token (in memory)
-  │  Authorization: Bearer <idToken>
-  │  VITE_API_URL=https://<backend>/api  →  HTTPS
-  │  WSS derived from VITE_API_URL (?token=<idToken>)
-  ▼
-Express API (Render: node server/index.cjs)
-  ├─ verifies the Firebase ID token on every protected request (Admin SDK)
-  ├─ GET  /api/health              (public, no secrets)
-  ├─ POST /api/auth/sync           (verify token, upsert app user)
-  ├─ POST /api/ai/chat (SSE)       (verified email; server holds provider keys)
-  ├─ POST /api/execute / GET /api/runtimes   (verified email; Wandbox in prod)
-  ├─ /api/projects/*               (verified email; ownership-scoped workspace sync)
-  ├─ /api/account/state/*          (verified email; settings + AI chat sync)
-  └─ WebSocket (ws) — token at handshake; code sessions + shell (shell off in prod)
-         └─ Wandbox (remote sandbox) when ALLOW_LOCAL_EXECUTION=false
+├── public/                 # Static assets (fonts, images, manifest)
+├── server/                 # Express backend (CommonJS .cjs)
+│   ├── config/             # Environment validation (fail-closed)
+│   ├── middleware/         # Auth, error handling, security headers
+│   ├── routes/             # API routes (ai, auth, projects, account, execute)
+│   ├── services/           # AI providers, execution, account state, projects
+│   ├── websocket/          # Code execution + terminal WebSocket
+│   └── db/                 # SQLite (better-sqlite3) schema + migrations
+├── src/                    # React frontend (TypeScript, Vite)
+│   ├── components/         # UI components (Panels, Editor, Layout, etc.)
+│   ├── core/               # Core logic (AI, editor, workspace, filesystem)
+│   ├── hooks/              # React hooks (auth, sync, workspace)
+│   ├── utils/              # Utilities (apiClient, authToken, safeTree)
+│   ├── styles/             # Tailwind + global CSS
+│   └── main.tsx            # Entry point
+├── tests/                  # Vitest unit/integration tests
+├── docs/                   # Architecture docs (AUTHENTICATION, SERVICES, etc.)
+├── scripts/                # Build/dev utilities
+├── .github/workflows/      # GitHub Actions CI
+├── .env.example            # Development template
+├── .env.production.example # Production template
+├── LICENSE                 # Apache 2.0
+├── NOTICE                  # Third-party attributions
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+└── package.json
 ```
 
-**Build/deploy separation:** frontend is a static Vite build (`dist/`); backend is a persistent Node process. They are deployed separately.
+### Key Design Decisions
 
-## Deploy Frontend → Vercel
+- **Firebase-only auth** — no custom sessions, cookies, or password storage
+- **Server-only AI keys** — provider secrets never reach the browser (validated in `vite.config.ts` and `server/config/env.cjs`)
+- **Fail-closed production** — server refuses to boot if Firebase Admin or CORS is misconfigured
+- **Atomic edit pipeline** — compile → build → validate → apply → verify → rollback on failure
+- **Agent loop** — intent → inspect → plan → execute tools → validate → summarize (no separate planner LLM call)
+
+## Building
+
+```bash
+# Production build (typecheck + Vite)
+npm run build
+
+# Output: dist/ (static assets for Vercel/Netlify/Cloudflare Pages)
+# The Vite build inlines VITE_* values — changing them requires a redeploy.
+
+# Analyze bundle size
+npm run build:analyze
+# Opens dist/stats.html
+```
+
+### Build-time Security (vite.config.ts)
+
+- `productionSecretGuard` plugin blanks all `VITE_*_API_KEY` and `VITE_HF_TOKEN` in production builds
+- `validateApiUrl` warns if `VITE_API_URL` doesn't end in `/api` or isn't HTTPS in production
+- `esbuild` drops `console.log`/`debugger` in production
+
+## Testing
+
+```bash
+# Unit + integration (Vitest, jsdom)
+npm test
+# 46 test files, 1643 tests passing
+
+# Type-check only
+npm run typecheck
+
+# Lint
+npm run lint
+
+# Auth E2E (no live Firebase required — tests fail-closed behavior)
+npm run test:e2e:auth
+
+# Full E2E (Playwright — authenticated specs need real credentials)
+npx playwright test
+```
+
+### Test Coverage Highlights
+
+- `tests/authBackend.test.ts` — Firebase-only backend contract; no sessions, no signup/login, no cookie/token issuance; pre-hijack 409; unconfigured 503
+- `tests/authEnforcement.test.ts` — 401/403 for AI, execution, projects, `/auth/me`; ownership; no guest path; no bypass flag
+- `tests/authFlow.test.ts` / `authRouter.test.ts` — route classification, redirect validation, state policy
+- `tests/authTransport.test.ts` — Bearer header attachment, WebSocket `?token=`, in-memory-only storage, no cookie fallback
+- `tests/authVerify.test.ts` — verification copy and deliverability guard
+
+## Deployment
+
+### Frontend → Vercel
 
 1. Push to GitHub.
 2. Import project in Vercel → Framework: **Vite** → Build: `npm run build` → Output: `dist`.
-3. Set Environment Variables (Production):
+3. Set **Production** Environment Variables:
    - `VITE_API_URL=https://YOUR-BACKEND.onrender.com/api`
    - `VITE_USE_BACKEND_AI=true`
    - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID`
-   - Do NOT add any `VITE_*_API_KEY` provider keys or Firebase service-account values.
+   - **Do NOT** add any `VITE_*_API_KEY` provider keys or Firebase service-account values.
 4. Deploy. `vercel.json` handles SPA fallback (`/app` → `index.html`) and asset caching.
+5. Add the Vercel domain to Firebase → Authentication → Settings → Authorized domains.
 
-Vite inlines `VITE_*` values at build time — changing them requires a redeploy.
-Add the Vercel domain to Firebase → Authentication → Settings → Authorized domains.
+> Vite inlines `VITE_*` values at build time — changing them requires a redeploy.
 
-## Deploy Backend → Render
+### Backend → Render
 
 `render.yaml` is included for one-click deploy. Or manually:
 
@@ -156,95 +302,77 @@ Add the Vercel domain to Firebase → Authentication → Settings → Authorized
    - `ALLOW_LOCAL_EXECUTION=false`, `ALLOW_SHELL=false`
 4. Deploy. Render proxies HTTPS → your `0.0.0.0:10000` and WSS → same.
 
-> **Fail-closed:** Render will exit at startup if Firebase Admin cannot be
-> configured. This is intentional — the API must never serve product routes
-> without a verifiable identity provider. Check the deploy logs for
-> `[FATAL] Refusing to start: Firebase Admin is not configured`.
+> **Fail-closed:** Render will exit at startup if Firebase Admin cannot be configured. Check logs for `[FATAL] Refusing to start: Firebase Admin is not configured`.
 
-## Authentication Behavior
+### Deployment Checklist
 
-- `/app` and every product API require a signed-in user whose email Firebase
-  reports as verified.
-- Email/password sign-ups receive a Firebase verification email. Until the
-  address is verified, the user sees the verification pane; AI, execution,
-  projects, and terminal sessions return 403.
-- Google sign-ins are treated as verified because Google asserts the address.
-- Sign-in state survives reloads through Firebase's own persistence. The ID
-  token is held in memory and refreshed by the SDK; it is never written to
-  localStorage or a cookie.
-- Sign-out calls Firebase `signOut()` and clears the in-memory credential. The
-  server holds no session, so `/api/auth/logout` is only an acknowledgement.
-- There is no guest mode, anonymous access, shared beta identity, or
-  `DISABLE_AUTH` / `PUBLIC_BETA` switch.
+#### Backend (Render)
+- [ ] `NODE_ENV=production`
+- [ ] `CORS_ORIGIN` = exact frontend origin(s), HTTPS, no wildcard, no trailing slash
+- [ ] `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` set
+- [ ] `ALLOW_LOCAL_EXECUTION=false` (or unset)
+- [ ] `ALLOW_SHELL=false` (or unset)
+- [ ] At least one AI provider key set
+- [ ] Startup log shows `firebaseConfigured: true`
+- [ ] `GET /api/health` returns 200
+- [ ] `GET /api/projects` without a token returns 401
 
-## WebSocket Configuration
+#### Frontend (Vercel)
+- [ ] `VITE_API_URL` ends in `/api` and points at the live backend
+- [ ] `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`, and the rest of the web config set **before** building
+- [ ] No `VITE_*` provider keys or Firebase service-account values
+- [ ] Deployment origin added to Firebase authorized domains
+- [ ] Email/Password (and Google, if used) enabled in Firebase
 
-- Dev: `ws://localhost:3001` (Vite proxies `/api`, direct WS to backend)
-- Prod: `wss://<backend-host>` — derived automatically from `VITE_API_URL` (`https`→`wss`, host reused, no extra port needed)
-- Override: set `VITE_WS_URL=wss://custom-host` if backend WS is on a different domain.
-- The client appends `?token=<idToken>`; the server rejects unauthenticated
-  (4401) and unverified (4403) handshakes.
+## Security
 
-## AI Provider Configuration
+- **Authentication:** Firebase-only, verified-email enforcement, no guest mode, fail-closed boot
+- **Authorization:** Bearer ID token verified by Firebase Admin on every request; ownership checks on all data
+- **AI Keys:** Server-only; Vite build blanks `VITE_*` provider keys; server ignores/warns on leaked keys
+- **CORS:** Explicit HTTPS origins only; wildcard fatal with credentials; localhost rejected in production
+- **Rate Limits:** Per-user (AI, execution, projects) + per-IP (auth); in-memory with SQLite daily backstop
+- **Execution:** Production uses Wandbox sandbox; `ALLOW_LOCAL_EXECUTION=true` is fatal in production
+- **Headers:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, CSP, HSTS (prod)
+- **Input Validation:** Zod schemas on all API routes; path-traversal guards; byte caps on all payloads
+- **Secrets:** Never logged; `.env` gitignored; production uses platform secret managers
 
-At least one server key must be set or `/api/ai/chat` returns `AI_PROVIDER_CONFIG_ERROR` (frontend shows setup hint).
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
-| Priority | Provider | Env var | Model example |
-|----------|----------|---------|---------------|
-| 1 (primary) | NVIDIA | `NVIDIA_API_KEY` | `nvidia/nemotron-3-super-120b-a12b` |
-| 2 | Groq | `GROQ_API_KEY` | `qwen/qwen3.8-27b` |
-| 3 | OpenRouter | `OPENROUTER_API_KEY` | `nvidia/nemotron-3-super-120b-a12b:free` |
-| 4 | HuggingFace | `HF_TOKEN` | `deepseek-ai/DeepSeek-R1:novita` |
-| 5 | Kilo Code | `KILO_API_KEY` | `nemotron-3-super` |
+### Security Audit
 
-Abuse protection: authentication required, ≤50 messages, ≤20k chars/message, ≤100k total, `1mb` JSON limit, rate-limited per user, per-attempt timeouts (15–60 s), fallback → controlled error (no crash), abort drains upstream.
+Current security posture documented in [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md):
+- 1643 tests passing (auth enforcement, backend contract, transport, flow, verification)
+- No critical/high-severity authentication vulnerabilities found
+- Residual risks documented (in-memory rate limits, single process, WebSocket token in query string)
 
-## Code Execution Security
+## Contributing
 
-- **Production:** `ALLOW_LOCAL_EXECUTION=false` → all `/api/execute` and terminal code runs go through **Wandbox sandbox** (no host `spawn`). Host `localExecutor` is skipped even if runtimes exist.
-- **Interactive shell** (`kind:shell`, PTY via `ptyRelay.py`) is **disabled in production by default** — returns a clean "shell unavailable, Run still works" message. Set `ALLOW_SHELL=true` only if your host supports persistent PTY.
-- **Local dev:** full local execution + PTY (Node/Python/C++/Java/… via `runtimeDetection.cjs`).
-- Limits: `MAX_CODE_BYTES` 200 KB, `MAX_STDIN_BYTES` 32 KB, `MAX_OUTPUT_BYTES` 512 KB, `EXECUTION_TIMEOUT_MS` 60 s, `COMPILE_TIMEOUT_MS` 30 s, per-user session caps, heartbeat/idle reaping, SIGKILL on timeout, temp dirs cleaned up, path-traversal guards, minimal env (`PATH`, `HOME`, `TERM`, etc.).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Contribution workflow
+- Coding standards (TypeScript, ESLint, Prettier)
+- Pull request process
+- Testing requirements
 
-## Free Tier Limitations
+## License
 
-Be honest with testers:
+Licensed under the **Apache License, Version 2.0** — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-- **Ephemeral filesystem:** `data/workspaces/` lives on the Render instance disk and is lost on redeploy/restart. Server persistence is best-effort; export/keep local copies of important work.
-- **Cold starts:** Render free tier sleeps after inactivity (~30–60 s spin-up).
-- **CPU/RAM:** Limited; large compiles may time out. Output truncated at 512 KB.
-- **Terminal:** interactive shell disabled in production; `Run` (Wandbox) is the execution path.
-- **WebSocket:** Render supports WSS on free tier (persistent Node), but long-idle sockets may be pruned by the proxy.
-- **AI quotas:** provider rate limits apply; health-gated fallback may skip sick providers briefly.
-- **Wandbox:** third-party sandbox; occasional latency/availability variance.
+```
+Copyright 2026 Tharunkumar
 
-## Troubleshooting
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-| Symptom | Fix |
-|---------|-----|
-| `Firebase Authentication is not configured on this deployment` | Set `VITE_FIREBASE_API_KEY` and `VITE_FIREBASE_PROJECT_ID` (plus the rest of the web config), then **redeploy** — Vite bakes them in at build time. |
-| Render exits with `[FATAL] Refusing to start: Firebase Admin is not configured` | Set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` on Render. Keep the `\n` escapes in the private key. |
-| `Invalid email or password` / sign-in fails | Check that Email/Password is enabled in Firebase and the account exists. Firebase owns credentials; the app has no local password database. |
-| `This domain is not authorized for sign-in emails` | Add the deployment origin to Firebase → Authentication → Settings → Authorized domains. |
-| Verification email never arrives | Check spam, confirm the authorized domain, then use **Resend verification email** (60 s cooldown). The UI reports send failures instead of pretending success. |
-| `Email verification required` (403) | Verify the address via the emailed link, then press **I've verified my email**. Google accounts are verified automatically. |
-| Signed in but API returns 401 | The backend rejected the ID token. Confirm the frontend and backend use the same Firebase project, and that `CORS_ORIGIN` exactly matches the frontend origin. |
-| `Cannot reach the API server` | Backend asleep, wrong `VITE_API_URL`, or CORS blocked. Set Render `CORS_ORIGIN=https://YOUR-FRONTEND.vercel.app` (exact origin, no trailing `/`). |
-| `API misconfigured` (HTML instead of JSON) | `VITE_API_URL` must end in `/api` and point at the live backend. Redeploy after changing it. |
-| `VITE_ provider keys detected in production … ignoring` | Remove `VITE_*` provider keys from Render env; set `GROQ_API_KEY` etc. |
-| CORS error `Access-Control-Allow-Origin` | Ensure `CORS_ORIGIN` exactly matches your Vercel URL (no trailing `/`), comma-no-space. |
-| `ws` fails in production | Check `VITE_API_URL` is `https://.../api` (not `http`) and backend `HOST=0.0.0.0 PORT=10000`. WebSocket auth requires a valid ID token; sign in first. |
-| `AI_PROVIDER_CONFIG_ERROR` | Set at least one `*_API_KEY` on Render and redeploy. |
-| `shell unavailable` message | Expected in production (`ALLOW_SHELL=false`). Use `Run`. |
-| `Workspace too large` 413 | Reduce project tree or raise `MAX_WORKSPACE_BYTES`. |
-| Health shows `localExecution:false` | Expected in production; execution still works via Wandbox. |
-| Port `3001` in use locally | `lsof -iTCP:3001 -sTCP:LISTEN` → `kill <pid>` or let `lifecycle.cjs` reclaim on restart. |
+    http://www.apache.org/licenses/LICENSE-2.0
 
-## Documentation
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
 
-- [Authentication](docs/AUTHENTICATION.md) — Firebase-only model, flows, security properties
-- [Services & Utilities](docs/SERVICES.md) — AI, execution, analysis
-- [Context & State](docs/CONTEXT.md) — Store + context
-- [Components](docs/COMPONENTS.md) — Editor, layout, panels
-- [Server](docs/SERVER.md) — Backend routes + WebSocket
-- [Security Audit](SECURITY_AUDIT_REPORT.md) — Current security posture
+**Third-party attributions:** See [NOTICE](NOTICE) for fonts (Inter, JetBrains Mono, Newsreader, Playfair Display — all SIL OFL 1.1) and dependencies.
+
+**Trademark:** "Azemax" and the Azemax logo are trademarks of Tharunkumar. This license does not grant trademark rights.

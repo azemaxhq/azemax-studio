@@ -245,6 +245,14 @@ export function validateActionPlan(plan: AIAction[]): string | null {
             case 'create_file': {
                 if (!action.path || typeof action.path !== 'string') return 'create_file requires path';
                 if (action.path.includes('..')) return 'Invalid path: contains ..';
+                // Pre-validate Java class name matches filename (P0 security/correctness)
+                if (action.path.toLowerCase().endsWith('.java') && typeof action.content === 'string') {
+                    const expectedClass = action.path.split('/').pop()!.replace(/\.java$/i, '');
+                    const classMatch = action.content.match(/public\s+class\s+(\w+)/);
+                    if (classMatch && classMatch[1] !== expectedClass) {
+                        return `Java class name "${classMatch[1]}" does not match filename "${expectedClass}.java" — create "${classMatch[1]}.java" instead or rename the class to "${expectedClass}"`;
+                    }
+                }
                 break;
             }
             case 'delete_file':
@@ -256,6 +264,14 @@ export function validateActionPlan(plan: AIAction[]): string | null {
             case 'update_file':
                 if (!action.path) return 'update_file requires path';
                 if (typeof action.content !== 'string') return 'update_file content must be string';
+                // Pre-validate Java class name matches filename (P0 security/correctness)
+                if (action.path.toLowerCase().endsWith('.java')) {
+                    const expectedClass = action.path.split('/').pop()!.replace(/\.java$/i, '');
+                    const classMatch = action.content.match(/public\s+class\s+(\w+)/);
+                    if (classMatch && classMatch[1] !== expectedClass) {
+                        return `Java class name "${classMatch[1]}" does not match filename "${expectedClass}.java" — the class must be named "${expectedClass}"`;
+                    }
+                }
                 break;
             case 'insert_code':
                 if (typeof action.line !== 'number' || action.line < 1) return 'Invalid insert line';

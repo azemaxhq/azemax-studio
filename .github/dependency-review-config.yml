@@ -1,0 +1,48 @@
+# Dependency Review Configuration
+# Used by actions/dependency-review-action@v4
+
+# Fail the build if any vulnerability with severity >= high is found
+fail-on-severity: high
+
+# Allow specific licenses (Apache-2.0 compatible)
+allow-licenses:
+  - Apache-2.0
+  - MIT
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - 0BSD
+  - BlueOak-1.0.0
+  - Python-2.0
+  - Zlib
+  - Unicode-DFS-2016
+  - Unicode-TOU
+  - CC-BY-4.0
+  - CC0-1.0
+
+# Deny incompatible licenses
+deny-licenses:
+  - GPL-2.0-only
+  - GPL-3.0-only
+  - AGPL-3.0-only
+  - LGPL-2.1-only
+  - LGPL-3.0-only
+  - MPL-2.0-no-copyleft-exception
+  - SSPL-1.0
+  - Commons-Clause-1.0
+  - Elastic-2.0
+  - UNLICENSED
+
+# Allow specific packages with dual licenses (e.g., jszip: MIT OR GPL-3.0-or-later)
+# These are used under the MIT option
+allow-packages:
+  - jszip@3.10.1
+
+# Scope of review
+scope:
+  - production
+  - development
+
+# Optional: ignore specific vulnerabilities (use sparingly, with justification)
+# ignore-vulnerabilities:
+#   - GHSA-xxxx-xxxx-xxxx  # Reason: ...

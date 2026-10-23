@@ -1507,65 +1507,34 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
             .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
 
         try {
-            // Fast path: greetings and file-identity queries are unambiguous —
-            // skip the semantic-planner AI round trip entirely (saves ~8s) and
-            // go straight to chat. The planner only helps for edit/explain
-            // intents, which these patterns never are.
+            // Fast paths: greetings and file-identity queries are purely local —
+            // no AI call at all. The fused agent handles everything else in one loop.
             const fastTrimmedLower = userMessageText.trim().toLowerCase();
-            const skipPlanner =
-                (/^(hello|hi|hey|hello ai|hi there|hey there|greetings)[\s!?.]*$/i.test(userMessageText.trim()) && fastTrimmedLower.length <= 20) ||
-                /what file|which file|current file|active file|file is this|file name/i.test(userMessageText) ||
-                // Edit mode already forces the agent path for any non-trivial
-                // request on an open file — a planner round trip there was a
-                // pure model call before the real work started (the classic
-                // "Planning changes for too long" latency). Only keep it when
-                // the message might be an explanation request, which Edit mode
-                // would otherwise route through the agent.
-                (composerMode === 'Edit' && Boolean(fileContent?.trim()) && !/explain|what is|what does|how does|describe|walk me|why does|why is/i.test(userMessageText));
-            // Determine operation type via semantic planner first (for loading status)
-            const { generateSemanticPlan, semanticPlanToAIOperationType } = await import('../../core/ai/semanticPlanner');
+            const isGreetingOnly =
+                (/^(hello|hi|hey|hello ai|hi there|hey there|greetings)[\s!?.]*$/i.test(userMessageText.trim()) && fastTrimmedLower.length <= 20);
+            const isFileIdentityQuery = /what file|which file|current file|active file|file is this|file name/i.test(userMessageText);
+            const isFileContentRequest = referencedContents.length > 0 && /(what is|what's|show me|^show$|show |read|display|content of).*\.?(py|java|js|ts|txt|md|json)/i.test(userMessageText.toLowerCase());
+
+            // Determine operation type using fast heuristics (no planner LLM call).
+            // The agent's internal `understandIntent` will do the real semantic
+            // classification when the loop runs, so we only need a rough guess
+            // for the loading indicator.
             let operationForStatus: import('../../core/ai/aiRequestStore').AIOperationType = 'chat';
             let wantsModification = false;
             let isExplain = false;
-            let plannerResponseMessage = '';
 
-            try {
-                if (!skipPlanner) {
-                const planWithTimeout = (async () => {
-                    const timeout = new Promise<null>((_, reject) => {
-                        const t = setTimeout(() => reject(new Error('Semantic planner timed out')), 12000);
-                        if (abortController.signal) abortController.signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('The operation was aborted.', 'AbortError')); }, { once: true });
-                    });
-                    return await Promise.race([
-                        generateSemanticPlan(userMessageText, editorCtx, workspaceSnapshot.fileTreeString, historyForPipeline, abortController.signal),
-                        timeout as Promise<null>
-                    ]);
-                })();
-                const semanticPlan = await planWithTimeout as any;
-                if (semanticPlan) {
-                    operationForStatus = semanticPlanToAIOperationType(semanticPlan);
-                    wantsModification = semanticPlan.analysis.wantsModification;
-                    isExplain = semanticPlan.analysis.operation === 'explain';
-                    plannerResponseMessage = semanticPlan.responseMessage || '';
-                    if (import.meta.env.DEV) console.log('[SemanticPlanner] plan:', semanticPlan);
-                }
-                }
-            } catch (e: any) {
-                if (e.name === 'AbortError') throw e;
-                if (import.meta.env.DEV) console.warn('[SemanticPlanner] failed:', e);
-            }
-
-            // Composer mode overrides planner decision
-            if (composerMode === 'Ask') {
-                wantsModification = false;
-                isExplain = false;
+            if (isGreetingOnly || isFileIdentityQuery) {
                 operationForStatus = 'chat';
-                plannerResponseMessage = '';
             } else if (composerMode === 'Edit') {
-                // In Edit mode, even casual prompts should attempt file edits when file exists
-                if (!wantsModification && fileContent && userMessageText.trim().length > 3) {
-                    wantsModification = true;
-                    operationForStatus = 'edit';
+                operationForStatus = 'edit';
+                wantsModification = Boolean(fileContent?.trim());
+            } else if (composerMode === 'Ask') {
+                // Heuristic: explanation keywords → explain path (agent read-only)
+                if (/explain|what is|what does|how does|describe|walk me|why does|why is|what does this|how does this/i.test(userMessageText)) {
+                    operationForStatus = 'explanation';
+                    isExplain = true;
+                } else {
+                    operationForStatus = 'chat';
                 }
             }
 
@@ -1573,8 +1542,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
 
             let responseText = '';
 
-            // Direct file-read fast path: "what is hello.py" with pill/file should stream file content realtime, not just activity
-            const isFileContentRequest = referencedContents.length > 0 && /(what is|what's|show me|^show$|show |read|display|content of).*\.?(py|java|js|ts|txt|md|json)/i.test(userMessageText.toLowerCase());
+            // Direct file-read fast path: "what is hello.py" with pill/file — local content, no AI
             if (isFileContentRequest && referencedContents.length > 0) {
                 // The content is already available locally — render it in one
                 // honest update. The previous artificial chunk loop simulated
@@ -1585,19 +1553,14 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                 scheduleStreamUpdate(requestId, fileReadText);
                 responseText = fileReadText;
             } else if (wantsModification && composerMode !== 'Ask') {
-                // EDIT PATH — Cursor-style Agent Controller (Intent → Live Context → Tools → Execute → Verify)
-                // Full workspace context is injected so agent sees all files, not just active one
+                // EDIT PATH — Fused Agent Controller (Intent → Inspect → Plan → Execute → Verify)
+                // Single agent loop replaces: planner LLM call + agent loop
                 aiLoading.setGenerating();
                 setAgentActivities([]);
                 const { runAgentController } = await import('../../core/ai/agentController');
                 const enrichedHistory = dynamicContext
                     ? [...historyForPipeline, { role: 'user', content: `Full workspace context (dynamic, ${dynamicContext.included.length} files):\n${dynamicContext.fragments.slice(0, 10000)}` } as ChatMessage]
                     : historyForPipeline;
-                // Verify still-current before applying: pass pinned requestContext so late file switch doesn't corrupt wrong file
-                // Preview gate (Phase 8): the agent applies into a SHADOW tree.
-                // Nothing touches real files until the user explicitly accepts
-                // the proposal below (Accept/Reject) — prompt-injected model
-                // output can never silently mutate the workspace.
                 const result = await runAgentController({
                     userMessage: userMessageText,
                     workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent, setActiveFile } as unknown as import('../../core/editor/workspaceBridge').WorkspaceBridgeActions & { setActiveFile?: unknown },
@@ -1607,9 +1570,9 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                     signal: abortController.signal,
                     preview: true,
                     requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
+                    workspaceSnapshot: workspaceSnapshot,
                     onActivity: (act) => {
                         if (currentRequestIdRef.current !== requestId) return;
-                        // Real agent work arrived — keep the activity watchdog alive.
                         watchdogResetRef.current?.();
                         setAgentActivities(prev => {
                             const idx = prev.findIndex(a => a.id === act.id);
@@ -1627,7 +1590,6 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                 if (import.meta.env.DEV) console.log('[AgentController] result:', result);
                 const proposed = (result as { proposedChanges?: import('../../core/editor/previewWorkspace').ProposedChange[] }).proposedChanges;
                 if (proposed && proposed.length > 0) {
-                    // Proposal awaiting explicit user approval — real files untouched.
                     setPendingProposal({ changes: proposed, at: Date.now() });
                     responseText = `I've prepared ${proposed.length} change${proposed.length !== 1 ? 's' : ''}. Review below and Accept to apply, or Reject to discard.`;
                     setLastDiffs([]);
@@ -1635,49 +1597,45 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                     setPendingProposal(null);
                     responseText = result.message || (result.success ? 'No changes were needed.' : 'No changes were made.');
                 }
-                // Keep final activities for streaming card display, cleared on next send
                 setAgentActivities(result.activities.slice(-4));
                 setLastDiffs(result.success && (result as { diffs?: typeof lastDiffs }).diffs ? (result as { diffs: typeof lastDiffs }).diffs : []);
 
-            } else if (isExplain || plannerResponseMessage.trim().length > 20) {
-                // EXPLAIN PATH — use planner's response or stream explanation
+            } else if (isExplain) {
+                // EXPLAIN PATH — Agent in read-only mode (inspects workspace, answers from real data)
                 aiLoading.setGenerating();
-                aiLoading.setStreaming();
-                if (plannerResponseMessage.trim().length > 20) {
-                    responseText = plannerResponseMessage;
-                    scheduleStreamUpdate(requestId, responseText);
-                    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-                } else {
-                    // Stream explanation via centralized AIClient
-                    const explainPrompt = `You are a friendly, concise coding tutor.
+                setAgentActivities([]);
+                const { runAgentController } = await import('../../core/ai/agentController');
+                const enrichedHistory = dynamicContext
+                    ? [...historyForPipeline, { role: 'user', content: `Full workspace context (dynamic, ${dynamicContext.included.length} files):\n${dynamicContext.fragments.slice(0, 10000)}` } as ChatMessage]
+                    : historyForPipeline;
+                const result = await runAgentController({
+                    userMessage: userMessageText,
+                    workspace: { getFileTree, createFile, deleteNode, renameNode, updateFileContent, setActiveFile } as unknown as import('../../core/editor/workspaceBridge').WorkspaceBridgeActions & { setActiveFile?: unknown },
+                    fileName: requestContext.fileName || null,
+                    fileId: requestContext.fileId,
+                    history: enrichedHistory,
+                    signal: abortController.signal,
+                    preview: true,
+                    requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
+                    workspaceSnapshot: workspaceSnapshot,
+                    onActivity: (act) => {
+                        if (currentRequestIdRef.current !== requestId) return;
+                        watchdogResetRef.current?.();
+                        setAgentActivities(prev => {
+                            const idx = prev.findIndex(a => a.id === act.id);
+                            if (idx >= 0) { const next = [...prev]; next[idx] = act; return next; }
+                            return [...prev, act].slice(-12);
+                        });
+                        if (currentRequestIdRef.current !== requestId) return;
+                        if (act.tool === 'interpret' && act.status === 'running') aiLoading.setThinking();
+                        else if (['read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file'].includes(act.tool) && act.status === 'running') aiLoading.setGenerating();
+                        else if (act.status === 'done' && act.tool !== 'apply') aiLoading.setGenerating();
+                    },
+                });
 
-File: ${fileName} (${language})
-${fileContent ? 'Code:\n```' + language + '\n' + fileContent.slice(0, 12000) + '\n```' : '(no file content)'}
-User wants explanation: "${userMessageText}"
+                responseText = result.message || (result.chatResponse ?? 'No explanation generated.');
+                setAgentActivities(result.activities.slice(-4));
 
-Provide a warm, concise explanation. Keep to 2-4 bullets or short paragraphs. Do NOT modify code.`;
-                    // Build budgeted messages for explanation task
-                    const explainMessages = buildBudgetedMessages({
-                        userMessage: userMessageText,
-                        history: historyForPipeline,
-                        systemPrompt: explainPrompt,
-                        fileContext: '', // Explanation doesn't need file context in user message
-                        task: 'explanation',
-                        model: DEFAULT_MODEL,
-                    });
-                    let fullResponse = '';
-                    let hasSetStreaming = false;
-                    for await (const event of streamChat(explainMessages, { signal: abortController.signal, task: 'explanation', temperature: 0.3, maxTokens: 2048 })) {
-                        if (event.type === 'delta' && event.content) {
-                            if (!hasSetStreaming) { hasSetStreaming = true; aiLoading.setStreaming(); }
-                            fullResponse += event.content;
-                            scheduleStreamUpdate(requestId, fullResponse);
-                        } else if (event.type === 'error') {
-                            throw new Error(event.message || 'Explanation failed');
-                        }
-                    }
-                    responseText = fullResponse;
-                }
             } else {
                 // CHAT PATH — stream natural response (context-aware, super fast via Groq, fallback to DeepSeek)
                 aiLoading.setGenerating();

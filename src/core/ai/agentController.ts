@@ -56,6 +56,7 @@ import {
 import type { FileNode } from '../../utils/mockFileSystem';
 import type { ChatMessage } from './types';
 import { AIRequestStore, type AgentTaskPhase } from './aiRequestStore';
+import type { WorkspaceSnapshot } from '../workspace/workspaceContext';
 
 export type AgentToolStatus = 'running' | 'done' | 'error';
 export interface AgentActivity {
@@ -164,6 +165,13 @@ export interface AgentControllerRequest {
     }) => void;
     /** Pinned context from request creation time — prevents stale file switch. */
     requestContext?: AgentRequestContext | null;
+    /**
+     * Pre-built WorkspaceSnapshot from the request origin. When provided, this
+     * snapshot is used for all context building instead of re-fetching the file
+     * tree and editor state. This eliminates redundant context construction
+     * across the planner, dynamic context, and agent loop.
+     */
+    workspaceSnapshot?: WorkspaceSnapshot | null;
     /**
      * Continue an existing task instead of starting a new one. Supplied by the
      * chat panel, which owns the conversation, so a short follow-up inherits
@@ -277,7 +285,8 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     const interpreting: AgentActivity = { id: makeActivityId('understand'), tool: 'understand', status: 'running', message: STAGE_LABELS.understand };
     push(interpreting);
 
-    const fileTree = req.workspace.getFileTree() as FileNode[];
+    // Use pre-built WorkspaceSnapshot when provided to avoid redundant context construction
+    const fileTree = req.workspaceSnapshot?.fileTree ?? (req.workspace.getFileTree() as FileNode[]);
     const facts = detectWorkspaceFacts(fileTree);
     // A supplied `previousTask` means the conversation already has a coherent
     // task. The chat panel decides when a message starts a NEW objective (it
@@ -559,7 +568,8 @@ async function runReadOnlyAgent(
     const readActivity: AgentActivity = { id: makeActivityId('read'), tool: 'read', status: 'running', message: STAGE_LABELS.read };
     push(readActivity);
     hooks.progress({ phase: 'executing', label: STAGE_LABELS.read, status: 'running' });
-    const fileTree = req.workspace.getFileTree() as FileNode[];
+    // Use pre-built WorkspaceSnapshot when provided
+    const fileTree = req.workspaceSnapshot?.fileTree ?? (req.workspace.getFileTree() as FileNode[]);
     const deps = createExecutorDeps(req.workspace, req.fileName ?? null, req.fileId ?? null);
 
     const loop = await runAgentLoop({

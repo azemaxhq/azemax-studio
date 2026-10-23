@@ -1,4 +1,6 @@
 const STREAM_IDLE_TIMEOUT_MS = 45000;
+/** Maximum bytes to accept from a provider stream before aborting (10 MB). */
+const MAX_STREAM_BYTES = 10 * 1024 * 1024;
 
 /**
  * Writes a single SSE `data:` frame. Safe to call repeatedly; no-ops once the
@@ -428,6 +430,8 @@ async function pipeProviderStream(response, res, onChunk, onFirstToken, onFirstB
     let firstByteSent = false;
     /** A tool-call-only turn emits no visible token but is NOT empty. */
     let sawToolCalls = false;
+    /** Byte counter for stream size limit (P0 security). */
+    let bytesReceived = 0;
 
     const finish = () => {
         const tail = filter.end();
@@ -459,7 +463,12 @@ async function pipeProviderStream(response, res, onChunk, onFirstToken, onFirstB
         }
         if (typeof onChunk === 'function') onChunk();
 
-        buffer += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        bytesReceived += chunk.length;
+        if (bytesReceived > MAX_STREAM_BYTES) {
+            throw new Error(`Provider stream exceeded ${MAX_STREAM_BYTES} byte limit — aborting`);
+        }
+        buffer += chunk;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 

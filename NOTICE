@@ -1,0 +1,183 @@
+Azemax Studio
+Copyright 2026 Tharunkumar
+
+This product includes software developed at Azemax (https://azemax.com/).
+
+This product includes the following third-party components with their respective licenses and attributions:
+
+================================================================================
+FONTS (self-hosted in public/fonts/)
+================================================================================
+
+Inter Variable Font
+  Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  License: SIL Open Font License 1.1 (OFL-1.1)
+  Source: https://github.com/rsms/inter/releases
+
+JetBrains Mono Variable Font
+  Copyright 2019-2024 JetBrains (https://www.jetbrains.com/lp/mono/)
+  License: SIL Open Font License 1.1 (OFL-1.1)
+  Source: https://github.com/JetBrains/JetBrainsMono
+
+Newsreader Variable Font
+  Copyright 2021 The Newsreader Project Authors (https://github.com/ProductionType/Newsreader)
+  License: SIL Open Font License 1.1 (OFL-1.1)
+  Source: https://github.com/ProductionType/Newsreader
+
+Playfair Display
+  Copyright 2011-2014 Claus Eggers Sørensen (https://www.clauseggers.dk/)
+  License: SIL Open Font License 1.1 (OFL-1.1)
+  Source: https://github.com/clauseggers/Playfair_Display
+
+================================================================================
+DEPENDENCIES WITH ATTRIBUTION REQUIREMENTS
+================================================================================
+
+The following dependencies are included under their respective licenses.
+Full license texts are available in node_modules/<package>/LICENSE or LICENSE.md.
+
+Apache-2.0 Licensed Dependencies:
+  - @eslint/config-array, @eslint/config-helpers, @eslint/core
+  - eslint (portions), @eslint/eslintrc, @eslint/js
+  - @humanwhocodes/config-array, @humanwhocodes/module-importer
+  - @humanwhocodes/retry, @humanwhocodes/object-schema
+  - @types/eslint__js, @types/eslint__config-helpers
+  - @typescript-eslint/parser, @typescript-eslint/scope-manager
+  - @typescript-eslint/type-utils, @typescript-eslint/types
+  - @typescript-eslint/typescript-estree, @typescript-eslint/utils
+  - @typescript-eslint/visitor-keys
+  - glob, fast-glob, fastq, picomatch, fill-range, to-regex-range
+  - chokidar, fsevents (optional), watchpack
+  - rollup, @rollup/rollup-*, esbuild
+  - vite, @vitejs/plugin-react
+  - postcss, autoprefixer, tailwindcss
+  - @tailwindcss/container-queries
+  - @alloc/quick-lru, @isaacs/cliui, @pkgjs/parseargs
+  - @jridgewell/gen-mapping, @jridgewell/trace-mapping
+  - @jridgewell/sourcemap-codec, @jridgewell/set-array
+  - @babel/* (MIT with Apache-2.0 exceptions in some packages)
+  - @types/babel__*, @types/estree, @types/json-schema
+  - @types/node, @types/react, @types/react-dom
+  - @types/prismjs, @types/jszip, @types/cors, @types/express
+  - @types/ws, @types/uuid, @types/debug
+  - @vitest/*, vitest
+  - @playwright/test
+  - @xterm/*, xterm (MIT with Apache-2.0 in some components)
+  - @monaco-editor/react
+  - firebase, firebase-admin
+  - jszip (dual MIT OR GPL-3.0-or-later — used under MIT)
+  - clsx, tailwind-merge
+  - lucide-react, react-icons
+  - react-markdown, remark-gfm, prismjs
+  - framer-motion
+  - cors, express, ws, dotenv
+  - concurrently, wait-on
+
+MIT Licensed Dependencies (representative list; all MIT dependencies compatible):
+  - @alloc/quick-lru, @babel/*, @eslint-community/*, @eslint/*
+  - @humanwhocodes/*, @isaacs/*, @jridgewell/*, @nodelib/*
+  - @pkgjs/*, @rollup/*, @tailwindcss/*, @types/*, @vitejs/*
+  - @xterm/*, acorn, ansi-regex, ansi-styles, anymatch
+  - balanced-match, binary-extensions, brace-expansion, braces
+  - callsites, camelcase, chalk, chokidar, ci-info, cliui
+  - color-convert, color-name, commander, concat-map
+  - confusing-browser-globals, cross-spawn, debug, deep-is
+  - dir-glob, doctrine, eastasianwidth, electron-to-chromium
+  - emoji-regex, esbuild, escalade, escape-string-regexp
+  - eslint-*, espree, esquery, esrecurse, estraverse
+  - estree-walker, execa, fast-deep-equal, fast-glob
+  - fast-json-stable-stringify, fast-levenshtein, fastq
+  - file-entry-cache, fill-range, find-up, flat-cache
+  - for-each, foreground-child, fs.realpath, function-bind
+  - gensync, get-caller-file, get-east-asian-width
+  - get-stream, glob, globals, globby, graceful-fs
+  - has-flag, hasown, hosted-git-info, ignore
+  - import-fresh, imurmurhash, inflight, inherits
+  - internal-slot, is-binary-path, is-core-module, is-extglob
+  - is-fullwidth-code-point, is-glob, is-module, is-number
+  - is-obj, is-reference, is-regex, is-shared-array-buffer
+  - is-stream, is-string, is-symbol, is-typed-array
+  - is-weakmap, is-weakref, is-weakset, isarray
+  - isexe, jackspeak, jiti, joycon, js-tokens
+  - js-yaml, jsesc, json-buffer, json-parse-even-better-errors
+  - json-schema-traverse, json-stable-stringify, json5
+  - jsonc-parser, keyv, kind-of, kleur, levn
+  - lilconfig, lines-and-columns, locate-path, lodash
+  - lodash.merge, loose-envify, loupe, lru-cache
+  - magic-string, make-dir, merge-stream, merge2
+  - micromatch, mimic-fn, mimic-response, minimatch
+  - minimist, mkdirp, mlly, mri, ms, muggle-string
+  - nanoid, natural-compare, node-addon-api, node-releases
+  - normalize-path, npm-run-path, nth-check, object-assign
+  - object-inspect, object-keys, object.assign, object.entries
+  - object.fromentries, object.groupby, object.hasown
+  - object.values, once, onetime, optionator
+  - p-limit, p-locate, p-try, parent-module
+  - path-exists, path-key, path-parse, path-scurry
+  - path-type, picocolors, picomatch, pkg-dir
+  - pluralize, postcss, postcss-selector-parser, prelude-ls
+  - prettier, pretty-format, process-nextick-args, promise
+  - proxy-from-env, punycode, queue-microtask, randombytes
+  - react-refresh, read-cache, readable-stream, readdirp
+  - regex, regexpp, resolve, resolve-from, resolve-pkg-maps
+  - reusify, rfdc, rimraf, rollup, run-parallel
+  - safe-buffer, safer-buffer, scheduler, semver
+  - set-cookie-parser, shebang-command, shebang-regex
+  - signal-exit, sisteransi, slash, slice-ansi
+  - source-map, source-map-js, source-map-support, spdx-correct
+  - spdx-exceptions, spdx-expression-parse, spdx-license-ids
+  - sprintf-js, stackback, statuses, string-width
+  - string.prototype.*, string_decoder, strip-ansi
+  - strip-bom, strip-final-newline, strip-indent, strip-json-comments
+  - sucrase, supports-color, supports-hyperlinks, supports-preserve-symlinks
+  - synckit, tapable, text-table, tinyexec, tinyglobby
+  - to-regex-range, ts-api-utils, tsconfck, tslib
+  - type-check, type-fest, typed-array-*, typescript
+  - typescript-eslint, ufo, unbox-primitive, undici
+  - unist-util-*, universalify, update-browserslist-db
+  - uri-js, util-deprecate, validate-npm-package-license
+  - vite, vitest, vue-template-compiler, w3c-xmlserializer
+  - walker, watchpack, wcwidth, webidl-conversions
+  - which, word-wrap, wrap-ansi, ws, xml-name-validator
+  - y18n, yallist, yaml, yn, yocto-queue, yoctocolors
+
+BSD-3-Clause Licensed Dependencies:
+  - @types/prop-types, @types/react-is, @types/scheduler
+  - prop-types, react-is, scheduler
+
+ISC Licensed Dependencies:
+  - @types/normalize-package-data, normalize-package-data
+  - resolve-pkg-maps, tinyexec
+
+BlueOak-1.0.0 Licensed Dependencies:
+  - @types/estree (portion)
+
+Python-2.0 Licensed Dependencies:
+  - @types/debug, debug
+
+CC-BY-4.0 Licensed Dependencies:
+  - @types/ws (portion)
+
+================================================================================
+THIRD-PARTY SERVICES (NOT BUNDLED)
+================================================================================
+
+Firebase Authentication / Firebase Admin SDK
+  Terms: Firebase Terms of Service (https://firebase.google.com/terms/)
+  Not bundled — accessed via API at runtime.
+
+Wandbox Code Execution Sandbox
+  Terms: Wandbox Terms of Service (https://wandbox.org/)
+  Not bundled — accessed via API at runtime in production.
+
+NVIDIA NIM / Groq / OpenRouter / HuggingFace / Kilo Code AI Providers
+  Terms: Respective provider Terms of Service
+  Not bundled — accessed via API at runtime with user/server-provided keys.
+
+================================================================================
+TRADEMARK NOTICE
+================================================================================
+
+"Azemax" and the Azemax logo are trademarks of Tharunkumar. This license
+does not grant permission to use these trademarks except as required for
+reasonable and customary use in describing the origin of the work.
