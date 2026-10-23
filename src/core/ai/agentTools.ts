@@ -27,7 +27,7 @@
 import type { FileNode } from '../../utils/mockFileSystem';
 import { getActiveEditorContext } from '../editor/activeEditorStore';
 import { getResourceMetadata, listDirectory, normalizeResourcePath, resolveResource } from '../filesystem/queries';
-import type { ExecutorDeps, AIAction, ExecutionResult } from './aiToolExecutor';
+import type { ExecutorDeps, AIAction, ExecutionResult } from './actionTypes';
 import type { AIToolDefinition } from './types';
 
 // ---------------------------------------------------------------------------

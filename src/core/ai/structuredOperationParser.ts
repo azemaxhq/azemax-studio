@@ -12,7 +12,7 @@
  * exact line/range ops and only allows full-file `update_file` when genuinely necessary.
  */
 
-import type { AIAction } from './aiToolExecutor';
+import type { AIAction } from './actionTypes';
 import { normalizeCommentMode } from './commentApplier';
 
 type RawOp = Record<string, unknown>;

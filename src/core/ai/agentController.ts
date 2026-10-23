@@ -31,7 +31,8 @@ import { createExecutorDeps, type WorkspaceBridgeActions } from '../editor/works
 import { runAgentLoop, type AgentLoopResult, type AgentStepRecord } from './agentLoop';
 import { resolveByokTarget } from './byokRuntime';
 import type { ResolvedByokTarget } from './byokTypes';
-import { executeActionPlan, type AIAction, type ExecutionResult } from './aiToolExecutor';
+import { executeActionPlan } from './aiToolExecutor';
+import type { AIAction, ExecutionResult } from './actionTypes';
 import type { AgentToolDeps } from './agentTools';
 import {
     createTaskContext,

@@ -16,7 +16,27 @@ export * from './AIError';
 export * from './AIStream';
 export * from './AIRequestManager';
 export * from './AIMessageStore';
-export * from './AIContextBuilder';
+// AIContextBuilder exports DEFAULT_MODEL (from modelConstants), taskConfigClient exports its own DEFAULT_MODEL
+// Explicitly re-export from AIContextBuilder to avoid conflict with taskConfigClient
+export {
+    DEFAULT_MODEL,
+    // other exports
+    TASK_KEY_BY_TYPE,
+    taskKeyForType,
+    isTrivialChat,
+    buildSystemPrompt,
+    buildChatMessages,
+    getSmartModel,
+    FAST_EDITOR_MODEL,
+    NO_AUTO_COMMENTS_INSTRUCTION,
+    NO_REASONING_LEAK_INSTRUCTION,
+    COMMENT_TASK_INSTRUCTION,
+    MAX_HISTORY_MESSAGES,
+    MAX_HISTORY_CHARS,
+    MAX_FILE_CONTENT_CHARS,
+    PROVIDER_CONTEXT_LIMITS,
+    type ProviderContextLimits,
+} from './AIContextBuilder';
 export * from './AIResponseParser';
 export * from './AICache';
 export * from './AIClient';
@@ -41,7 +61,11 @@ export {
   type ProviderCapabilities as ModelRouterProviderCapabilities,
   type ResolvedModel,
 } from './modelRouter';
-export * from './taskConfigClient';
+// taskConfigClient has its own DEFAULT_MODEL, don't use export * to avoid conflict
+export {
+    AI_TASK_CONFIG,
+    type ClientTaskProfile,
+} from './taskConfigClient';
 export * from './commentSyntax';
 export * from './AIProviderNormalizer';
 export * from './intentResolver';

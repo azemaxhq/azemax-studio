@@ -25,7 +25,7 @@ import {
     type CommentInstruction,
 } from './commentApplier';
 import { validateCandidateNotMalformed } from './editValidator';
-import type { AIAction } from './aiToolExecutor';
+import type { AIAction } from './actionTypes';
 
 const JAVA_PUBLIC_TYPE_RE = /\bpublic\s+(?:(?:final|abstract|sealed)\s+)*(?:class|interface|enum|record|@interface)\s+([A-Za-z_][A-Za-z0-9_]*)/g;
 function extractJavaPublicTypes(code: string): string[] {

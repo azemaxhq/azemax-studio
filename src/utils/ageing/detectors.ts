@@ -3,22 +3,9 @@
  * Each detector is a pure function: (lines, ctx) => { signal, hotspots }.
  * Keeps cyclomatic complexity per function ~10 instead of 170 in one monolith.
  */
-import type { AgeingHotspot, AgeingSignal } from '../codeAnalysisEngine';
+import type { AgeingHotspot, Detector } from './types';
 
-export interface DetectorContext {
-  lines: string[];
-  language: string;
-  isJS: boolean;
-  isTS: boolean;
-  isPython: boolean;
-  isJava: boolean;
-  isCpp: boolean;
-  isRust: boolean;
-  isGo: boolean;
-  loc: number;
-}
-
-export type Detector = (lines: string[], ctx: DetectorContext, hotspots: AgeingHotspot[]) => AgeingSignal | null;
+export { type DetectorContext, type Detector } from './types';
 
 const add = (hotspots: AgeingHotspot[], line: number, code: string, reason: string, severity: AgeingHotspot['severity'], id: string) =>
   hotspots.push({ line, code: code.slice(0, 80), reason, severity, signalId: id });

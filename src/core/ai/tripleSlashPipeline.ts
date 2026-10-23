@@ -15,7 +15,8 @@
 
 import { getActiveEditorContext } from '../editor/activeEditorStore';
 import { createExecutorDeps, captureSnapshot, type WorkspaceBridgeActions } from '../editor/workspaceBridge';
-import { executeActionPlan, type AIAction } from './aiToolExecutor';
+import { executeActionPlan } from './aiToolExecutor';
+import type { AIAction } from './actionTypes';
 import { sendChat } from './AIClient';
 import { sanitizeEditorOutputWithPolicy, isCommentingIntent, isDocumentingIntent } from './AIOutputPolicy';
 import { getCommentSyntax, applyCommentSyntax } from './commentSyntax';

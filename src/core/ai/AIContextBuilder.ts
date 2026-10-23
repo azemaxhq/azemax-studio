@@ -8,8 +8,8 @@ import type {
 } from './types';
 import { hashString, systemPromptCache } from './AICache';
 import { resolveModel } from './modelRouter';
-import { DEFAULT_MODEL } from './taskConfigClient';
-export { DEFAULT_MODEL };
+import { DEFAULT_CHAT_MODEL as DEFAULT_MODEL } from './modelConstants';
+export { DEFAULT_CHAT_MODEL as DEFAULT_MODEL } from './modelConstants';
 
 /**
  * Context assembly for the AI runtime.
@@ -110,9 +110,16 @@ export const taskDefaults = (
  */
 export const FAST_EDITOR_MODEL = 'qwen/qwen3.8-27b';
 
+/** NVIDIA premium default model for quality-critical tasks. */
+const PREMIUM_DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b';
+
 export const getSmartModel = (task: TaskType | AiTaskKey): string => {
     const key = (TASK_KEY_BY_TYPE[task as TaskType] || task) as AiTaskKey;
+    // Latency-critical paths (autocomplete, inline-suggest) use the fast model.
+    // Quality-critical paths (code-gen, fix, refactor, complex_code) use the premium default.
     if (key === 'autocomplete') return FAST_EDITOR_MODEL;
+    // Premium tasks should use the NVIDIA default for quality
+    if (['simple_edit', 'complex_code', 'deep_reasoning'].includes(key)) return PREMIUM_DEFAULT_MODEL;
     return resolveModel(key, DEFAULT_MODEL).model;
 };
 
@@ -195,8 +202,8 @@ export const buildSystemPrompt = (context?: ProjectContext, task?: AiTaskKey | T
     return parts.join('\n');
 };
 
-const MAX_HISTORY_MESSAGES = 20;
-const MAX_HISTORY_CHARS = 24000;
+export const MAX_HISTORY_MESSAGES = 20;
+export const MAX_HISTORY_CHARS = 24000;
 export const MAX_FILE_CONTENT_CHARS = 16000;
 
 /**

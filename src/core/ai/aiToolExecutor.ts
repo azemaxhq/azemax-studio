@@ -21,56 +21,19 @@ import {
     type FileSnapshot,
 } from './editEngine';
 import { formatNaturalResponse } from './responseFormatter';
+import type {
+    AIAction,
+    CommentTarget,
+    ExecutorDeps,
+    ExecutionResult,
+    EditSnapshot,
+} from './actionTypes';
 
 // Re-export for callers that need to build context
 export { getActiveEditorContext } from '../editor/activeEditorStore';
 
-// Strict action schemas — every AI mutation must be one of these
-export type CommentTarget = { line: number; text: string; mode?: 'upsert' | 'remove'; anchor?: string | null };
-
-export type AIAction =
-    | { action: 'add_comments'; comments: CommentTarget[]; file?: string }
-    | { action: 'remove_comments'; file?: string; preserveLines?: number[]; scope?: 'file' | 'selection'; selectionRange?: { startLine: number; endLine: number } }
-    | { action: 'create_file'; path: string; content: string }
-    | { action: 'delete_file'; path: string }
-    | { action: 'rename_file'; path: string; newPath: string }
-    | { action: 'update_file'; path: string; content: string }
-    | { action: 'insert_code'; path?: string; line: number; content: string; anchor?: string | null }
-    | { action: 'replace_code'; path?: string; startLine: number; endLine: number; content: string; anchor?: string | null }
-    | { action: 'delete_code'; path?: string; startLine: number; endLine: number }
-    | { action: 'read_file'; path: string }
-    | { action: 'search_files'; query: string }
-    | { action: 'list_files'; path?: string }
-    | { action: 'get_diagnostics'; path: string }
-    | { action: 'get_editor_context' }
-    | { action: 'open_file'; path: string };
-
-export type AIActionPlan = {
-    actions: AIAction[];
-    reasoning?: string;
-};
-
-export type ExecutorDeps = {
-    getFileContent: (path: string) => string | null;
-    getFileIdByPath: (path: string) => string | null;
-    createFile: (path: string, content: string) => { success: boolean; error?: string };
-    deleteNode: (id: string) => void;
-    renameNode: (id: string, newName: string) => { success: boolean; error?: string };
-    updateFileContent: (fileId: string, content: string) => { success: boolean; error?: string };
-    getActiveFilePath: () => string | null;
-    getActiveFileId: () => string | null;
-    getFileTree?: () => import('../../utils/mockFileSystem').FileNode[];
-};
-
-export type ExecutionResult = {
-    success: boolean;
-    appliedCount: number;
-    message: string;
-    details?: string;
-    rolledBack?: boolean;
-};
-
-export type EditSnapshot = FileSnapshot;
+// Re-export action types from actionTypes
+export type { AIAction, AIActionPlan, CommentTarget, ExecutorDeps, ExecutionResult, EditSnapshot } from './actionTypes';
 
 /**
  * Normalize any AI JSON (tolerant) into a single internal Action[].

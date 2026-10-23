@@ -11,8 +11,11 @@
  */
 
 import { getTaskConfig } from './taskConfigClient';
-import { DEFAULT_MODEL } from './AIContextBuilder';
+import { DEFAULT_CHAT_MODEL as DEFAULT_MODEL } from './modelConstants';
 import type { AiTaskKey } from './types';
+
+// Server-side NVIDIA default model (used for provider inference, not client chat)
+const NVIDIA_DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b';
 
 export const OR_PREFIX = 'or:';
 export const HF_PREFIX = 'hf:';
@@ -99,7 +102,7 @@ export function inferProvider(model: string): ProviderId {
     if (model.startsWith(HF_PREFIX)) return 'huggingface';
     if (model.startsWith(OR_PREFIX)) return 'openrouter';
     if (model.startsWith(KILO_PREFIX)) return 'kilocode';
-    if (model.startsWith('nvidia/') || model === DEFAULT_MODEL) return 'nvidia';
+    if (model.startsWith('nvidia/') || model === NVIDIA_DEFAULT_MODEL) return 'nvidia';
     if (model === 'deepseek-ai/deepseek-v4-flash-0731' || model.startsWith('deepseek-ai/')) return 'nvidia';
     if (GROQ_MODEL_IDS.has(model)) return 'groq';
     if (KILO_MODEL_IDS.has(model)) return 'kilocode';

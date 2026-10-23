@@ -5,7 +5,7 @@
  * targets so the user is never told something happened that didn't.
  */
 
-import type { AIAction } from './aiToolExecutor';
+import type { AIAction } from './actionTypes';
 
 interface CommentLike { line: number; text: string; mode?: string }
 
