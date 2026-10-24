@@ -582,6 +582,8 @@ export const ProviderSettingsPanel: React.FC = () => {
     // The selection lives in the settings store (non-secret metadata only) so
     // the request pipeline resolves the same provider the user picked here.
     const activeProvider = useSetting<string>('ai.activeProvider') ?? '';
+    const aiMode = useSetting<string>('ai.mode') ?? 'azemax-default';
+    const isByok = aiMode === 'byok';
 
     const handleProviderChange = useCallback((value: string) => {
         setSetting('ai.activeProvider', value);
@@ -597,10 +599,10 @@ export const ProviderSettingsPanel: React.FC = () => {
             <div
                 className="rounded-xl border px-4 py-3"
                 style={{
-                    borderColor: activeProvider === 'byok'
+                    borderColor: isByok
                         ? 'rgba(91,140,255,0.28)'
                         : 'rgba(255,255,255,0.08)',
-                    background: activeProvider === 'byok'
+                    background: isByok
                         ? 'rgba(91,140,255,0.07)'
                         : 'rgba(255,255,255,0.02)',
                 }}
@@ -608,10 +610,10 @@ export const ProviderSettingsPanel: React.FC = () => {
                 <div className="flex items-center gap-2.5 flex-wrap">
                     <div className="min-w-0 flex-1">
                         <p className="text-[12px] font-semibold text-white/85">
-                            {activeProvider === 'byok' ? 'Bring Your Own Key is active' : 'Azemax Default is active'}
+                            {isByok ? 'Bring Your Own Key is active' : 'Azemax Default is active'}
                         </p>
                         <p className="text-[10.5px] text-white/45 leading-relaxed mt-0.5">
-                            {activeProvider === 'byok'
+                            {isByok
                                 ? 'Requests are sent to your provider with your key. Your saved configuration below stays intact when you switch modes.'
                                 : 'Requests use Azemax\u2019s models. The providers you configure below are saved, but not used until you switch to Bring Your Own Key.'}
                         </p>
@@ -619,13 +621,13 @@ export const ProviderSettingsPanel: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => {
-                            const next = activeProvider === 'byok' ? 'azemax-default' : 'byok';
+                            const next = isByok ? 'azemax-default' : 'byok';
                             setSetting('ai.mode', next);
                             setAIMode(next);
                         }}
                         className="shrink-0 px-2.5 py-1 text-[11px] font-medium rounded-md border border-[rgba(91,140,255,0.25)] bg-[rgba(91,140,255,0.1)] text-[var(--az-text)] hover:bg-[rgba(91,140,255,0.18)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(91,140,255,0.4)] transition-colors"
                     >
-                        {activeProvider === 'byok' ? 'Use Azemax Default' : 'Use my provider'}
+                        {isByok ? 'Use Azemax Default' : 'Use my provider'}
                     </button>
                 </div>
             </div>

@@ -959,7 +959,7 @@ export async function sendChatResult(
                     provider: err.provider,
                     model: options.model,
                     status: response.status,
-                    retryable: false,
+                    retryable: err.retryable,
                     message: err.message,
                 });
             }

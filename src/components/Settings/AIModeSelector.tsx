@@ -22,7 +22,7 @@ import {
     ChevronRight,
     ShieldCheck,
 } from 'lucide-react';
-import { useSetting, setSetting } from '../../settings/settingsStore';
+import { useSetting, getSetting, setSetting } from '../../settings/settingsStore';
 import { setAIMode, type AIMode } from '../../core/ai/byokRuntime';
 import { fetchDefaultModels, pickDefaultModelId, type AzemaxDefaultModel } from '../../core/ai/defaultModels';
 import { providerRegistry } from '../../core/ai/providers/registry';
@@ -58,7 +58,12 @@ const DefaultModeView: React.FC<{ onUseByok: () => void }> = ({ onUseByok }) => 
     const [models, setModels] = useState<AzemaxDefaultModel[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [selected, setSelected] = useState<string>('');
+    const storedModel = useSetting<string>('ai.azemaxModel') ?? '';
+    const [selected, setSelected] = useState<string>(storedModel);
+
+    useEffect(() => {
+        if (storedModel) setSelected(storedModel);
+    }, [storedModel]);
 
     /**
      * Fetch the catalog and apply it. `loading` starts as `true`, so the
@@ -68,10 +73,13 @@ const DefaultModeView: React.FC<{ onUseByok: () => void }> = ({ onUseByok }) => 
     const applyCatalog = useCallback((catalog: Awaited<ReturnType<typeof fetchDefaultModels>>) => {
         setModels(catalog.models);
         setError(catalog.error ?? null);
-        setSelected(prev => {
-            if (prev && catalog.models.some(m => m.id === prev)) return prev;
-            return pickDefaultModelId(catalog);
-        });
+        const stored = getSetting('ai.azemaxModel');
+        const storedStr = typeof stored === 'string' ? stored : '';
+        if (storedStr && catalog.models.some(m => m.id === storedStr)) {
+            setSelected(storedStr);
+        } else {
+            setSelected(pickDefaultModelId(catalog));
+        }
         setLoading(false);
     }, []);
 
@@ -131,7 +139,11 @@ const DefaultModeView: React.FC<{ onUseByok: () => void }> = ({ onUseByok }) => 
                         <select
                             id="azemax-default-model"
                             value={selected}
-                            onChange={(e) => setSelected(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setSelected(val);
+                                setSetting('ai.azemaxModel', val);
+                            }}
                             className="w-full px-3 py-1.5 text-[12px] bg-white/[0.05] border border-white/[0.1] rounded-md text-white/80 focus:outline-none focus:border-[rgba(91,140,255,0.5)] focus:ring-1 focus:ring-[rgba(91,140,255,0.2)] appearance-none"
                         >
                             {models.map((m) => (

@@ -18,5 +18,9 @@ export const providerSettingsNav = new EventBus<ProviderSettingsNavEvents>();
 
 /** Ask the settings panel to open the AI Providers category. */
 export function openAIProvidersSettings(): void {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('open-settings', { detail: { category: 'aiProviders' } }));
+        window.dispatchEvent(new CustomEvent('mobile-open-settings'));
+    }
     providerSettingsNav.emit('open-ai-providers', undefined);
 }

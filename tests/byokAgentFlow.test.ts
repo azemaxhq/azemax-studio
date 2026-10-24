@@ -262,7 +262,7 @@ describe('server fallback policy', () => {
         const result = await sendChatResult([{ role: 'user', content: 'hi' }], { task: 'chat' });
 
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.error.code).toBe(AI_ERROR_CODES.AI_PROVIDER_SERVER_ERROR);
+        if (!result.ok) expect(result.error.code).toBe(AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE);
         expect(calls.length).toBe(1);
     });
 

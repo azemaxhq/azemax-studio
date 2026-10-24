@@ -4,13 +4,13 @@
  * Shows the currently active AI model and mode (Azemax Default or BYOK).
  * Clicking it opens a lightweight popover with:
  *   • Current model indicator
- *   • Azemax Default section
+ *   • Azemax Default section (Auto and individual models)
  *   • Configured BYOK providers grouped by provider
- *   • Search / filter
- *   • Manage Providers link → opens existing Settings → AI Providers
+ *   • Search / filter across all available models
+ *   • Manage Providers link → opens Settings → AI Providers
  *
  * The selector writes through the existing settings store (`ai.mode`,
- * `ai.activeProvider`, `ai.defaultModel`) and the ProviderContext so the
+ * `ai.azemaxModel`, `ai.activeProvider`, `ai.defaultModel`) and the ProviderContext so the
  * full AIClient → provider adapter pipeline picks up the change for all
  * subsequent requests. Active agent tasks retain their pinned
  * `providerTarget` and are never affected.
@@ -39,17 +39,17 @@ import {
 } from 'lucide-react';
 import { useProvider } from '../../core/ai/providerContext';
 import { providerRegistry } from '../../core/ai/providers/registry';
-import { getAIMode, setAIMode } from '../../core/ai/byokRuntime';
-import { setSetting } from '../../settings/settingsStore';
+import { setAIMode } from '../../core/ai/byokRuntime';
+import { useSetting, setSetting } from '../../settings/settingsStore';
 import { AnchorPopover } from '../UI/AnchorPopover';
 import {
     fetchDefaultModels,
-    pickDefaultModelId,
     type AzemaxDefaultModel,
 } from '../../core/ai/defaultModels';
 import type { ProviderId, ModelInfo, ProviderValidationStatus } from '../../core/ai/byokTypes';
 import type { AIProviderAdapter } from '../../core/ai/byokTypes';
 import { sessionStore, encryptedStore } from '../../core/ai/credentialStore';
+import { openAIProvidersSettings } from '../../core/ai/providerSettingsNav';
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -140,13 +140,17 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
     const [defaultModels, setDefaultModels] = useState<AzemaxDefaultModel[]>([]);
     const [defaultModelsError, setDefaultModelsError] = useState<string | null>(null);
     const [isLoadingDefaultModels, setIsLoadingDefaultModels] = useState(false);
-    /** The Azemax default model id the user picked (a model id, not a key). */
-    const [defaultModelId, setDefaultModelId] = useState<string>('');
+
+    // Reactive subscriptions to settings store
+    const aiMode = useSetting<string>('ai.mode') ?? 'azemax-default';
+    const currentAzemaxModel = useSetting<string>('ai.azemaxModel') ?? '';
+    const currentByokProvider = useSetting<string>('ai.activeProvider') ?? '';
+    const currentByokModel = useSetting<string>('ai.defaultModel') ?? '';
+
+    const isDefault = aiMode === 'azemax-default';
 
     /**
-     * Toggles the popover. The loading flags are set HERE (an event handler)
-     * rather than inside the effect that fetches, because a synchronous
-     * setState in an effect body causes a cascading render.
+     * Toggles the popover.
      */
     const toggleOpen = useCallback(() => {
         setOpen((v) => {
@@ -164,15 +168,22 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
     const btnRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    const aiMode = getAIMode();
-    const isDefault = aiMode === 'azemax-default';
-
     /* ── Determine the label for the button ───────────────────────────── */
     const buttonLabel = useMemo(() => {
-        if (isDefault) return 'Azemax Default';
+        if (isDefault) {
+            if (currentAzemaxModel) {
+                const found = defaultModels.find((m) => m.id === currentAzemaxModel);
+                if (found) {
+                    return found.label.length > 28 ? `${found.label.slice(0, 26)}…` : found.label;
+                }
+                const shortId = currentAzemaxModel.split('/').pop() || currentAzemaxModel;
+                return shortId.length > 28 ? `${shortId.slice(0, 26)}…` : shortId;
+            }
+            return 'Azemax Default';
+        }
         if (provider.activeProvider && provider.activeModel) {
             const adapter = providerRegistry.get(provider.activeProvider);
-            const modelInfo = adapter?.models.find(m => m.id === provider.activeModel);
+            const modelInfo = adapter?.models.find((m) => m.id === provider.activeModel);
             if (modelInfo) return modelInfo.name;
             // Truncate long model ids
             const modelId = provider.activeModel;
@@ -182,15 +193,17 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
             return PROVIDER_LABELS[provider.activeProvider] || provider.activeProvider;
         }
         return 'Select Model';
-    }, [isDefault, provider.activeProvider, provider.activeModel]);
+    }, [isDefault, currentAzemaxModel, defaultModels, provider.activeProvider, provider.activeModel]);
 
     const buttonSublabel = useMemo(() => {
-        if (isDefault) return null;
+        if (isDefault) {
+            return currentAzemaxModel ? 'Azemax Default' : null;
+        }
         if (provider.activeProvider) {
             return PROVIDER_LABELS[provider.activeProvider] || null;
         }
         return null;
-    }, [isDefault, provider.activeProvider]);
+    }, [isDefault, currentAzemaxModel, provider.activeProvider]);
 
     /* ── Load configured providers when popover opens ─────────────────── */
     useEffect(() => {
@@ -224,22 +237,28 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
         return () => { cancelled = true; };
     }, [open]);
 
-    /* ── Load Azemax's default models when the popover opens ───────────── */
-    useEffect(() => {
-        if (!open) return;
-        let cancelled = false;
-        void fetchDefaultModels().then((catalog) => {
-            if (cancelled) return;
+    /* ── Load Azemax's default models on mount and when popover opens ──── */
+    const loadDefaultModels = useCallback(async (force = false) => {
+        setIsLoadingDefaultModels(true);
+        try {
+            const catalog = await fetchDefaultModels(force);
             setDefaultModels(catalog.models);
             setDefaultModelsError(catalog.error ?? null);
-            setDefaultModelId(prev => {
-                if (prev && catalog.models.some((m) => m.id === prev)) return prev;
-                return pickDefaultModelId(catalog);
-            });
+        } catch {
+            setDefaultModelsError('Could not load models.');
+        } finally {
             setIsLoadingDefaultModels(false);
-        });
-        return () => { cancelled = true; };
-    }, [open]);
+        }
+    }, []);
+
+    useEffect(() => {
+        void loadDefaultModels(false);
+    }, [loadDefaultModels]);
+
+    useEffect(() => {
+        if (!open) return;
+        void loadDefaultModels(false);
+    }, [open, loadDefaultModels]);
 
     /* ── Focus search on open ─────────────────────────────────────────── */
     useEffect(() => {
@@ -249,15 +268,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
     }, [open]);
 
     /* ── Close on Escape ──────────────────────────────────────────────── */
-    /* The popover itself is rendered through a portal, so its own
-       click-outside handling covers the trigger as well. Escape is handled
-       here because the search field needs the first press to clear the
-       query and only the second one to close the dropdown. */
     useEffect(() => {
         if (!open) return;
         const handler = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') return;
-            // The search field handles its own Escape (clear → close).
             if (searchInputRef.current && e.target === searchInputRef.current) return;
             e.stopPropagation();
             setOpen(false);
@@ -268,15 +282,17 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
 
     /* ── Handlers ─────────────────────────────────────────────────────── */
 
-    const selectAzemaxDefault = useCallback(() => {
+    const selectAzemaxModel = useCallback((modelId: string) => {
         setAIMode('azemax-default');
         setSetting('ai.mode', 'azemax-default');
-        // The BYOK provider selection and model are deliberately KEPT so
-        // switching back and forth never loses the user's configuration.
-        // Only the MODE changes, so the user's key is never used while
-        // Azemax Default is active.
+        setSetting('ai.azemaxModel', modelId);
+        provider.setMode('azemax-default');
         setOpen(false);
-    }, []);
+    }, [provider]);
+
+    const selectAzemaxDefault = useCallback(() => {
+        selectAzemaxModel('');
+    }, [selectAzemaxModel]);
 
     const selectByokModel = useCallback(
         async (providerId: ProviderId, modelId: string) => {
@@ -286,6 +302,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
             setSetting('ai.activeProvider', providerId);
             setSetting('ai.defaultModel', modelId);
             await provider.setActiveProvider(providerId, modelId);
+            provider.setMode('byok');
             setOpen(false);
         },
         [provider],
@@ -293,10 +310,34 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
 
     const handleManageProviders = useCallback(() => {
         setOpen(false);
-        onOpenProviderSettings?.();
+        if (onOpenProviderSettings) {
+            onOpenProviderSettings();
+        } else {
+            openAIProvidersSettings();
+        }
     }, [onOpenProviderSettings]);
 
-    /* ── Filter models ────────────────────────────────────────────────── */
+    /* ── Filter Azemax models ─────────────────────────────────────────── */
+    const filteredAzemaxModels = useMemo(() => {
+        if (!searchQuery.trim()) return defaultModels;
+        const q = searchQuery.toLowerCase();
+        return defaultModels.filter(
+            m =>
+                m.label.toLowerCase().includes(q) ||
+                m.id.toLowerCase().includes(q) ||
+                (m.provider && m.provider.toLowerCase().includes(q)),
+        );
+    }, [defaultModels, searchQuery]);
+
+    const showAzemaxDefaultCard = useMemo(() => {
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        return 'azemax default'.includes(q) || 'server-managed ai'.includes(q);
+    }, [searchQuery]);
+
+    const showAzemaxSection = showAzemaxDefaultCard || filteredAzemaxModels.length > 0;
+
+    /* ── Filter BYOK models ───────────────────────────────────────────── */
     const filteredProviders = useMemo(() => {
         if (!searchQuery.trim()) return configuredProviders;
         const q = searchQuery.toLowerCase();
@@ -312,7 +353,6 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
                 if (nameMatch || matchingModels.length > 0) {
                     return {
                         ...cp,
-                        // If filtering by model name, only show matching models
                         adapter: nameMatch
                             ? cp.adapter
                             : {
@@ -329,17 +369,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
     const configuredWithKeys = filteredProviders.filter(cp => cp.hasCredential);
     const unconfiguredProviders = filteredProviders.filter(cp => !cp.hasCredential);
 
-    /* ── Is this provider+model currently active? ─────────────────────── */
-    const isActive = useCallback(
-        (providerId: ProviderId, modelId: string) => {
-            if (isDefault) return false;
-            return (
-                provider.activeProvider === providerId &&
-                provider.activeModel === modelId
-            );
-        },
-        [isDefault, provider.activeProvider, provider.activeModel],
-    );
+    /* ── Active checks ────────────────────────────────────────────────── */
+    const isAzemaxDefaultActive = isDefault && (!currentAzemaxModel || currentAzemaxModel === '');
+    const isAzemaxModelActive = (modelId: string) => isDefault && currentAzemaxModel === modelId;
+    const isByokModelActive = (pId: ProviderId, mId: string) =>
+        !isDefault && (provider.activeProvider === pId || currentByokProvider === pId) && (provider.activeModel === mId || currentByokModel === mId);
+
+    const hasAnyResults = showAzemaxSection || configuredWithKeys.length > 0;
 
     /* ── Render ───────────────────────────────────────────────────────── */
     return (
@@ -383,8 +419,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
                 <Cpu size={13} strokeWidth={1.75} />
             </button>
 
-            {/* Popover — rendered in a portal so the composer's own
-                `overflow: hidden` can never clip it. */}
+            {/* Popover */}
             <AnchorPopover
                 open={open}
                 anchorRef={btnRef}
@@ -394,8 +429,6 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
                 role="dialog"
                 ariaLabel="Model selector"
                 className="az-model-popover"
-                /* Escape is handled here: the first press clears the
-                   search query, the second one closes the dropdown. */
                 dismissOnEscape={false}
                 style={{
                     width: 320,
@@ -458,91 +491,113 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
                     </div>
                 </div>
 
-                {/* Scrollable model list — `min-h-0` lets it shrink (and
-                    scroll) when the popover has to be squeezed into a
-                    short viewport. */}
+                {/* Scrollable model list */}
                 <div className="max-h-[360px] min-h-0 overflow-y-auto custom-scrollbar">
-                    {/* Azemax Default */}
-                    {(!searchQuery || 'azemax default'.includes(searchQuery.toLowerCase())) && (
+                    {/* Azemax Default Section */}
+                    {showAzemaxSection && (
                         <div className="py-1.5">
                             <div className="px-3 pt-1 pb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--az-text-faint)' }}>
                                 <Sparkles size={10} /> Azemax Default
                             </div>
-                            <button
-                                onClick={selectAzemaxDefault}
-                                className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${isDefault ? 'bg-[var(--az-surface-3)]' : 'hover:bg-[var(--az-surface-hover)]'}`}
-                            >
-                                <span
-                                    className="w-6 h-6 rounded-[6px] flex items-center justify-center shrink-0 border"
-                                    style={{
-                                        background: isDefault ? 'var(--az-accent-soft)' : 'var(--az-surface-2)',
-                                        borderColor: isDefault ? 'var(--az-accent-ring)' : 'var(--az-border)',
-                                    }}
-                                >
-                                    <Sparkles size={12} style={{ color: isDefault ? 'var(--az-accent)' : 'var(--az-text-muted)' }} />
-                                </span>
-                                <span className="flex-1 min-w-0">
-                                    <span className="block text-[12.5px] font-medium leading-none" style={{ color: 'var(--az-text)' }}>
-                                        Azemax Default
-                                    </span>
-                                    <span className="block text-[11px] leading-none mt-1" style={{ color: 'var(--az-text-muted)' }}>
-                                        Server-managed AI · No API key needed
-                                    </span>
-                                </span>
-                                {isDefault && (
-                                    <Check size={14} className="shrink-0" style={{ color: 'var(--az-accent)' }} />
-                                )}
-                            </button>
 
-                            {/* Azemax's own models, loaded from the existing
-                                backend endpoint. They are the source of
-                                truth for the default mode — the browser
-                                never holds a server credential. */}
-                            {isLoadingDefaultModels ? (
+                            {/* Azemax Default (Auto / Server-managed) card */}
+                            {showAzemaxDefaultCard && (
+                                <button
+                                    onClick={selectAzemaxDefault}
+                                    className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2.5 transition-colors ${isAzemaxDefaultActive ? 'bg-[var(--az-surface-3)]' : 'hover:bg-[var(--az-surface-hover)]'}`}
+                                >
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                        <span
+                                            className="w-6 h-6 rounded-[6px] flex items-center justify-center shrink-0 border"
+                                            style={{
+                                                background: isAzemaxDefaultActive ? 'var(--az-accent-soft)' : 'var(--az-surface-2)',
+                                                borderColor: isAzemaxDefaultActive ? 'var(--az-accent-ring)' : 'var(--az-border)',
+                                            }}
+                                        >
+                                            <Sparkles size={12} style={{ color: isAzemaxDefaultActive ? 'var(--az-accent)' : 'var(--az-text-muted)' }} />
+                                        </span>
+                                        <span className="flex-1 min-w-0">
+                                            <span className="block text-[12.5px] font-medium leading-none" style={{ color: 'var(--az-text)' }}>
+                                                Azemax Default
+                                            </span>
+                                            <span className="block text-[11px] leading-none mt-1" style={{ color: 'var(--az-text-muted)' }}>
+                                                Server-managed AI · No API key needed
+                                            </span>
+                                        </span>
+                                    </div>
+                                    {isAzemaxDefaultActive && (
+                                        <Check size={14} className="shrink-0" style={{ color: 'var(--az-accent)' }} />
+                                    )}
+                                </button>
+                            )}
+
+                            {/* Azemax models list */}
+                            {isLoadingDefaultModels && defaultModels.length === 0 ? (
                                 <div className="px-3 py-2 flex items-center gap-2">
                                     <Loader2 size={12} className="animate-spin" style={{ color: 'var(--az-text-muted)' }} />
                                     <span className="text-[11px]" style={{ color: 'var(--az-text-muted)' }}>
                                         Loading Azemax models…
                                     </span>
                                 </div>
-                            ) : defaultModelsError ? (
+                            ) : defaultModelsError && defaultModels.length === 0 ? (
                                 <div className="px-3 py-2 flex items-center gap-2">
                                     <AlertCircle size={12} className="shrink-0" style={{ color: 'var(--az-error)' }} />
                                     <span className="text-[11px] flex-1" style={{ color: 'var(--az-text-muted)' }}>
                                         {defaultModelsError}
                                     </span>
                                     <button
-                                        onClick={() => { void fetchDefaultModels(true); }}
+                                        onClick={() => { void loadDefaultModels(true); }}
                                         className="shrink-0 text-[11px] font-medium px-1.5 py-0.5 rounded"
                                         style={{ color: 'var(--az-accent)' }}
                                     >
                                         Retry
                                     </button>
                                 </div>
-                            ) : defaultModels.length > 0 ? (
-                                defaultModels.map((m) => (
-                                    <button
-                                        key={m.id}
-                                        onClick={() => { setDefaultModelId(m.id); setOpen(false); }}
-                                        className="w-full text-left px-3 py-1.5 flex items-start gap-2.5 transition-colors hover:bg-[var(--az-surface-hover)]"
-                                    >
-                                        <span className="mt-0.5 shrink-0" style={{ width: 16 }}>
-                                            {defaultModelId === m.id && (
-                                                <Check size={13} style={{ color: 'var(--az-accent)' }} />
-                                            )}
-                                        </span>
-                                        <span className="flex-1 min-w-0">
-                                            <span className="block text-[12px] font-medium leading-tight truncate" style={{ color: 'var(--az-text-secondary)' }}>
-                                                {m.label}
-                                            </span>
-                                            {m.primary && (
-                                                <span className="block text-[10px] leading-tight mt-0.5" style={{ color: 'var(--az-text-faint)' }}>
-                                                    primary
-                                                </span>
-                                            )}
-                                        </span>
-                                    </button>
-                                ))
+                            ) : filteredAzemaxModels.length > 0 ? (
+                                <div className="mt-0.5 space-y-0.5">
+                                    {filteredAzemaxModels.map((m) => {
+                                        const active = isAzemaxModelActive(m.id);
+                                        return (
+                                            <button
+                                                key={m.id}
+                                                onClick={() => selectAzemaxModel(m.id)}
+                                                className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-2.5 transition-colors ${active ? 'bg-[var(--az-surface-3)]' : 'hover:bg-[var(--az-surface-hover)]'}`}
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                    <span
+                                                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                                                        style={{ background: active ? 'var(--az-accent)' : 'var(--az-text-faint)' }}
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span
+                                                                className="text-[12px] font-medium leading-tight truncate"
+                                                                style={{ color: active ? 'var(--az-text)' : 'var(--az-text-secondary)' }}
+                                                            >
+                                                                {m.label}
+                                                            </span>
+                                                            {m.primary && (
+                                                                <span
+                                                                    className="text-[9.5px] font-medium px-1 py-0.5 rounded leading-none shrink-0"
+                                                                    style={{
+                                                                        background: 'var(--az-surface-2)',
+                                                                        color: 'var(--az-text-faint)',
+                                                                        border: '1px solid var(--az-border)',
+                                                                    }}
+                                                                >
+                                                                    primary
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {active && (
+                                                    <Check size={13} className="shrink-0" style={{ color: 'var(--az-accent)' }} />
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             ) : null}
                         </div>
                     )}
@@ -555,7 +610,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
                         </div>
                     )}
 
-                    {/* Configured providers with credentials */}
+                    {/* Configured providers with credentials (BYOK) */}
                     {!isLoadingProviders && configuredWithKeys.length > 0 && (
                         <div className="py-1.5" style={{ borderTop: '1px solid var(--az-divider)' }}>
                             <div className="px-3 pt-1 pb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--az-text-faint)' }}>
@@ -580,31 +635,40 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
                                     </div>
                                     {/* Models */}
                                     {adapter.models.map(model => {
-                                        const active = isActive(adapter.id, model.id);
+                                        const active = isByokModelActive(adapter.id, model.id);
                                         return (
                                             <button
                                                 key={`${adapter.id}-${model.id}`}
                                                 onClick={() => selectByokModel(adapter.id, model.id)}
-                                                className={`w-full text-left px-3 py-1.5 flex items-start gap-2.5 transition-colors ${active ? 'bg-[var(--az-surface-3)]' : 'hover:bg-[var(--az-surface-hover)]'}`}
+                                                className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-2.5 transition-colors ${active ? 'bg-[var(--az-surface-3)]' : 'hover:bg-[var(--az-surface-hover)]'}`}
                                             >
-                                                <span className="mt-0.5 shrink-0" style={{ width: 16 }}>
-                                                    {active && <Check size={13} style={{ color: 'var(--az-accent)' }} />}
-                                                </span>
-                                                <span className="flex-1 min-w-0">
-                                                    <span className="block text-[12px] font-medium leading-tight truncate" style={{ color: active ? 'var(--az-text)' : 'var(--az-text-secondary)' }}>
-                                                        {model.name}
-                                                    </span>
-                                                    {model.description && (
-                                                        <span className="block text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: 'var(--az-text-muted)' }}>
-                                                            {model.description}
+                                                <div className="flex items-start gap-2 min-w-0 flex-1">
+                                                    <span
+                                                        className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
+                                                        style={{ background: active ? 'var(--az-accent)' : 'var(--az-text-faint)' }}
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <span
+                                                            className="block text-[12px] font-medium leading-tight truncate"
+                                                            style={{ color: active ? 'var(--az-text)' : 'var(--az-text-secondary)' }}
+                                                        >
+                                                            {model.name}
                                                         </span>
-                                                    )}
-                                                    {capBadges(model).length > 0 && (
-                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                            {capBadges(model)}
-                                                        </div>
-                                                    )}
-                                                </span>
+                                                        {model.description && (
+                                                            <span className="block text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: 'var(--az-text-muted)' }}>
+                                                                {model.description}
+                                                            </span>
+                                                        )}
+                                                        {capBadges(model).length > 0 && (
+                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                {capBadges(model)}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {active && (
+                                                    <Check size={13} className="shrink-0 ml-2" style={{ color: 'var(--az-accent)' }} />
+                                                )}
                                             </button>
                                         );
                                     })}
@@ -658,7 +722,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onOpenProviderSett
                     )}
 
                     {/* Empty search state */}
-                    {!isLoadingProviders && searchQuery && filteredProviders.length === 0 && (
+                    {!isLoadingProviders && searchQuery && !hasAnyResults && (
                         <div className="flex flex-col items-center py-6 gap-1.5">
                             <Search size={18} style={{ color: 'var(--az-text-faint)' }} />
                             <span className="text-[12px]" style={{ color: 'var(--az-text-muted)' }}>

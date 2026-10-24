@@ -444,17 +444,24 @@ export const MainLayout: React.FC = () => {
             if (isMobile) setMobileTab('explorer');
         };
         const onOpenSettings = () => {
-            if (isMobile) setMobileTab('settings');
+            if (isMobile) {
+                setMobileTab('settings');
+            } else {
+                setIsLeftSidebarOpen(true);
+                setLeftSidebarView('settings');
+            }
         };
         window.addEventListener('mobile-switch-to-editor', onSwitchEditor);
         window.addEventListener('ai-panel-open', onOpenAi);
         window.addEventListener('mobile-open-explorer', onOpenExplorer);
         window.addEventListener('mobile-open-settings', onOpenSettings);
+        window.addEventListener('open-settings', onOpenSettings);
         return () => {
             window.removeEventListener('mobile-switch-to-editor', onSwitchEditor);
             window.removeEventListener('ai-panel-open', onOpenAi);
             window.removeEventListener('mobile-open-explorer', onOpenExplorer);
             window.removeEventListener('mobile-open-settings', onOpenSettings);
+            window.removeEventListener('open-settings', onOpenSettings);
         };
     }, [isMobile]);
 

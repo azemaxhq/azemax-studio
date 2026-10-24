@@ -210,6 +210,24 @@ export function classifyProviderError({
                 cause, latencyMs, requestId,
             });
         }
+        if (statusNum === 408 || statusNum === 429) {
+            return new AIError({
+                code: statusNum === 429
+                    ? AI_ERROR_CODES.AI_PROVIDER_RATE_LIMITED
+                    : AI_ERROR_CODES.AI_PROVIDER_TIMEOUT,
+                provider, model, status: statusNum, retryable: true,
+                message: `${provider} rate limited/timeout (HTTP ${statusNum})`,
+                cause, latencyMs, requestId,
+            });
+        }
+        if (statusNum === 503) {
+            return new AIError({
+                code: AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE,
+                provider, model, status: statusNum, retryable: true,
+                message: `${provider} service unavailable (HTTP ${statusNum})`,
+                cause, latencyMs, requestId,
+            });
+        }
         if (statusNum >= 500) {
             return new AIError({
                 code: AI_ERROR_CODES.AI_PROVIDER_SERVER_ERROR,
@@ -245,12 +263,15 @@ export function classifyProviderError({
 
 /** Builds the final AIAllProvidersFailed error from per-attempt failures. */
 export function allProvidersFailed(
-    attempts: { provider: string; model: string }[],
+    attempts: { provider: string; model: string; retryable?: boolean }[],
     { requestId }: { requestId?: string } = {},
 ): AIError {
+    // Determine if ANY attempt had a retryable error — if so, the whole
+    // failure is transient and the client should retry the entire chain.
+    const anyRetryable = attempts.some(a => a.retryable === true);
     return new AIError({
         code: AI_ERROR_CODES.AI_ALL_PROVIDERS_FAILED,
-        retryable: false,
+        retryable: anyRetryable,
         message: 'All AI providers failed',
         requestId,
         details: { attempts },

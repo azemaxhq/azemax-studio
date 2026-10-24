@@ -676,9 +676,9 @@ describe('provider error normalization', () => {
         expect(err.retryable).toBe(true);
     });
 
-    it('maps 5xx to a retryable server error', () => {
+    it('maps 503 to a retryable unavailable error', () => {
         const err = classifyProviderError({ provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', status: 503, message: 'Unavailable' });
-        expect(err.code).toBe(AI_ERROR_CODES.AI_PROVIDER_SERVER_ERROR);
+        expect(err.code).toBe(AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE);
         expect(err.retryable).toBe(true);
     });
 
