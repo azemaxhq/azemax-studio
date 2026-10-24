@@ -365,19 +365,19 @@ async function main(): Promise<void> {
 
     // 23.3 Task deadline budget enforcement (synchronous check)
     {
-        check('23.3 DEFAULT_AGENT_BUDGET.timeoutMs is 120000', DEFAULT_AGENT_BUDGET.timeoutMs === 120_000);
-        check('23.3 DEFAULT_AGENT_BUDGET.maxSteps is 12', DEFAULT_AGENT_BUDGET.maxSteps === 12);
-        check('23.3 DEFAULT_AGENT_BUDGET.maxToolCalls is 40', DEFAULT_AGENT_BUDGET.maxToolCalls === 40);
+        check('23.3 DEFAULT_AGENT_BUDGET.timeoutMs is 300000', DEFAULT_AGENT_BUDGET.timeoutMs === 300_000);
+        check('23.3 DEFAULT_AGENT_BUDGET.maxSteps is 20', DEFAULT_AGENT_BUDGET.maxSteps === 20);
+        check('23.3 DEFAULT_AGENT_BUDGET.maxToolCalls is 80', DEFAULT_AGENT_BUDGET.maxToolCalls === 80);
     }
 
     // 23.4 Model call timeout configuration
     {
-        check('23.4 DEFAULT_AGENT_BUDGET.modelCallTimeoutMs is 90000', DEFAULT_AGENT_BUDGET.modelCallTimeoutMs === 90_000);
+        check('23.4 DEFAULT_AGENT_BUDGET.modelCallTimeoutMs is 180000', DEFAULT_AGENT_BUDGET.modelCallTimeoutMs === 180_000);
     }
 
     // 23.5 Tool execution timeout configuration
     {
-        check('23.5 DEFAULT_AGENT_BUDGET.toolTimeoutMs is 15000', DEFAULT_AGENT_BUDGET.toolTimeoutMs === 15_000);
+        check('23.5 DEFAULT_AGENT_BUDGET.toolTimeoutMs is 30000', DEFAULT_AGENT_BUDGET.toolTimeoutMs === 30_000);
     }
 
     // 23.6 Concurrent reads limit configuration

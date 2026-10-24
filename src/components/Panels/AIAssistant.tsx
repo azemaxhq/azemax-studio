@@ -1334,33 +1334,11 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
             return s;
         }));
 
-        const abortController = new AbortController();
-        abortControllerRef.current = abortController;
         /**
          * Idle watchdog — reset every time real progress arrives (a streamed
          * token, an agent activity update, a tool result). Only fires when the
          * pipeline is genuinely producing nothing for WATCHDOG_IDLE_MS.
          */
-        const WATCHDOG_IDLE_MS = 45_000;
-        let watchdogId: ReturnType<typeof setTimeout> | null = null;
-        let watchdogDead = false;
-        const watchdogKill = () => {
-            if (watchdogDead) return;
-            watchdogDead = true;
-            if (currentRequestIdRef.current === requestId && !abortController.signal.aborted) {
-                abortController.abort();
-                // Ensure store reaches terminal state even if the provider hangs
-                const live = AIRequestStore.getActiveRequestForOperation('chat');
-                if (live?.id === requestId) AIRequestStore.failRequest(requestId, 'The AI request stopped responding and was cancelled. Please try again.');
-            }
-        };
-        const resetWatchdog = () => {
-            if (watchdogDead) return;
-            if (watchdogId) clearTimeout(watchdogId);
-            watchdogId = setTimeout(watchdogKill, WATCHDOG_IDLE_MS);
-        };
-        watchdogResetRef.current = resetWatchdog;
-        resetWatchdog();
 
         // Build fresh context at request time (Monaco-first, never cached) — pin as requestContext so late switching doesn't cause mismatch
         const activeFile = getActiveFile();
@@ -1506,6 +1484,23 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
         const historyForPipeline: ChatMessage[] = messages
             .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
 
+        /**
+         * Idle watchdog — reset every time real progress arrives (a streamed
+         * token, an agent activity update, a tool result). Only fires when the
+         * pipeline is genuinely producing nothing for WATCHDOG_IDLE_MS.
+         * 
+         * For agent tasks (edit/explanation), we use a much longer timeout since
+         * the agent loop manages its own budget and can take several minutes
+         * for complex multi-file tasks. The watchdog only catches truly hung
+         * provider connections.
+         */
+        // Watchdog variables declared HERE (outside try) so finally block can access them
+        let abortController: AbortController | null = null;
+        let watchdogId: ReturnType<typeof setTimeout> | null = null;
+        let watchdogDead = false;
+        let isAgentTask = false;
+        let WATCHDOG_IDLE_MS = 45_000;
+
         try {
             // Fast paths: greetings and file-identity queries are purely local —
             // no AI call at all. The fused agent handles everything else in one loop.
@@ -1534,11 +1529,71 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                     operationForStatus = 'explanation';
                     isExplain = true;
                 } else {
-                    operationForStatus = 'chat';
+                    // In Ask mode, coding tasks should still route to agent
+                    const isCodingTask = /create|build|implement|refactor|fix|add|remove|update|modify|change|generate|scaffold|setup|initialize|write|make|develop|construct|design|architect/i.test(userMessageText);
+                    const isFileOperation = /file|component|page|screen|view|module|service|hook|utility|helper|function|class|interface|type|api|endpoint|route|database|schema|model|migration|test|spec/i.test(userMessageText);
+                    const isProjectTask = /app|application|project|workspace|repository|monorepo|fullstack|frontend|backend|dashboard|admin|landing|home|settings|profile|auth|login|register|todo|task|note|list|table|form|chart|graph|visualization/i.test(userMessageText);
+                    
+                    if (isCodingTask || isFileOperation || isProjectTask) {
+                        operationForStatus = 'edit';
+                        wantsModification = true;
+                    } else {
+                        operationForStatus = 'chat';
+                    }
+                }
+            } else if (composerMode === 'Agent') {
+                // Agent mode: use semantic intent detection for ALL non-greeting messages
+                // This ensures "create a todo app", "build a dashboard", etc. route to the agent
+                const isCodingTask = /create|build|implement|refactor|fix|add|remove|update|modify|change|generate|scaffold|setup|initialize|write|make|develop|construct|design|architect/i.test(userMessageText);
+                const isFileOperation = /file|component|page|screen|view|module|service|hook|utility|helper|function|class|interface|type|api|endpoint|route|database|schema|model|migration|test|spec/i.test(userMessageText);
+                const isProjectTask = /app|application|project|workspace|repository|monorepo|fullstack|frontend|backend|dashboard|admin|landing|home|settings|profile|auth|login|register|todo|task|note|list|table|form|chart|graph|visualization/i.test(userMessageText);
+                
+                if (isCodingTask || isFileOperation || isProjectTask) {
+                    operationForStatus = 'edit';
+                    wantsModification = true;
+                } else {
+                    // Non-coding questions in Agent mode still use the agent for context-aware answers
+                    operationForStatus = 'explanation';
+                    isExplain = true;
                 }
             }
 
             setCurrentOperation(operationForStatus);
+
+            /**
+             * Idle watchdog — reset every time real progress arrives (a streamed
+             * token, an agent activity update, a tool result). Only fires when the
+             * pipeline is genuinely producing nothing for WATCHDOG_IDLE_MS.
+             * 
+             * For agent tasks (edit/explanation), we use a much longer timeout since
+             * the agent loop manages its own budget and can take several minutes
+             * for complex multi-file tasks. The watchdog only catches truly hung
+             * provider connections.
+             */
+            isAgentTask = operationForStatus === 'edit' || operationForStatus === 'explanation';
+            WATCHDOG_IDLE_MS = isAgentTask ? 300_000 : 45_000; // 5 min for agent, 45s for chat
+
+            abortController = new AbortController();
+            abortControllerRef.current = abortController;
+            watchdogId = null;
+            watchdogDead = false;
+            const watchdogKill = () => {
+                if (watchdogDead) return;
+                watchdogDead = true;
+                if (currentRequestIdRef.current === requestId && abortController && !abortController.signal.aborted) {
+                    abortController.abort();
+                    // Ensure store reaches terminal state even if the provider hangs
+                    const live = AIRequestStore.getActiveRequestForOperation('chat');
+                    if (live?.id === requestId) AIRequestStore.failRequest(requestId, 'The AI request stopped responding and was cancelled. Please try again.');
+                }
+            };
+            const resetWatchdog = () => {
+                if (watchdogDead) return;
+                if (watchdogId) clearTimeout(watchdogId);
+                watchdogId = setTimeout(watchdogKill, WATCHDOG_IDLE_MS);
+            };
+            watchdogResetRef.current = resetWatchdog;
+            resetWatchdog();
 
             let responseText = '';
 
@@ -1555,6 +1610,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
             } else if (wantsModification && composerMode !== 'Ask') {
                 // EDIT PATH — Fused Agent Controller (Intent → Inspect → Plan → Execute → Verify)
                 // Single agent loop replaces: planner LLM call + agent loop
+                // LIVE MODE: preview: false (default) — writes real files to workspace
                 aiLoading.setGenerating();
                 setAgentActivities([]);
                 const { runAgentController } = await import('../../core/ai/agentController');
@@ -1568,7 +1624,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                     fileId: requestContext.fileId,
                     history: enrichedHistory,
                     signal: abortController.signal,
-                    preview: true,
+                    preview: false,
                     requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
                     workspaceSnapshot: workspaceSnapshot,
                     onActivity: (act) => {
@@ -1584,6 +1640,35 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                         else if (['read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file'].includes(act.tool) && act.status === 'running') aiLoading.setGenerating();
                         else if (act.tool === 'apply' && act.status === 'running') aiLoading.setApplying();
                         else if (act.status === 'done' && act.tool !== 'apply') aiLoading.setGenerating();
+                    },
+                    onFileChanged: (path, action, _content) => {
+                        if (currentRequestIdRef.current !== requestId) return;
+                        if (action === 'created' || action === 'updated') {
+                            // Find the node in the current tree and open it
+                            const tree = getFileTree();
+                            const findNodeByPath = (nodes: any[], target: string): any | null => {
+                                for (const n of nodes) {
+                                    if (n.id === 'root') {
+                                        if (n.children) {
+                                            const found = findNodeByPath(n.children, target);
+                                            if (found) return found;
+                                        }
+                                        continue;
+                                    }
+                                    const full = n.parentId ? `${n.parentId}/${n.name}` : n.name;
+                                    if (full === target || n.name === target) return n;
+                                    if (n.children) {
+                                        const found = findNodeByPath(n.children, target);
+                                        if (found) return found;
+                                    }
+                                }
+                                return null;
+                            };
+                            const node = findNodeByPath(tree, path);
+                            if (node && node.type === 'file') {
+                                setActiveFile(node);
+                            }
+                        }
                     },
                 });
 
@@ -1602,6 +1687,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
 
             } else if (isExplain) {
                 // EXPLAIN PATH — Agent in read-only mode (inspects workspace, answers from real data)
+                // preview: false (default) — read-only mode doesn't write anyway
                 aiLoading.setGenerating();
                 setAgentActivities([]);
                 const { runAgentController } = await import('../../core/ai/agentController');
@@ -1615,7 +1701,7 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                     fileId: requestContext.fileId,
                     history: enrichedHistory,
                     signal: abortController.signal,
-                    preview: true,
+                    preview: false,
                     requestContext: requestContext as unknown as import('../../core/ai/agentController').AgentRequestContext,
                     workspaceSnapshot: workspaceSnapshot,
                     onActivity: (act) => {
@@ -1629,7 +1715,36 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
                         if (currentRequestIdRef.current !== requestId) return;
                         if (act.tool === 'interpret' && act.status === 'running') aiLoading.setThinking();
                         else if (['read_file', 'search_files', 'list_files', 'get_diagnostics', 'get_editor_context', 'open_file'].includes(act.tool) && act.status === 'running') aiLoading.setGenerating();
+                        else if (act.tool === 'apply' && act.status === 'running') aiLoading.setApplying();
                         else if (act.status === 'done' && act.tool !== 'apply') aiLoading.setGenerating();
+                    },
+                    onFileChanged: (path, action, _content) => {
+                        if (currentRequestIdRef.current !== requestId) return;
+                        if (action === 'created' || action === 'updated') {
+                            const tree = getFileTree();
+                            const findNodeByPath = (nodes: any[], target: string): any | null => {
+                                for (const n of nodes) {
+                                    if (n.id === 'root') {
+                                        if (n.children) {
+                                            const found = findNodeByPath(n.children, target);
+                                            if (found) return found;
+                                        }
+                                        continue;
+                                    }
+                                    const full = n.parentId ? `${n.parentId}/${n.name}` : n.name;
+                                    if (full === target || n.name === target) return n;
+                                    if (n.children) {
+                                        const found = findNodeByPath(n.children, target);
+                                        if (found) return found;
+                                    }
+                                }
+                                return null;
+                            };
+                            const node = findNodeByPath(tree, path);
+                            if (node && node.type === 'file') {
+                                setActiveFile(node);
+                            }
+                        }
                     },
                 });
 

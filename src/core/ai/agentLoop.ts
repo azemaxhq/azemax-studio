@@ -49,6 +49,7 @@ import {
     type AgentTaskContext,
 } from './agentTaskContext';
 import type { ChatMessage } from './types';
+import { AIError, AI_ERROR_CODES } from './AIError';
 
 /** Read-only tools have no side-effect ordering concerns and may run concurrently. */
 const READ_TOOLS = new Set(['list_files', 'read_file', 'search_files', 'get_file_info', 'get_diagnostics', 'get_editor_context']);
@@ -101,6 +102,8 @@ export interface AgentLoopRequest {
     onStep?: (step: AgentStepRecord) => void;
     /** Optional status callback for richer UI. */
     onStatus?: (status: 'thinking' | 'tool' | 'verifying' | 'done') => void;
+    /** Callback when a file is created or updated during tool execution. */
+    onFileChanged?: (path: string, action: 'created' | 'updated' | 'deleted', content?: string) => void;
 }
 
 /** Tools whose arguments carry file content (used for duplicate detection). */
@@ -154,6 +157,89 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
         return `${s.length}:${(h1 >>> 0).toString(36)}`;
     };
 
+    /**
+     * Retry configuration for transient provider failures.
+     */
+    const RETRY_CONFIG = {
+        maxRetries: 3,
+        baseDelayMs: 1000,
+        maxDelayMs: 30000,
+        jitterFactor: 0.3,
+    };
+
+    /**
+     * Determines if an error is a transient provider failure that warrants retry.
+     * Transient errors: network timeouts, 5xx errors, rate limits, temporary unavailability.
+     * Permanent errors: auth failures, invalid requests, exhausted quotas, unsupported models.
+     */
+    function isTransientProviderError(err: unknown): boolean {
+        if (err instanceof AIError) {
+            const code = err.code as string;
+            // Retryable AIError codes
+            const retryableCodes = new Set<string>([
+                AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE,
+                AI_ERROR_CODES.AI_PROVIDER_TIMEOUT,
+                AI_ERROR_CODES.AI_PROVIDER_RATE_LIMITED,
+                AI_ERROR_CODES.AI_PROVIDER_SERVER_ERROR,
+                AI_ERROR_CODES.AI_PROVIDER_BAD_REQUEST, // 404/410 for model not found
+            ]);
+            if (retryableCodes.has(code)) return true;
+            // Explicitly non-retryable
+            const nonRetryableCodes = new Set<string>([
+                AI_ERROR_CODES.AI_PROVIDER_AUTH_ERROR,
+                AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR,
+                AI_ERROR_CODES.AI_INVALID_RESPONSE,
+                AI_ERROR_CODES.AI_REQUEST_ABORTED,
+            ]);
+            if (nonRetryableCodes.has(code)) return false;
+        }
+        // Network-level errors
+        if (err instanceof Error) {
+            const msg = err.message.toLowerCase();
+            if (/network|fetch failed|econnrefused|etimedout|enotfound|dns|socket/i.test(msg)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Executes a function with exponential backoff retry for transient failures.
+     * Preserves the original error if all retries exhausted.
+     */
+    async function withRetry<T>(
+        fn: () => Promise<T>,
+        signal?: AbortSignal
+    ): Promise<T> {
+        let lastError: Error | null = null;
+        for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+            if (signal?.aborted) {
+                throw new DOMException('Aborted', 'AbortError');
+            }
+            try {
+                return await fn();
+            } catch (err) {
+                lastError = err instanceof Error ? err : new Error(String(err));
+                // Don't retry on abort
+                if (isAbortError(err)) throw err;
+                // Check if we should retry
+                const isLastAttempt = attempt === RETRY_CONFIG.maxRetries;
+                const isTransient = isTransientProviderError(err);
+                if (isLastAttempt || !isTransient) {
+                    throw lastError;
+                }
+                // Exponential backoff with jitter
+                const baseDelay = Math.min(
+                    RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt),
+                    RETRY_CONFIG.maxDelayMs
+                );
+                const jitter = baseDelay * RETRY_CONFIG.jitterFactor * Math.random();
+                const delayMs = Math.floor(baseDelay + jitter);
+                req.onStatus?.('tool'); // signal retry in progress
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
+        throw lastError;
+    }
+
     // Seed the conversation: system prompt + bounded task context + history tail.
     const messages: ChatMessage[] = buildAgentMessages({
         systemPrompt: AGENT_SYSTEM_PROMPT,
@@ -194,6 +280,23 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
         // it did not" symptom, in its purest form.
         const hasFailure = taskContext.operations.some(o => o.status === 'error');
         const effectiveSuccess = success && !hasFailure;
+        // Build a detailed error message that includes completed operations
+        let detailedError = error;
+        if (!effectiveSuccess && (error || hasFailure)) {
+            const completedOps = taskContext.operations
+                .filter(o => o.status === 'ok')
+                .map(o => `${o.tool}:${o.target}`)
+                .join(', ');
+            const failedOps = taskContext.operations
+                .filter(o => o.status === 'error')
+                .map(o => `${o.tool}:${o.target} (${o.detail ?? 'failed'})`)
+                .join('; ');
+            const parts: string[] = [];
+            if (completedOps) parts.push(`Completed: ${completedOps}`);
+            if (failedOps) parts.push(`Failed: ${failedOps}`);
+            if (error) parts.push(`Error: ${error}`);
+            detailedError = parts.join(' | ') || error;
+        }
         return {
             // Fall back to the last substantive assistant text when the run did not
             // end on a clean 'done' turn — a tool-call turn has empty content, and
@@ -205,7 +308,7 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
             taskContext: finishTask(taskContext),
             stopReason,
             changedWorkspace,
-            error,
+            error: detailedError,
         };
     };
 
@@ -240,20 +343,23 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                 if (!controller.signal.aborted) controller.abort(new Error(`Model call timed out after ${Math.round(modelCallTimeoutMs / 1000)}s`));
             }, modelCallTimeoutMs);
             try {
-                result = await sendChatResult(messages, {
-                    model: req.model,
-                    task: 'complex_code',
-                    temperature: 0.1,
-                    maxTokens: 4096,
-                    signal: controller.signal,
-                    tools: definitions,
-                    toolChoice: 'auto',
-                    providerTarget: req.providerTarget,
-                });
+                result = await withRetry(
+                    async () => sendChatResult(messages, {
+                        model: req.model,
+                        task: 'complex_code',
+                        temperature: 0.1,
+                        maxTokens: 4096,
+                        signal: controller.signal,
+                        tools: definitions,
+                        toolChoice: 'auto',
+                        providerTarget: req.providerTarget,
+                    }),
+                    controller.signal
+                );
             } catch (e) {
                 if (isAbortError(e) && req.signal?.aborted) return finish('cancelled', false);
-                // Provider failure — surface honestly; partial work is reported
-                // truthfully via changedWorkspace.
+                // Provider failure after all retries — surface honestly; partial work is reported
+                // truthfully via changedWorkspace. The completed operations remain in the workspace.
                 return finish('error', false, e instanceof Error ? e.message : String(e));
             } finally {
                 clearTimeout(timer);
@@ -261,16 +367,19 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
             }
         } else {
             try {
-                result = await sendChatResult(messages, {
-                    model: req.model,
-                    task: 'complex_code',
-                    temperature: 0.1,
-                    maxTokens: 4096,
-                    signal: req.signal,
-                    tools: definitions,
-                    toolChoice: 'auto',
-                    providerTarget: req.providerTarget,
-                });
+                result = await withRetry(
+                    async () => sendChatResult(messages, {
+                        model: req.model,
+                        task: 'complex_code',
+                        temperature: 0.1,
+                        maxTokens: 4096,
+                        signal: req.signal,
+                        tools: definitions,
+                        toolChoice: 'auto',
+                        providerTarget: req.providerTarget,
+                    }),
+                    req.signal
+                );
             } catch (e) {
                 if (isAbortError(e)) return finish('cancelled', false);
                 return finish('error', false, e instanceof Error ? e.message : String(e));
@@ -310,14 +419,22 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
             // The decision is now made against real evidence:
             //   - did the model announce work that is still OUTSTANDING?
             //   - did any operation FAIL?
-            // If either is true, the task is not finished and the model is
+            //   - is this the first step? (models often emit a planning message first)
+            // If any is true, the task is not finished and the model is
             // asked to continue.
             messages.push({ role: 'assistant', content });
 
             const outstanding = computeRemainingPaths(taskContext, p => pathExistsInTree(req.deps.getFileTree(), p));
             const hasFailure = taskContext.operations.some(o => o.status === 'error');
+            const isFirstStep = step === 0;
 
-            if (!outstanding.length && !hasFailure) {
+            // Check if the model's content indicates it's PLANNING future work
+            // (future/present tense only — not past tense completion summaries)
+            const contentIndicatesPlanning = content.trim().length > 0 && 
+                /\b(?:plan|will|going to|need to|must|should|create|build|implement|write|generate|add|make|setup|initialize|scaffold)\b/i.test(content)
+                && !/\b(?:created|built|implemented|wrote|generated|added|made|setup|initialized|scaffolded|finished|done|completed)\b/i.test(content);
+
+            if (!outstanding.length && !hasFailure && !isFirstStep && !contentIndicatesPlanning) {
                 return finish('done', true);
             }
 
@@ -334,7 +451,12 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
             // than repeat itself. This is real state, not a guess.
             const remainingNote = outstanding.length
                 ? `Still to do: ${outstanding.join(', ')} — these files do not exist in the workspace yet.`
-                : 'A previous operation failed — fix that before finishing.';
+                : (hasFailure
+                    ? 'A previous operation failed — fix that before finishing.'
+                    : (isFirstStep || contentIndicatesPlanning)
+                        ? 'Good start. Now use the tools to execute your plan.'
+                        : 'The task appears incomplete. Continue with the next steps.');
+
             messages.push({
                 role: 'user',
                 content: `Continue. The task is not finished yet. ${remainingNote} Use the tools to finish the work, then reply with a summary of what you actually changed.`,
@@ -549,6 +671,16 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                 totalToolResultChars += serialized.length;
             }
             messages.push({ role: 'tool', tool_call_id: p.id, name: p.name, content: serialized });
+
+            // ---- Notify UI of file changes for real-time Monaco/explorer sync ----
+            if (toolResult.ok && req.onFileChanged) {
+                const mutatingTools = new Set(['create_file', 'write_file', 'replace_range', 'insert_text', 'delete_range', 'rename_file', 'delete_file']);
+                if (mutatingTools.has(p.name)) {
+                    const action = p.name === 'delete_file' || p.name === 'delete_range' ? 'deleted' : 
+                                   p.name === 'create_file' ? 'created' : 'updated';
+                    req.onFileChanged(p.target, action, toolResult.data.content as string | undefined);
+                }
+            }
 
             // ---- loop protection: identical repeat failures ---------------
             if (!toolResult.ok) {

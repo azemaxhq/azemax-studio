@@ -514,13 +514,13 @@ export interface AgentBudget {
 }
 
 export const DEFAULT_AGENT_BUDGET: AgentBudget = {
-    maxSteps: 12,
-    maxToolCalls: 40,
-    timeoutMs: 120_000,
+    maxSteps: 20,
+    maxToolCalls: 80,
+    timeoutMs: 300_000,
     maxToolResultChars: 8_000,
-    maxTotalToolResultChars: 40_000,
-    toolTimeoutMs: 15_000,
-    modelCallTimeoutMs: 90_000,
+    maxTotalToolResultChars: 80_000,
+    toolTimeoutMs: 30_000,
+    modelCallTimeoutMs: 180_000,
     maxConcurrentReads: 4,
 };
 

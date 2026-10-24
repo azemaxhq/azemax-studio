@@ -27,7 +27,7 @@
 import { getActiveEditorContext } from '../editor/activeEditorStore';
 import { recordRecentEdit } from '../workspace/liveIDEContext';
 import { createPreviewWorkspace, type PreviewWorkspace, type ProposedChange } from '../editor/previewWorkspace';
-import { createExecutorDeps, type WorkspaceBridgeActions } from '../editor/workspaceBridge';
+import { createExecutorDeps, type WorkspaceBridgeActions, findNodeByPath } from '../editor/workspaceBridge';
 import { runAgentLoop, type AgentLoopResult, type AgentStepRecord } from './agentLoop';
 import { resolveByokTarget } from './byokRuntime';
 import type { ResolvedByokTarget } from './byokTypes';
@@ -204,6 +204,12 @@ export interface AgentControllerRequest {
      * cannot switch the running loop to a different provider or credential.
      */
     providerTarget?: ResolvedByokTarget;
+    /**
+     * Callback when a file is created or updated. Allows the UI to open the
+     * file in Monaco and highlight it in the explorer immediately.
+     * Called DURING tool execution for streaming updates.
+     */
+    onFileChanged?: (path: string, action: 'created' | 'updated' | 'deleted', content?: string) => void;
 }
 
 export interface AgentControllerResult extends ExecutionResult {
@@ -472,6 +478,7 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
             }
             reportStep(step, push, progress, executeActivity);
         },
+        onFileChanged: req.onFileChanged,
     });
 
     executeActivity.status = 'done';
@@ -513,6 +520,17 @@ export async function runAgentController(req: AgentControllerRequest): Promise<A
     if (!req.preview && loop.changedWorkspace) {
         for (const p of loop.taskContext.touchedPaths) {
             recordRecentEdit(p, 'agent edit', 0);
+            // Notify UI of file changes for immediate Monaco/explorer sync
+            if (req.onFileChanged) {
+                try {
+                    const tree = getEffectiveTree();
+                    const node = findNodeByPath(tree, p);
+                    const content = node && node.type === 'file' ? (typeof node.content === 'string' ? node.content : '') : undefined;
+                    req.onFileChanged(p, 'created', content);
+                } catch {
+                    req.onFileChanged(p, 'created');
+                }
+            }
         }
     }
 
@@ -589,6 +607,7 @@ async function runReadOnlyAgent(
         model: req.model,
         providerTarget,
         onStep: (step) => reportStep(step, push, hooks.progress, readActivity),
+        onFileChanged: req.onFileChanged,
     });
 
     // Same id → this REPLACES the running row instead of appending a second
