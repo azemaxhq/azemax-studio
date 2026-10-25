@@ -471,7 +471,7 @@ async function* streamBackend(
                 provider: err.provider,
                 model: options.model,
                 status: response.status,
-                retryable: false,
+                retryable: err.retryable,
                 message: err.message,
             });
         }
@@ -1006,7 +1006,7 @@ export async function sendChatResult(
             const aiErr = err instanceof AIError ? err : classifyProviderError({ message: (err as Error)?.message, cause: err, model: options.model });
             // Backend answered with a real error: its chain already ran. No
             // client-side re-fallback, surface the typed error directly.
-            if (!aiErr.retryable || err instanceof AIError) {
+            if (!aiErr.retryable) {
                 tracker.fail(aiErr.message);
                 tracker.log();
                 return { ok: false, error: aiErr };

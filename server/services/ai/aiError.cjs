@@ -163,6 +163,14 @@ function classifyProviderError({ provider, model, status, message, cause, latenc
                 cause, latencyMs, requestId,
             });
         }
+        if (statusNum === 503) {
+            return new AIError({
+                code: AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE,
+                provider, model, status: statusNum, retryable: true,
+                message: `${provider} service unavailable (HTTP ${statusNum})`,
+                cause, latencyMs, requestId,
+            });
+        }
         if (statusNum >= 500) {
             return new AIError({
                 code: AI_ERROR_CODES.AI_PROVIDER_SERVER_ERROR,
@@ -207,9 +215,12 @@ function classifyProviderError({ provider, model, status, message, cause, latenc
 
 /** Builds the final AIAllProvidersFailed error from per-attempt failures. */
 function allProvidersFailed(attempts, { requestId } = {}) {
+    // Determine if ANY attempt had a retryable error — if so, the whole
+    // failure is transient and the client should retry the entire chain.
+    const anyRetryable = attempts.some(a => a.retryable === true);
     const err = new AIError({
         code: AI_ERROR_CODES.AI_ALL_PROVIDERS_FAILED,
-        retryable: false,
+        retryable: anyRetryable,
         message: 'All AI providers failed',
         requestId,
         details: { attempts },
