@@ -101,7 +101,9 @@ html.az-landing-active #root {
 .az-nav-shell {
   transform: translateZ(0) translateY(0);
   -webkit-transform: translateZ(0) translateY(0);
-  contain: layout paint;
+  /* Layout containment only: paint containment would clip the mobile
+     slide-down menu, which is positioned outside the 56px nav row. */
+  contain: layout;
   transition: transform var(--az-duration-slow) var(--az-ease-out);
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;

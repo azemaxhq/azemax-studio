@@ -286,7 +286,6 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace, o
     <header
       ref={navRef}
       className="az-nav-shell fixed inset-x-0 top-0 z-50"
-      style={{ contain: 'layout paint' } as React.CSSProperties}
     >
       {/* ── Backdrop: CSS opacity via .az-nav-scrolled / .az-nav-mobile-open ── */}
       <div

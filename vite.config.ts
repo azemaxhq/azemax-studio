@@ -121,6 +121,17 @@ export default defineConfig({
       overlay: true,
     },
   },
+  preview: {
+    // Let a local production preview exercise the app against the local API
+    // instead of serving index.html for /api requests.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {

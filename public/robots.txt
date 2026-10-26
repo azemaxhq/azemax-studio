@@ -1,9 +1,9 @@
-# Azemax robots.txt
-# Allow all crawlers to access public pages
+# Azemax Studio robots.txt
+# Allow all crawlers to access public marketing pages
 User-agent: *
 Allow: /
 
-# Disallow private/auth routes
+# Disallow private application and auth routes
 Disallow: /app
 Disallow: /app/
 Disallow: /login

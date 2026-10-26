@@ -5,12 +5,20 @@ import { authHeaders } from './authToken';
 
 const rawApiBase = (import.meta.env?.VITE_API_URL || '/api').replace(/\/$/, '');
 
+// Local `vite preview` runs a production build with the dev `/api` fallback,
+// so it is not a real deployment. Keep the production guard for public hosts.
+const isLocalHost =
+  typeof window !== 'undefined' &&
+  /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/i.test(window.location.hostname);
+
 // Runtime validation: in production, API_BASE must be an absolute URL ending in /api
 // This catches misconfiguration where Vercel fails to inject the build-time env var.
-if (import.meta.env?.PROD && !/^https?:\/\/.*\/api$/i.test(rawApiBase)) {
-  console.error('[azemax] API_BASE misconfigured:', rawApiBase);
-  console.error('VITE_API_URL must be an absolute URL ending in /api (e.g. https://azemax-backend-vzox.onrender.com/api)');
-  console.error('Set VITE_API_URL in Vercel Project Settings → Environment Variables (Production)');
+if (import.meta.env?.PROD && !isLocalHost && !/^https?:\/\/.*\/api$/i.test(rawApiBase)) {
+  console.error(
+    `[azemax] API_BASE misconfigured: "${rawApiBase}". ` +
+      'Set VITE_API_URL to an absolute URL ending in /api ' +
+      '(e.g. https://azemax-backend-vzox.onrender.com/api) in Vercel Project Settings → Environment Variables (Production).',
+  );
 }
 
 export const API_BASE = rawApiBase;

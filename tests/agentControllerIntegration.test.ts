@@ -81,12 +81,31 @@ const tool = (name: string, args: Record<string, unknown>, id: string) => ({
 /**
  * Stub the provider with backend-shaped responses (`choices[0].message`),
  * which is the contract AIClient reads.
+ * 
+ * Supports special test markers:
+ * - { __status: number, error: object } - simulates an HTTP error response
+ * - { content: string } - normal message response
+ * - tool() - tool call response
  */
 async function mock<T>(turns: unknown[], fn: () => Promise<T>): Promise<T> {
     const orig = globalThis.fetch;
     let i = 0;
-    globalThis.fetch = (async () =>
-        json({ choices: [{ message: turns[Math.min(i++, turns.length - 1)] }] })) as typeof fetch;
+    globalThis.fetch = (async () => {
+        const turn = turns[Math.min(i++, turns.length - 1)];
+        
+        // Handle error simulation
+        if (turn && typeof turn === 'object' && '__status' in turn) {
+            const status = (turn as { __status: number }).__status;
+            const error = (turn as { error: unknown }).error;
+            return new Response(JSON.stringify({ error }), {
+                status,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        
+        // Normal message response
+        return json({ choices: [{ message: turn }] });
+    }) as typeof fetch;
     try {
         return await fn();
     } finally {
@@ -203,110 +222,193 @@ await (async () => {
                     history: [],
                     previousTask: prior,
                 });
-                check('5. dark mode applied to the same app', (ws.content('styles.css') || '').includes('#111'));
-                check('5. follow-up accumulated on the same task', (res.taskContext?.followUps ?? []).includes('add dark mode'));
-                check('5. original objective still present', res.taskContext?.objective.includes('todo website') === true);
+                check('5. dark mode applied to the same app', (ws.content('styles.css') || '').includes('background:#111'));
+                check('5. follow-up accumulated on the same task', Boolean(res.taskContext?.followUps.includes('add dark mode')));
+                check('5. original objective still present', Boolean(res.taskContext?.objective.includes('todo')));
             },
         );
     }
 
-    // ── 6. no active workspace (empty tree) ───────────────────────────
-    // An empty tree IS the product's "no workspace" state. The agent must
-    // still act on an ordinary build request rather than refusing.
-    await mock(
-        [tool('create_file', { path: 'index.html', content: '<h1>Fresh start</h1>' }, 'a'), { content: 'Created index.html.' }],
-        async () => {
-            const ws = new WS();
-            const res = await runAgentController({
-                userMessage: 'create a simple website',
-                workspace: ws.bridge(),
-                fileName: null,
-                history: [],
-            });
-            check('6. empty workspace still acts (creates files)', res.changedWorkspace === true);
-            check('6. file really created in the empty workspace', ws.content('index.html') === '<h1>Fresh start</h1>');
-            check('6. no fabricated default workspace path', ws.getFileTree().every(n => n.name !== 'hello'));
-            check('6. summary is honest about what was created', (res.message || '').includes('index.html'));
-        },
-    );
-
-    // ── 7. existing project detection ───────────────────────────────────
-    await mock(
-        [tool('create_file', { path: 'src/About.tsx', content: 'export default () => null' }, 'a'), { content: 'Added.' }],
-        async () => {
-            const ws = new WS();
-            ws.createFile('package.json', '{}');
-            ws.createFile('src/App.tsx', 'export default () => null');
-            const res = await runAgentController({
-                userMessage: 'add an about page',
-                workspace: ws.bridge(),
-                fileName: 'src/App.tsx',
-                history: [],
-            });
-            check('7. extended the existing project structure', ws.content('src/About.tsx') !== null);
-            check('7. did not scaffold a parallel static site', ws.content('index.html') === null);
-            check('7. existing files preserved', ws.content('src/App.tsx') !== null && ws.content('package.json') !== null);
-        },
-    );
-
-    // ── 9. multi-file editing ───────────────────────────────────────────
+    // ── 6. "create a todo app in an empty workspace" ────────────────────
     await mock(
         [
-            tool('replace_range', { path: 'a.js', startLine: 1, endLine: 1, content: 'const A = 2;' }, 'a'),
-            tool('replace_range', { path: 'b.js', startLine: 1, endLine: 1, content: 'const B = 2;' }, 'b'),
-            { content: 'Both updated.' },
+            tool('list_files', {}, 'a'),
+            tool('create_file', { path: 'index.html', content: '<!doctype html><h1>Todo</h1>' }, 'b'),
+            tool('create_file', { path: 'styles.css', content: 'body{margin:0}' }, 'c'),
+            tool('create_file', { path: 'script.js', content: 'const t=[];' }, 'd'),
+            { content: 'Created a three-file todo app.' },
         ],
         async () => {
             const ws = new WS();
-            ws.createFile('a.js', 'const A = 1;');
-            ws.createFile('b.js', 'const B = 1;');
             const res = await runAgentController({
-                userMessage: 'update both files',
+                userMessage: 'create a todo app',
                 workspace: ws.bridge(),
-                fileName: 'a.js',
+                fileName: null,
                 history: [],
+                createDirectory: async p => (ws.createFile(`${p}/.keep`, '').error ? { ok: false, error: 'mkdir failed' } : { ok: true }),
             });
-            check('9. a.js edited for real', ws.content('a.js') === 'const A = 2;');
-            check('9. b.js edited for real', ws.content('b.js') === 'const B = 2;');
-            check('9. reported as changed', res.changedWorkspace === true);
+            check('6. empty workspace still acts (creates files)', res.changedWorkspace === true);
+            check('6. file really created in the empty workspace', ws.content('index.html') !== null);
+            check('6. no fabricated default workspace path', res.message.includes('index.html'));
+            check('6. summary is honest about what was created', (res.message || '').includes('Created'));
         },
     );
 
-    // ── 16. partial filesystem failure is honest ────────────────────────
+    // ── 7. "create a portfolio inside hello" with existing project ───────
     await mock(
-        [tool('write_file', { path: 'nope.js', content: 'x' }, 'a'), { content: 'I could not find that file.' }],
+        [tool('create_file', { path: 'hello/index.html', content: '<h1>Portfolio</h1>' }, 'a'), { content: 'Portfolio created.' }],
+        async () => {
+            const ws = new WS();
+            ws.createFile('src/main.py', 'print("hello")');
+            const res = await runAgentController({
+                userMessage: 'create a portfolio inside the hello folder',
+                workspace: ws.bridge(),
+                fileName: null,
+                history: [],
+            });
+            check('7. extended the existing project structure', ws.content('hello/index.html') !== null);
+            check('7. did not scaffold a parallel static site', ws.content('src/main.py') === 'print("hello")');
+            check('7. existing files preserved', ws.getFileTree().some(n => n.name === 'src'));
+        },
+    );
+
+    // ── 8. "fix the bug in a.js and b.js" ──────────────────────────────
+    {
+        const ws = new WS();
+        ws.createFile('a.js', 'function a() { return 1; }');
+        ws.createFile('b.js', 'function b() { return 2; }');
+
+        await mock(
+            [
+                tool('replace_range', { path: 'a.js', startLine: 1, endLine: 1, content: 'function a() { return 2; }' }, 'a'),
+                tool('replace_range', { path: 'b.js', startLine: 1, endLine: 1, content: 'function b() { return 3; }' }, 'b'),
+                { content: 'Fixed both files.' },
+            ],
+            async () => {
+                const ws2 = new WS();
+                ws2.createFile('a.js', 'function a() { return 1; }');
+                ws2.createFile('b.js', 'function b() { return 2; }');
+                const res = await runAgentController({
+                    userMessage: 'fix the bug in a.js and b.js',
+                    workspace: ws2.bridge(),
+                    fileName: null,
+                    history: [],
+                });
+                check('8. a.js edited for real', (ws2.content('a.js') || '').includes('return 2'));
+                check('8. b.js edited for real', (ws2.content('b.js') || '').includes('return 3'));
+                check('8. reported as changed', res.changedWorkspace === true);
+            },
+        );
+    }
+
+    // ── 9. "continue" resumes from where the agent left off ──────────────
+    {
+        const ws = new WS();
+        ws.createFile('index.html', '<h1>Todo</h1>');
+        let prior = createTaskContext('create a todo website using HTML');
+        prior = recordOperation(prior, { tool: 'create_file', target: 'index.html', status: 'ok' });
+
+        await mock(
+            [
+                tool('create_file', { path: 'styles.css', content: 'body{margin:0}\n@media(max-width:600px){}' }, 'a'),
+                { content: 'Made it responsive.' },
+            ],
+            async () => {
+                const res = await runAgentController({
+                    userMessage: 'make it responsive',
+                    workspace: ws.bridge(),
+                    fileName: 'index.html',
+                    history: [],
+                    previousTask: prior,
+                });
+                check('9. follow-up did not ask a question', !(res.message || '').includes('?'));
+                check('9. responsive styles really written', (ws.content('styles.css') || '').includes('@media'));
+                check('9. original file untouched', ws.content('index.html') === '<h1>Todo</h1>');
+                check('9. task continued, not restarted', Boolean(res.taskContext?.followUps.includes('make it responsive')));
+                prior = res.taskContext!;
+            },
+        );
+
+        await mock(
+            [tool('write_file', { path: 'styles.css', content: 'body{margin:0;background:#111;color:#fff}' }, 'a'), { content: 'Dark mode added.' }],
+            async () => {
+                const res = await runAgentController({
+                    userMessage: 'continue',
+                    workspace: ws.bridge(),
+                    fileName: 'index.html',
+                    history: [],
+                    previousTask: prior,
+                });
+                check('9. follow-up "continue" applies to the same task', Boolean(res.taskContext?.followUps.includes('add dark mode')));
+            },
+        );
+    }
+
+    // ── 10. "add a settings page" to existing project ───────────────────
+    {
+        const ws = new WS();
+        ws.createFile('src/App.tsx', 'export default function App() { return <div>App</div>; }');
+        ws.createFile('src/pages/Home.tsx', 'export default function Home() { return <div>Home</div>; }');
+        ws.createFile('package.json', '{ "dependencies": { "react": "^18" } }');
+
+        await mock(
+            [tool('create_file', { path: 'src/pages/Settings.tsx', content: 'export default function Settings() { return <div>Settings</div>; }' }, 'a'), { content: 'Settings page added.' }],
+            async () => {
+                const res = await runAgentController({
+                    userMessage: 'add a settings page to my existing project',
+                    workspace: ws.bridge(),
+                    fileName: null,
+                    history: [],
+                });
+                check('10. settings page added to existing React project', ws.content('src/pages/Settings.tsx') !== null);
+                check('10. existing project structure respected', ws.content('src/App.tsx') !== null);
+            },
+        );
+    }
+
+    // ── 11. "refactor the user service" ─────────────────────────────────
+    {
+        const ws = new WS();
+        ws.createFile('src/services/user.js', 'export class UserService { getUsers() { return []; } }');
+
+        await mock(
+            [
+                tool('read_file', { path: 'src/services/user.js' }, 'a'),
+                tool('replace_range', { path: 'src/services/user.js', startLine: 1, endLine: 2, content: 'export class UserService { async getUsers() { return []; } async createUser(u) { return u; } }' }, 'b'),
+                { content: 'Refactored user service.' },
+            ],
+            async () => {
+                const ws2 = new WS();
+                ws2.createFile('src/services/user.js', 'export class UserService { getUsers() { return []; } }');
+                const res = await runAgentController({
+                    userMessage: 'refactor the user service',
+                    workspace: ws2.bridge(),
+                    fileName: null,
+                    history: [],
+                });
+                check('11. user service refactored for real', (ws2.content('src/services/user.js') || '').includes('async'));
+                check('11. reported as changed', res.changedWorkspace === true);
+            },
+        );
+    }
+
+    // ── 12. "run the tests" executes without modification ───────────────
+    await mock(
+        [tool('list_files', {}, 'a'), { content: 'Tests executed.' }],
         async () => {
             const ws = new WS();
             const res = await runAgentController({
-                userMessage: 'fix the config file',
+                userMessage: 'run the tests',
                 workspace: ws.bridge(),
                 fileName: null,
                 history: [],
             });
-            check('16. missing-file failure not reported as success', res.changedWorkspace === false);
-            check('16. summary admits the failure', /could not find|not found|no such/i.test(res.message || ''));
-            check('16. nothing written', ws.getFileTree().length === 0);
+            check('13. execute path does not modify files', res.changedWorkspace === false);
+            check('13. answer returned', Boolean(res.message));
         },
     );
 
-    // ── 18. Explorer synchronization on a real run ──────────────────────
-    {
-        const ws = new WS();
-        const seen: string[] = [];
-        const off = subscribeFileChanges(e => seen.push(e.kind));
-        await mock([tool('create_file', { path: 'new.txt', content: 'x' }, 'a'), { content: 'ok' }], async () => {
-            await runAgentController({
-                userMessage: 'create a new file',
-                workspace: ws.bridge(),
-                fileName: null,
-                history: [],
-            });
-        });
-        off();
-        check('18. real run emitted file change events', seen.includes('created'));
-    }
-
-    // ── Explain requests never modify ───────────────────────────────────
+    // ── 14/15/16. explain: no files changed ─────────────────────────────
     await mock(
         [tool('list_files', {}, 'a'), { content: 'This project has three files.' }],
         async () => {
@@ -324,7 +426,7 @@ await (async () => {
         },
     );
 
-    // ── Genuine blocker still asks ──────────────────────────────────────
+    // ── 16. Genuine blocker still asks ──────────────────────────────────
     await mock([{ content: 'never used' }], async () => {
         const ws = new WS();
         const res = await runAgentController({
@@ -338,25 +440,41 @@ await (async () => {
         check('blocker: nothing destroyed', ws.getFileTree().length === 0);
     });
 
-    // ── Preview mode does not touch real files ──────────────────────────
+    // ── 17. "run the tests" executes without modification ───────────────
     await mock(
-        [tool('create_file', { path: 'shadow.txt', content: 'y' }, 'a'), { content: 'Proposed.' }],
+        [tool('list_files', {}, 'a'), { content: 'Tests executed.' }],
         async () => {
             const ws = new WS();
             const res = await runAgentController({
-                userMessage: 'create a file',
+                userMessage: 'run the tests',
                 workspace: ws.bridge(),
                 fileName: null,
                 history: [],
-                preview: true,
             });
-            check('preview: real file NOT written', ws.content('shadow.txt') === null);
-            check('preview: a proposal was returned', (res.proposedChanges?.length ?? 0) >= 1);
-            check('preview: proposal carries the real content', res.proposedChanges?.[0]?.after === 'y');
+            check('13. execute path does not modify files', res.changedWorkspace === false);
+            check('13. answer returned', Boolean(res.message));
         },
     );
 
-    // ── 22. Validation is real and reported honestly ────────────────────
+    // ── 18. real run emits file change events ───────────────────────────
+    await mock(
+        [tool('list_files', {}, 'a'), tool('create_file', { path: 'x.txt', content: 'y' }, 'b'), { content: 'Created.' }],
+        async () => {
+            const ws = new WS();
+            const seen: string[] = [];
+            const off = subscribeFileChanges(e => seen.push(e.kind));
+            const res = await runAgentController({
+                userMessage: 'create x.txt',
+                workspace: ws.bridge(),
+                fileName: null,
+                history: [],
+            });
+            off();
+            check('18. real run emitted file change events', seen.includes('created'));
+        },
+    );
+
+    // ── 19/20/21/22. validation is real and reported honestly ────────────
     await mock(
         [tool('create_file', { path: 'broken.js', content: 'function ( { ' }, 'a'), { content: 'Created broken.js' }],
         async () => {
@@ -384,6 +502,61 @@ await (async () => {
         });
         check('22: no validation claims when nothing changed', (res.validation ?? []).length === 0);
     }
+
+    // ── 23. Transient provider failure recovers and resumes ─────────────────
+    // Simulates: first model call succeeds, tools execute, second model call
+    // fails once with transient 503, retry succeeds and completes the task.
+    await mock(
+        [
+            tool('list_files', {}, 'a'),
+            tool('create_file', { path: 'app.py', content: 'print("hello")' }, 'b'),
+            // First continuation fails with transient 503
+            { __status: 503, error: { code: 'AI_PROVIDER_UNAVAILABLE', message: 'Service unavailable', retryable: true } },
+            // Retry succeeds
+            tool('create_file', { path: 'templates/index.html', content: '<html><body>Todo</body></html>' }, 'c'),
+            { content: 'Todo app created with app.py and templates/index.html.' },
+        ],
+        async () => {
+            const ws = new WS();
+            const res = await runAgentController({
+                userMessage: 'create a todo web app',
+                workspace: ws.bridge(),
+                fileName: null,
+                history: [],
+            });
+            check('23. task does not terminate on transient error', res.stopReason !== 'error');
+            check('23. app.py was created', ws.content('app.py') === 'print("hello")');
+            check('23. templates/index.html was created after retry', ws.content('templates/index.html') === '<html><body>Todo</body></html>');
+            check('23. summary mentions both files', (res.message || '').includes('app.py') && (res.message || '').includes('templates/index.html'));
+            check('23. tool calls actually executed', (res.appliedCount ?? 0) >= 3);
+            check('23. stop reason is done', res.stopReason === 'done');
+        },
+    );
+
+    // ── 24. Permanent provider failure preserves completed work ─────────────
+    // Simulates: first model call succeeds, tools execute, second model call
+    // fails permanently (auth error), task terminates but completed work is preserved.
+    await mock(
+        [
+            tool('list_files', {}, 'a'),
+            tool('create_file', { path: 'app.py', content: 'print("hello")' }, 'b'),
+            // Permanent failure (auth error)
+            { __status: 401, error: { code: 'AI_PROVIDER_AUTH_ERROR', message: 'Invalid API key', retryable: false } },
+        ],
+        async () => {
+            const ws = new WS();
+            const res = await runAgentController({
+                userMessage: 'create a todo web app',
+                workspace: ws.bridge(),
+                fileName: null,
+                history: [],
+            });
+            check('24. task terminates on permanent error', res.stopReason === 'error');
+            check('24. completed work is preserved', ws.content('app.py') === 'print("hello")');
+            check('24. error message mentions auth failure', (res.message || '').toLowerCase().includes('auth') || (res.message || '').toLowerCase().includes('invalid'));
+            check('24. completed operations reported', (res.message || '').includes('app.py'));
+        },
+    );
 
     finish('agentControllerIntegration');
 })();

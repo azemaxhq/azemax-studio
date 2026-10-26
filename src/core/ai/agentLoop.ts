@@ -358,9 +358,18 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                 );
             } catch (e) {
                 if (isAbortError(e) && req.signal?.aborted) return finish('cancelled', false);
-                // Provider failure after all retries — surface honestly; partial work is reported
-                // truthfully via changedWorkspace. The completed operations remain in the workspace.
-                return finish('error', false, e instanceof Error ? e.message : String(e));
+                // Provider failure after all retries — check if transient
+                const err = e instanceof Error ? e : new Error(String(e));
+                const aiErr = err instanceof AIError ? err : null;
+                const isTransient = aiErr ? aiErr.retryable === true : isTransientProviderError(err);
+                if (isTransient && changedWorkspace) {
+                    // Transient failure after successful tool execution: wait and continue loop to retry
+                    console.warn(`[AgentLoop] Transient provider failure after tool execution, will retry: ${err.message}`);
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+                // Permanent failure or no workspace changes yet — surface honestly
+                return finish('error', false, err.message);
             } finally {
                 clearTimeout(timer);
                 req.signal?.removeEventListener('abort', onOuterAbort);
@@ -382,7 +391,15 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
                 );
             } catch (e) {
                 if (isAbortError(e)) return finish('cancelled', false);
-                return finish('error', false, e instanceof Error ? e.message : String(e));
+                const err = e instanceof Error ? e : new Error(String(e));
+                const aiErr = err instanceof AIError ? err : null;
+                const isTransient = aiErr ? aiErr.retryable === true : isTransientProviderError(err);
+                if (isTransient && changedWorkspace) {
+                    console.warn(`[AgentLoop] Transient provider failure after tool execution, will retry: ${err.message}`);
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+                return finish('error', false, err.message);
             }
         }
 

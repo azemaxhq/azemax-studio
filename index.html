@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Azemax — AI-Powered Code Editor | Build Beyond Limits</title>
+  <title>Azemax Studio — AI-Powered Code Editor | Build Beyond Limits</title>
   <link rel="canonical" href="https://www.azemax.com/" />
   <link rel="icon" type="image/png" sizes="32x32" href="/img/azemax_logo_wbg.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/img/azemax_logo_wbg.png">
@@ -17,28 +17,101 @@
   <link rel="preload" as="font" type="font/ttf" crossorigin href="/fonts/playfair-display-regular.ttf" fetchpriority="high">
   <link rel="preload" as="font" type="font/ttf" crossorigin href="/fonts/playfair-display-italic.ttf" fetchpriority="high">
   <link rel="stylesheet" href="/fonts/fonts.css" media="print" onload="this.media='all'">
-  <meta name="application-name" content="Azemax" />
+  <meta name="application-name" content="Azemax Studio" />
   <meta name="description" content="Build, code, and create with Azemax Studio, an AI-powered coding workspace designed to help developers turn ideas into working software." />
-  <meta name="robots" content="index, follow" />
-  <meta property="og:title" content="Azemax — AI-Powered Code Editor | Build Beyond Limits" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta property="og:title" content="Azemax Studio — AI-Powered Code Editor | Build Beyond Limits" />
   <meta property="og:description" content="Build, code, and create with Azemax Studio, an AI-powered coding workspace designed to help developers turn ideas into working software." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://www.azemax.com/" />
-  <meta property="og:site_name" content="Azemax" />
+  <meta property="og:site_name" content="Azemax Studio" />
   <meta property="og:image" content="https://www.azemax.com/img/azemax_logo_wbg.png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="Azemax Studio logo — AI-powered code editor" />
+  <meta property="og:locale" content="en_US" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Azemax — AI-Powered Code Editor | Build Beyond Limits" />
+  <meta name="twitter:title" content="Azemax Studio — AI-Powered Code Editor | Build Beyond Limits" />
   <meta name="twitter:description" content="Build, code, and create with Azemax Studio, an AI-powered coding workspace designed to help developers turn ideas into working software." />
   <meta name="twitter:image" content="https://www.azemax.com/img/azemax_logo_wbg.png" />
+  <meta name="twitter:image:alt" content="Azemax Studio logo — AI-powered code editor" />
   <meta name="theme-color" content="#080F1C" />
   <meta name="color-scheme" content="dark" />
+
+  <!-- Structured Data: Organization (Azemax brand) and Product (Azemax Studio) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "Azemax",
-    "alternateName": ["Azemax Studio", "azemax.com"],
-    "url": "https://www.azemax.com/"
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://www.azemax.com/#organization",
+        "name": "Azemax",
+        "alternateName": ["azemax.com"],
+        "url": "https://www.azemax.com/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://www.azemax.com/img/azemax_logo_wbg.png",
+          "width": 512,
+          "height": 512,
+          "caption": "Azemax Studio logo"
+        },
+        "description": "Azemax is the brand behind Azemax Studio, an AI-powered code editor for developers.",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "azemaxhq@gmail.com",
+          "availableLanguage": "English"
+        },
+        "brand": {
+          "@type": "Brand",
+          "name": "Azemax Studio",
+          "logo": "https://www.azemax.com/img/azemax_logo_wbg.png"
+        }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://www.azemax.com/#product",
+        "name": "Azemax Studio",
+        "alternateName": ["Azemax AI Code Editor"],
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "description": "Currently offered free of charge during public beta"
+        },
+        "description": "Azemax Studio is an AI-powered code editor that brings writing, execution, understanding, and improvement into one continuous workflow. Features include a Monaco-based editor, a bidirectional PTY terminal, contextual AI assistance, and unified diagnostics.",
+        "url": "https://www.azemax.com/",
+        "logo": "https://www.azemax.com/img/azemax_logo_wbg.png",
+        "publisher": {
+          "@id": "https://www.azemax.com/#organization"
+        },
+        "softwareVersion": "1.0.0-beta",
+        "featureList": [
+          "Monaco-based code editor with multi-language support",
+          "Bidirectional PTY terminal (node-pty + xterm.js WebGL)",
+          "Contextual AI assistance with provider failover",
+          "Unified diagnostics engine",
+          "Virtualized filesystem with transactional safety",
+          "Zero-setup browser workspace"
+        ],
+        "requirements": "Modern web browser (Chrome, Firefox, Safari, Edge)"
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://www.azemax.com/#website",
+        "url": "https://www.azemax.com/",
+        "name": "Azemax Studio",
+        "alternateName": ["Azemax", "azemax.com"],
+        "description": "Official website for Azemax Studio, an AI-powered code editor for developers.",
+        "inLanguage": "en",
+        "publisher": { "@id": "https://www.azemax.com/#organization" },
+        "copyrightHolder": { "@id": "https://www.azemax.com/#organization" }
+      }
+    ]
   }
   </script>
 </head>

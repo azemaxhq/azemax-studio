@@ -821,8 +821,9 @@ function buildFinalResponse(
     }
 
     if (loop.stopReason === 'error') {
-        parts.push(`I couldn't finish this task: ${loop.error ?? 'the assistant request failed'}. No further changes were made.`);
+        parts.push(`I couldn't finish this task: ${loop.error ?? 'the assistant request failed'}.`);
         if (changed.length) parts.push(`Changes made before the failure: ${changed.join(', ')}.`);
+        else parts.push('No changes were made.');
         return parts.join('\n\n');
     }
 
