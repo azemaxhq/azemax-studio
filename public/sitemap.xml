@@ -3,19 +3,29 @@
   <url>
     <loc>https://www.azemax.com/</loc>
     <lastmod>2026-10-26</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://www.azemax.com/features</loc>
+    <lastmod>2026-10-26</lastmod>
+  </url>
+  <url>
+    <loc>https://www.azemax.com/docs</loc>
+    <lastmod>2026-10-26</lastmod>
+  </url>
+  <url>
+    <loc>https://www.azemax.com/faq</loc>
+    <lastmod>2026-10-26</lastmod>
+  </url>
+  <url>
+    <loc>https://www.azemax.com/contact</loc>
+    <lastmod>2026-10-26</lastmod>
   </url>
   <url>
     <loc>https://www.azemax.com/privacy</loc>
-    <lastmod>2026-10-18</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
+    <lastmod>2026-10-26</lastmod>
   </url>
   <url>
     <loc>https://www.azemax.com/terms</loc>
-    <lastmod>2026-10-18</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
+    <lastmod>2026-10-26</lastmod>
   </url>
 </urlset>

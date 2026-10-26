@@ -85,7 +85,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
             className="az-btn-secondary flex items-center justify-center gap-2 group min-h-[44px] w-full sm:w-auto"
           >
             <Terminal size={14} className="text-[#8FB4FF]" />
-            <span>Launch via CLI or Web</span>
+            <span>Open the web workspace</span>
           </a>
         </div>
 
@@ -95,11 +95,11 @@ export const FinalCTA: React.FC<FinalCTAProps> = memo(({ onEnterWorkspace }) => 
         >
           <span>v1.0.0-beta</span>
           <span aria-hidden="true">•</span>
-          <span>Zero Telemetry Leaks</span>
+          <span>Browser workspace</span>
           <span aria-hidden="true" className="hidden sm:inline">•</span>
-          <span>Open Standards</span>
+          <span>BYOK optional</span>
           <span aria-hidden="true">•</span>
-          <span>Hardware Accelerated</span>
+          <span>Sandboxed execution</span>
         </div>
 
       </div>

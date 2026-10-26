@@ -1,9 +1,17 @@
 # Azemax Studio robots.txt
-# Allow all crawlers to access public marketing pages
+# Public product pages are crawlable. The authenticated workspace, auth
+# surfaces, and API are excluded from crawling; authentication remains the
+# actual access control for private data.
+
 User-agent: *
 Allow: /
+Allow: /features
+Allow: /docs
+Allow: /faq
+Allow: /contact
+Allow: /privacy
+Allow: /terms
 
-# Disallow private application and auth routes
 Disallow: /app
 Disallow: /app/
 Disallow: /login
@@ -11,9 +19,6 @@ Disallow: /signup
 Disallow: /forgot-password
 Disallow: /verify-email
 Disallow: /auth/callback
-
-# Disallow API endpoints
 Disallow: /api/
 
-# Sitemap location
 Sitemap: https://www.azemax.com/sitemap.xml

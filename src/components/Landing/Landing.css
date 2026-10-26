@@ -447,6 +447,13 @@ html.az-landing-active #root {
   0%   { opacity: 0; transform: translateY(24px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+/* The headline is the mobile LCP element. Keep its entrance motion without
+   fading from transparent, so the text paints at first render instead of
+   waiting for the animation to finish. */
+@keyframes az-hero-rise {
+  0%   { transform: translateY(24px); }
+  100% { transform: translateY(0); }
+}
 @keyframes az-hero-lineGrow {
   0%   { transform: scaleX(0); opacity: 0; }
   60%  { opacity: 1; }
@@ -460,7 +467,7 @@ html.az-landing-active #root {
 }
 
 .az-hero-eyebrow   { animation: az-hero-fadeUp 0.65s var(--az-ease-out) 0.3s backwards; }
-.az-hero-headline  { animation: az-hero-fadeUp 0.9s var(--az-ease-out) 0.5s backwards; }
+.az-hero-headline  { animation: az-hero-rise 0.45s var(--az-ease-out) 0s backwards; }
 .az-hero-positioning { animation: az-hero-fadeUp 0.8s var(--az-ease-out) 0.9s backwards; }
 .az-hero-subtitle  { animation: az-hero-fadeUp 0.8s var(--az-ease-out) 0.9s backwards; }
 .az-hero-cta       { animation: az-hero-fadeUp 0.75s var(--az-ease-out) 1.1s backwards; }
@@ -677,6 +684,9 @@ html.az-landing-active #root {
   .az-hero-metadata,
   .az-hero-positioning {
     animation-duration: 0.5s;
+  }
+  .az-hero-headline {
+    animation-duration: 0.3s;
   }
 }
 

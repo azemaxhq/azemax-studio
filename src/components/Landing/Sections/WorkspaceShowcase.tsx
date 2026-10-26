@@ -16,19 +16,19 @@ const MODES = [
 
 const UNDERSTAND_SNIPPETS: Record<number, { title: string; complexity: string; details: string }> = {
   2: {
-    title: 'Type Invariant & Memory Layout',
-    complexity: 'Zero-cost abstraction',
-    details: 'DenseVector utilizes contiguous memory storage. Pointer arithmetic ensures SIMD vectorization during vectorized multiply passes.',
+    title: 'Struct Layout',
+    complexity: 'Heap-backed vector',
+    details: 'DenseVector wraps a growable Vec<f32>. The vector owns its buffer on the heap and tracks its own length and capacity.',
   },
   4: {
-    title: 'Algorithmic Core (Dot Product)',
-    complexity: 'O(N) time • O(1) space',
-    details: 'Inner product accumulator loop. Azemax static analyzer verifies loop bounds at compile time, eliminating branch mispredictions.',
+    title: 'Dot Product',
+    complexity: 'O(N) time • O(1) extra space',
+    details: 'This line zips the two slices, multiplies each pair, and sums the results. It traverses each element once and allocates no intermediate collection.',
   },
   7: {
-    title: 'Guard Clause & Dimension Assert',
-    complexity: 'O(1) condition',
-    details: 'Explicit dimension parity check. Protects against buffer overrun before passing slice pointers into the hardware accelerator.',
+    title: 'Dimension Assertion',
+    complexity: 'O(1) check',
+    details: 'assert_eq! compares the stored length with the expected length and panics with a clear message when they differ. The check runs before any indexed access.',
   },
 };
 
@@ -49,8 +49,8 @@ const WritePanel = memo(function WritePanel({
   return (
     <div className="space-y-2 overflow-x-auto">
       <div className="text-[var(--az-muted)]/60 select-none pb-2 border-b border-white/5 flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-[11px]">
-        <span className="min-w-0 break-words">// Native Monaco model with continuous background AST analysis</span>
-        <span className="shrink-0 text-[#8FB4FF]">Language: Python 3.12</span>
+        <span className="min-w-0 break-words">// Monaco editor model with syntax highlighting</span>
+        <span className="shrink-0 text-[#8FB4FF]">Language: Python</span>
       </div>
 
       <div className="text-white/80 pt-2 whitespace-pre-wrap break-words">
@@ -136,16 +136,17 @@ const RunPanel = memo(function RunPanel({
       {/* Script snippet */}
       <div className="lg:col-span-6 border-b lg:border-b-0 lg:border-r border-[rgba(255,255,255,0.06)] pb-4 lg:pb-0 lg:pr-6">
         <div className="text-[var(--az-muted)]/70 text-[11px] mb-3 flex items-center justify-between">
-          <span>Benchmark Definition</span>
-          <span className="text-emerald-400">● Validated</span>
+          <span>Sandbox Script</span>
+          <span className="text-emerald-400">● Ready</span>
         </div>
         <div className="text-white/80 space-y-1">
-          <div><span className="az-syntax-kw">import</span> time, math</div>
-          <div><span className="az-syntax-kw">from</span> azemax.bench <span className="az-syntax-kw">import</span> BenchmarkSuite</div>
+          <div><span className="az-syntax-kw">import</span> time</div>
           <div className="pt-2"><span className="az-syntax-kw">def</span> <span className="az-syntax-fn">run_suite</span>():</div>
-          <div className="pl-4">suite = BenchmarkSuite(target_threads=8)</div>
-          <div className="pl-4">suite.profile_memory_allocations()</div>
-          <div className="pl-4"><span className="az-syntax-kw">return</span> suite.summarize()</div>
+          <div className="pl-4">start = time.perf_counter()</div>
+          <div className="pl-4">total = sum(range(1000))</div>
+          <div className="pl-4"><span className="az-syntax-kw">return</span> total, time.perf_counter() - start</div>
+          <div className="pt-2"><span className="az-syntax-kw">if</span> __name__ == <span className="az-syntax-str">&quot;__main__&quot;</span>:</div>
+          <div className="pl-4"><span className="az-syntax-fn">print</span>(run_suite())</div>
         </div>
       </div>
 
@@ -153,9 +154,9 @@ const RunPanel = memo(function RunPanel({
       <div className="lg:col-span-6 flex flex-col min-h-[240px] sm:h-[280px] bg-[#02050B] rounded-lg border border-[rgba(79,140,255,0.12)] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--az-muted)] pb-2 border-b border-white/5 mb-2">
           <span className="flex items-center gap-1.5 text-[#8FB4FF]">
-            <Terminal size={12} /> xterm.js PTY session
+            <Terminal size={12} /> sandbox execution session
           </span>
-          <span className="hidden sm:inline text-[10px] text-white/40">WebSocket: 127.0.0.1:3001</span>
+          <span className="hidden sm:inline text-[10px] text-white/40">Hosted sandbox</span>
         </div>
         <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-1.5 text-xs text-white/90 break-words">
           {runLogs.map((log, i) => (
@@ -163,7 +164,7 @@ const RunPanel = memo(function RunPanel({
           ))}
           {isRunning && (
             <div className="text-[#4F8CFF] animate-pulse">
-              › Running matrix benchmarks...
+              › Running sandbox script...
             </div>
           )}
         </div>
@@ -231,7 +232,7 @@ const UnderstandPanel = memo(function UnderstandPanel({
       {/* Selectable Code Lines */}
       <div className="lg:col-span-7 space-y-1">
         <div className="text-[var(--az-muted)]/70 text-[11px] mb-3">
-          Click any highlighted line to inspect AST invariants and semantic breakdown:
+          Click any highlighted line to inspect its behavior and complexity:
         </div>
 
         <div className="text-white/60">
@@ -299,7 +300,7 @@ const UnderstandPanel = memo(function UnderstandPanel({
 
         <div className="pt-4 border-t border-white/5 flex items-center gap-2 text-[10px] text-[#8FB4FF]">
           <CheckCircle2 size={12} />
-          <span>Continuous local AST verification</span>
+          <span>Workspace diagnostics stay available</span>
         </div>
       </div>
     </div>
@@ -319,7 +320,7 @@ const ImprovePanel = memo(function ImprovePanel({
           <span className="text-white/70">Quadratic array scan replaced with streaming set</span>
         </div>
         <span className="self-start sm:self-auto shrink-0 text-[11px] font-mono text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30">
-          -94% execution time
+          O(N²) → O(N)
         </span>
       </div>
 
@@ -408,7 +409,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
   // calls setState on an unmounted component (React 18 strict-mode safe).
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [runLogs, setRunLogs] = useState<string[]>([
-    'azemax-pty: ready (node v20.11.0, python 3.12.2)',
+    'sandbox: ready (Wandbox runtime)',
   ]);
   const [hasRun, setHasRun] = useState<boolean>(false);
   const runTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -423,21 +424,21 @@ export const WorkspaceShowcase: React.FC = memo(() => {
     if (isRunningRef.current) return;
     isRunningRef.current = true;
     setIsRunning(true);
-    setRunLogs(['$ python3 -m azemax.bench --dataset=production']);
+    setRunLogs(['$ python3 src/benchmark/runner.py']);
 
     runTimers.current.forEach(clearTimeout);
     runTimers.current = [
       setTimeout(() => {
-        setRunLogs((prev) => [...prev, '› Initializing zero-copy memory buffers...']);
+        setRunLogs((prev) => [...prev, '› Starting hosted sandbox...']);
       }, 400),
       setTimeout(() => {
-        setRunLogs((prev) => [...prev, '› [1/3] Warmup passes completed: 1,000 iterations']);
+        setRunLogs((prev) => [...prev, '› [1/3] Runtime ready']);
       }, 900),
       setTimeout(() => {
         setRunLogs((prev) => [
           ...prev,
-          '› [2/3] Throughput: 142,800 ops/sec | Latency p99: 0.18ms',
-          '› [3/3] Memory footprint: 14.8 MB (RSS)',
+          '› [2/3] Script finished',
+          '› [3/3] Output captured',
           '✓ Execution completed with exit code 0.',
         ]);
         isRunningRef.current = false;
@@ -452,7 +453,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
     runTimers.current = [];
     isRunningRef.current = false;
     setIsRunning(false);
-    setRunLogs(['azemax-pty: ready (node v20.11.0, python 3.12.2)']);
+    setRunLogs(['sandbox: ready (Wandbox runtime)']);
     setHasRun(false);
   }, []);
 
@@ -521,7 +522,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
           </div>
 
           <p className="text-sm text-[var(--az-muted)] max-w-md font-sans leading-relaxed">
-            Switch between authoring, live execution, AST explanation, and semantic refactoring without leaving your current file context.
+            Switch between authoring, live execution, code explanation, and reviewable refactoring without leaving your current file context.
           </p>
         </div>
 
@@ -628,7 +629,7 @@ export const WorkspaceShowcase: React.FC = memo(() => {
           {/* Workstation Frame Footer */}
           <div className="min-h-7 bg-[#060B14] border-t border-[rgba(79,140,255,0.10)] px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] font-mono text-[var(--az-muted)]">
             <span className="text-[#8FB4FF]">Azemax Core Engine Active</span>
-            <span>Zero Remote Leakage</span>
+            <span>Account-scoped workspace</span>
           </div>
         </div>
 

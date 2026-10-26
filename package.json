@@ -12,11 +12,13 @@
     "client": "wait-on -t 10000 http-get://127.0.0.1:3001/api/health && vite",
     "server": "node --watch server/index.cjs",
     "start": "node server/index.cjs",
-    "build": "tsc -b && vite build",
-    "build:analyze": "ANALYZE=1 tsc -b && vite build",
+    "build": "tsc -b && vite build && vite-node scripts/prerender.mjs",
+    "build:analyze": "ANALYZE=1 tsc -b && vite build && vite-node scripts/prerender.mjs",
     "lint": "eslint .",
     "lint:server": "eslint server",
     "preview": "vite preview",
+    "preview:static": "node scripts/serve-dist.mjs",
+    "check:seo": "vite-node scripts/check-seo.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:auth": "playwright test --config playwright.auth.config.ts",
@@ -71,6 +73,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
+    "vite-node": "^3.2.4",
     "vitest": "^3.2.7",
     "wait-on": "^9.0.10"
   }

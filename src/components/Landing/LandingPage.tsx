@@ -2,6 +2,7 @@ import React, { Suspense, lazy, memo, useLayoutEffect } from 'react';
 import './Landing.css';
 import { LandingNav } from './Navigation/LandingNav';
 import { Hero } from './Hero/Hero';
+import { ProductSummary } from './Sections/ProductSummary';
 import { LandingFooter } from './Footer/LandingFooter';
 
 // Render-budget split: Hero + Nav are above the fold and stay in the initial
@@ -100,6 +101,10 @@ export const LandingPage: React.FC<LandingPageProps> = memo(({ onNavigateToApp, 
         <div className="relative w-full h-8 flex items-center justify-center pointer-events-none" aria-hidden="true">
           <div className="az-section-separator" />
         </div>
+
+        {/* Static overview: present in the prerendered HTML for no-JS visitors
+            and crawlers, with links to the deeper public pages. */}
+        <ProductSummary />
 
         {/* 02 — THE CORE LOOP: Write -> Run -> Understand -> Improve */}
         <section id="philosophy" className="w-full">

@@ -1,29 +1,56 @@
 {
+  "id": "/",
   "name": "Azemax Studio",
   "short_name": "Azemax",
-  "description": "Build, code, and create with Azemax Studio, an AI-powered coding workspace designed to help developers turn ideas into working software.",
+  "description": "A browser-based AI code editor with an agentic assistant, sandboxed code execution, and bring-your-own-key model configuration.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#080F1C",
   "theme_color": "#080F1C",
   "orientation": "portrait-primary",
+  "lang": "en",
+  "dir": "ltr",
   "icons": [
     {
-      "src": "/img/azemax_logo_wbg.png",
+      "src": "/img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/img/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/img/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/img/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "categories": ["developer", "productivity", "utilities"],
-  "screenshots": [],
   "shortcuts": [
     {
       "name": "Open Workspace",
       "short_name": "Workspace",
-      "description": "Open the Azemax coding workspace",
+      "description": "Open the Azemax Studio workspace",
       "url": "/app",
-      "icons": [{ "src": "/img/azemax_logo_wbg.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/img/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Documentation",
+      "short_name": "Docs",
+      "description": "Read the Azemax Studio documentation",
+      "url": "/docs"
     }
   ],
   "related_applications": [],

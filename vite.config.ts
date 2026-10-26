@@ -3,20 +3,6 @@ import react from '@vitejs/plugin-react'
 import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'node:path'
 
-// Plugin to prevent vendor-motion from being modulepreloaded (it's only needed for workspace)
-function preventMotionPreload() {
-  return {
-    name: 'azemax-prevent-motion-preload',
-    enforce: 'post' as const,
-    transformIndexHtml(html: string) {
-      return html.replace(
-        /<link rel="modulepreload" crossorigin href="\/assets\/js\/vendor-motion-[^"]+\.js">\n?/g,
-        ''
-      );
-    },
-  };
-}
-
 // https://vite.dev/config/
 function productionSecretGuard() {
   return {
@@ -80,7 +66,6 @@ export default defineConfig({
     react(),
     productionSecretGuard(),
     validateApiUrl(),
-    preventMotionPreload(),
     ...(process.env.ANALYZE ? [visualizer({
       filename: 'dist/stats.html',
       open: false,
@@ -135,14 +120,58 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-monaco': ['@monaco-editor/react'],
-          'vendor-terminal': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links', '@xterm/addon-webgl'],
-          'vendor-motion': ['framer-motion'],
-          'vendor-icons': ['lucide-react', 'react-icons'],
-          'vendor-markdown': ['react-markdown', 'remark-gfm', 'prismjs'],
-          'vendor-utils': ['clsx', 'tailwind-merge'],
+        // Group dependencies by resolved module path. A module-keyed object
+        // (`manualChunks: { 'vendor-react': ['react'] }`) leaves transitive
+        // entries such as react/jsx-runtime unassigned; Rollup can then fold
+        // the JSX runtime into an unrelated manual chunk. That made the landing
+        // page download framer-motion (and then react-markdown) eagerly just
+        // to render static JSX. Path matching keeps every React runtime file in
+        // one chunk that the landing page already needs.
+        manualChunks(id: string) {
+          const modulePath = id.replace(/\\/g, '/');
+          if (!modulePath.includes('/node_modules/')) return undefined;
+
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(modulePath)) {
+            return 'vendor-react';
+          }
+          if (
+            modulePath.includes('/node_modules/@monaco-editor/') ||
+            modulePath.includes('/node_modules/monaco-editor/')
+          ) {
+            return 'vendor-monaco';
+          }
+          if (modulePath.includes('/node_modules/@xterm/')) {
+            return 'vendor-terminal';
+          }
+          if (
+            modulePath.includes('/node_modules/framer-motion/') ||
+            modulePath.includes('/node_modules/motion-dom/') ||
+            modulePath.includes('/node_modules/motion-utils/')
+          ) {
+            return 'vendor-motion';
+          }
+          // Do not force icon libraries into a shared manual chunk. The landing
+          // imports a handful of icons; grouping every icon used anywhere in
+          // the app would make that entire set part of the initial download.
+          if (
+            modulePath.includes('/node_modules/react-markdown/') ||
+            modulePath.includes('/node_modules/remark-') ||
+            modulePath.includes('/node_modules/prismjs/') ||
+            modulePath.includes('/node_modules/rehype-') ||
+            modulePath.includes('/node_modules/unified/') ||
+            modulePath.includes('/node_modules/mdast-') ||
+            modulePath.includes('/node_modules/hast-') ||
+            modulePath.includes('/node_modules/micromark')
+          ) {
+            return 'vendor-markdown';
+          }
+          if (
+            modulePath.includes('/node_modules/clsx/') ||
+            modulePath.includes('/node_modules/tailwind-merge/')
+          ) {
+            return 'vendor-utils';
+          }
+          return undefined;
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',

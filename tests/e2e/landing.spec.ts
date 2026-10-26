@@ -10,7 +10,7 @@ test.describe('Azemax Landing Page E2E', () => {
     await page.goto('/');
 
     // Page title and meta tags
-    await expect(page).toHaveTitle(/Azemax — Build beyond limits/i);
+    await expect(page).toHaveTitle(/Azemax Studio — AI Code Editor/i);
 
     // Hero campaign headline
     const heroHeading = page.locator('h1');
@@ -72,13 +72,13 @@ test.describe('Azemax Landing Page E2E', () => {
     const runTab = page.locator('#tab-run');
     await runTab.dispatchEvent('click');
     await expect(runTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('text=xterm.js PTY session')).toBeVisible();
+    await expect(page.locator('#panel-run').locator('text=sandbox execution session')).toBeVisible();
 
     // Trigger execution simulation
     const executeBtn = page.locator('button:has-text("Execute Script")');
     await executeBtn.dispatchEvent('click');
     // Wait for execution logs to appear in terminal
-    await expect(page.locator('text=Execution completed with exit code 0').or(page.locator('text=Running matrix benchmarks...'))).toBeVisible();
+    await expect(page.locator('#panel-run').locator('text=Execution completed with exit code 0')).toBeVisible();
 
     // Switch to Understand tab
     const understandTab = page.locator('#tab-understand');

@@ -323,7 +323,6 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace, o
           href="#top"
           onClick={handleBrandClick}
           className="group flex min-w-0 select-none items-center gap-2 sm:gap-2.5 rounded-lg px-1.5 py-1.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#4F8CFF]/70"
-          aria-label="Azemax Beta — back to top"
         >
           <span className="relative grid h-6 w-6 place-items-center">
             <span
@@ -479,7 +478,7 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace, o
               <ArrowRight size={14} className="text-black/60" />
             </a>
             <p className="pt-2.5 text-center font-mono text-[10px] tracking-[0.14em] text-white/30">
-              ZERO SETUP • PRIVATE BY DEFAULT
+              NO INSTALL • ACCOUNT REQUIRED
             </p>
           </div>
         </div>

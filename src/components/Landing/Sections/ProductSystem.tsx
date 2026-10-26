@@ -12,44 +12,44 @@ const ZONE_DETAILS: Record<
   { title: string; label: string; tech: string; description: string; specs: string[] }
 > = {
   explorer: {
-    title: 'Virtual Project Tree',
-    label: 'Safe Virtualized Filesystem',
+    title: 'Workspace File Tree',
+    label: 'Browser Workspace',
     tech: 'safeTree.ts & workspaceStore',
     description:
-      'Zero-latency recursive file tree with transactional safety guards against race conditions. Instant search indexing across nested subtrees.',
-    specs: ['Local workspace isolation', 'Fuzzy name search', 'Multi-tab buffer tracking'],
+      'Recursive file tree for the browser workspace. Search across nested folders and open files in tabs without leaving the project.',
+    specs: ['Account-scoped workspace', 'Name search', 'Multi-tab buffer tracking'],
   },
   editor: {
-    title: 'Monaco Core Engine',
-    label: 'Single-Model Precision Buffer',
+    title: 'Monaco Editing Surface',
+    label: 'Multi-Tab Editing',
     tech: '@monaco-editor/react & TextModel',
     description:
-      'Full multi-cursor, bracket matching, semantic token highlighting, and sub-millisecond typing response powered by Monaco.',
-    specs: ['Hardware-accelerated rendering', 'Custom syntax grammars', 'Zero frame drops'],
+      'Multi-cursor editing, bracket matching, syntax highlighting, and configurable editor behavior powered by Monaco.',
+    specs: ['Syntax highlighting', 'Configurable editor settings', 'Multi-tab buffers'],
   },
   ai: {
     title: 'Contextual AI Pipeline',
-    label: 'Model Router & Reasoning Filter',
-    tech: 'Groq / OpenRouter / local LLM',
+    label: 'Model Router & Workspace Tools',
+    tech: 'Azemax Default / BYOK providers',
     description:
-      'Deep contextual awareness across open tabs and project files. Strips reasoning traces and outputs verifiable line diffs.',
-    specs: ['Provider failover normalization', 'Triple-guard abort registry', 'Safe structured diffs'],
+      'Workspace-aware context across open tabs and project files. Streams activity and reports the files it reads or changes.',
+    specs: ['Agent, Ask, and Edit modes', 'OpenAI-compatible providers', 'Workspace tool calls'],
   },
   terminal: {
-    title: 'Bidirectional PTY Terminal',
-    label: 'Hardware-Accelerated Shell',
-    tech: 'node-pty + xterm.js WebGL',
+    title: 'Sandboxed Execution',
+    label: 'Hosted Code Runner',
+    tech: 'Wandbox sandbox via backend',
     description:
-      'Real Node.js pseudo-terminal running over native WebSockets. Streams standard in/out/err with sub-5ms roundtrip latency.',
-    specs: ['WebGL canvas acceleration', 'Full VT100 / ANSI escape support', 'Interactive PTY lifecycle'],
+      'Runs the active file in an isolated sandbox and streams stdout, stderr, compiler messages, and exit status to the output panel.',
+    specs: ['Hosted sandbox', 'Compile and run', '60-second run limit'],
   },
   diagnostics: {
-    title: 'Unified Diagnostics Engine',
-    label: 'Multi-Language Health Verification',
-    tech: 'TypeScript Compiler & Linter Bus',
+    title: 'Editor Diagnostics',
+    label: 'Problems Panel',
+    tech: 'Editor diagnostics & problems panel',
     description:
-      'Synchronous in-editor squiggle markers and unified problems panel. Instant feedback on syntax errors and type mismatches.',
-    specs: ['Line-offset mapping', 'Zero remote telemetry', 'Continuous error aggregation'],
+      'In-editor markers and a unified problems panel. Jump from an error to the file and line that produced it.',
+    specs: ['File and line mapping', 'Editor-side diagnostics', 'Problems panel aggregation'],
   },
 };
 
@@ -112,7 +112,7 @@ const ZONE_TILE_BODIES: Record<EngineZone, React.ReactNode> = {
       </div>
       <div className="flex items-center justify-between text-[9px] font-mono text-[var(--az-muted)] pt-2 border-t border-white/5">
         <span>UTF-8 • Ln 42, Col 18</span>
-        <span className="text-[#8FB4FF]">AST Synchronized</span>
+        <span className="text-[#8FB4FF]">Active buffer</span>
       </div>
     </>
   ),
@@ -124,7 +124,7 @@ const ZONE_TILE_BODIES: Record<EngineZone, React.ReactNode> = {
           <span>AI ASSISTANT</span>
         </div>
         <div className="p-2 bg-[#08101E] rounded text-[10px] font-sans text-white/80 leading-snug">
-          &quot;VectorEngine uses direct SIMD registers. No allocations detected in hot path.&quot;
+          &quot;This loop multiplies each pair of values and sums the results in one pass.&quot;
         </div>
       </div>
       <span className="text-[9px] font-mono text-emerald-400">Reasoning Filtered</span>
@@ -135,14 +135,14 @@ const ZONE_TILE_BODIES: Record<EngineZone, React.ReactNode> = {
       <div className="flex items-center justify-between text-[11px] font-mono text-[#8FB4FF] mb-1 font-semibold">
         <div className="flex items-center gap-1.5">
           <Terminal size={13} />
-          <span>PTY TERMINAL</span>
+          <span>SANDBOX RUNNER</span>
         </div>
-        <span className="text-[9px] text-white/40">node-pty /bin/zsh</span>
+        <span className="text-[9px] text-white/40">Wandbox</span>
       </div>
       <div className="font-mono text-[10px] text-white/90">
-        <span className="text-[#8FB4FF]">$</span> cargo bench --release &amp;&amp; echo &quot;PASS&quot;
+        <span className="text-[#8FB4FF]">$</span> python3 src/benchmark/runner.py
       </div>
-      <div className="text-[9px] font-mono text-emerald-400">test vector_dot ... bench: 4.12 ns/iter (+/- 0.08)</div>
+      <div className="text-[9px] font-mono text-emerald-400">✓ Execution completed with exit code 0</div>
     </>
   ),
   diagnostics: (
@@ -155,7 +155,7 @@ const ZONE_TILE_BODIES: Record<EngineZone, React.ReactNode> = {
         0 Errors • 0 Warnings
       </div>
       <div className="text-[9px] font-mono text-[var(--az-muted)]">
-        Continuous TSC / Rust Analyzer Check
+        Editor markers and problems panel
       </div>
     </>
   ),
@@ -253,7 +253,7 @@ const ZoneDetail = memo(function ZoneDetail({ zone }: { zone: EngineZone }) {
 
       <div className="space-y-3 pt-6 border-t border-white/5">
         <span className="text-[11px] font-mono uppercase tracking-wider text-white/50 block">
-          Hardware &amp; System Capabilities
+          Workspace capabilities
         </span>
         {specs}
       </div>
@@ -328,7 +328,7 @@ export const ProductSystem: React.FC = memo(() => {
             <div className="min-h-8 bg-[#090F1B] border-b border-white/5 px-3 py-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-mono text-[var(--az-muted)] mb-2">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="shrink-0 w-2 h-2 rounded-full bg-emerald-400" />
-                <span className="truncate">azemax://system/core-runtime.sys</span>
+                <span className="truncate">Workspace architecture</span>
               </span>
               <span className="hidden sm:inline shrink-0 text-[#8FB4FF]">{activeTech}</span>
             </div>
@@ -357,7 +357,7 @@ export const ProductSystem: React.FC = memo(() => {
 
             <div className="pt-8 text-[11px] font-mono text-[var(--az-muted)] flex items-center justify-between border-t border-white/5 mt-8">
               <span>SHARED CONTEXT</span>
-              <span className="text-[#8FB4FF]">100% LOCAL</span>
+              <span className="text-[#8FB4FF]">ACCOUNT-SCOPED</span>
             </div>
           </div>
 
