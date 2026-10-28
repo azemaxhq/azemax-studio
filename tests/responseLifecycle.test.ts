@@ -13,6 +13,7 @@
  *
  * Covers scenarios 1-18 of the lifecycle matrix.
  */
+import { vi } from 'vitest';
 import { check, finish, installRafStub } from './_harness';
 installRafStub();
 
@@ -461,6 +462,11 @@ await (async () => {
     // A backend stream that dies mid-flight (HTTP 200, zero content — the
     // RETRYABLE transport kind of failure, unlike a definitive 5xx verdict)
     // must be recovered by the direct-provider fallback chain.
+    //
+    // Opt in to a direct provider with a fake key: CI has no provider keys, and
+    // this scenario is specifically about the client-side fallback path. The
+    // transport is still the mocked `fetch` above — nothing leaves the process.
+    vi.stubEnv('VITE_GROQ_API_KEY', 'unit-test-direct-stub');
     await mock(
         [new Response(''), say('Recovered and created the page.')],
         async calls => {
@@ -472,6 +478,7 @@ await (async () => {
         },
         { stream: true }, // plain chat streams (SSE); the dead first stream exercises the fallback chain
     );
+    vi.stubEnv('VITE_GROQ_API_KEY', '');
 
     // ════════════════════════════════════════════════════════════════════
     // 16 — Partial filesystem failures

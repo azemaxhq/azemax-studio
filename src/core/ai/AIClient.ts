@@ -14,7 +14,7 @@ import {
     allProvidersFailed,
 } from './AIError';
 import type { AIErrorCode } from './AIError';
-import { buildDirectChain, OR_PREFIX, KILO_PREFIX } from './modelRouter';
+import { buildDirectChain, configuredDirectProviders, OR_PREFIX, KILO_PREFIX } from './modelRouter';
 import { providerRegistry, customProvider } from './providers/registry';
 import type { UnifiedAIRequestOptions, UnifiedStreamEvent } from './byokTypes';
 import {
@@ -658,6 +658,15 @@ export async function* streamChat(
             // auth/config/abort) is surfaced directly — no client re-fallback.
             if (!aiErr.retryable) throw aiErr;
             if (!allowFallback) throw aiErr;
+            // With no directly-configured providers there is nothing to fall
+            // back to. Surface the backend's real (retryable) verdict instead
+            // of replacing it with a misleading "all providers failed" error.
+            // Check configuration directly: `buildDirectChain` can still carry
+            // an explicitly requested model whose provider has no key (and
+            // production disables direct access entirely).
+            if (configuredDirectProviders().length === 0) {
+                throw aiErr;
+            }
             console.warn('[AIClient] Backend stream failed, falling back to direct providers:', aiErr.message);
         }
     }
@@ -1012,6 +1021,15 @@ export async function sendChatResult(
                 return { ok: false, error: aiErr };
             }
             if (!allowFallback) {
+                tracker.fail(aiErr.message);
+                tracker.log();
+                return { ok: false, error: aiErr };
+            }
+            // No direct provider is configured (the normal production shape —
+            // provider keys are server-only). Return the backend's typed error
+            // so its retryable flag survives to the caller (e.g. the agent
+            // loop's bounded transient retry).
+            if (configuredDirectProviders().length === 0) {
                 tracker.fail(aiErr.message);
                 tracker.log();
                 return { ok: false, error: aiErr };

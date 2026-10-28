@@ -227,6 +227,46 @@ describe('Azemax Default mode', () => {
         }
     });
 
+    it('6b. preserves a retryable backend verdict when no direct provider is configured', async () => {
+        // The test setup clears the browser-visible provider keys, so this is
+        // the production shape: an explicit model string must not make the
+        // client attempt the disabled direct path and replace the backend's
+        // retryable verdict with a non-retryable "API key required" error.
+        recordingFetch([{
+            status: 503,
+            body: { error: { code: 'AI_PROVIDER_UNAVAILABLE', message: 'upstream warming up', retryable: true } },
+        }]);
+        const result = await sendChatResult(
+            [{ role: 'user', content: 'hi' }],
+            { task: 'chat', model: 'qwen/qwen3.8-27b' },
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.error.retryable).toBe(true);
+            expect(result.error.code).toBe(AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE);
+            expect(result.error.message).toBe('upstream warming up');
+        }
+    });
+
+    it('6c. streaming preserves a retryable backend verdict when no direct provider is configured', async () => {
+        recordingFetch([{
+            status: 503,
+            body: { error: { code: 'AI_PROVIDER_UNAVAILABLE', message: 'upstream warming up', retryable: true } },
+        }]);
+        await expect((async () => {
+            for await (const _event of streamChat(
+                [{ role: 'user', content: 'hi' }],
+                { task: 'chat', model: 'qwen/qwen3.8-27b' },
+            )) {
+                // Drain the stream; the failure is expected before any delta.
+            }
+        })()).rejects.toMatchObject({
+            retryable: true,
+            code: AI_ERROR_CODES.AI_PROVIDER_UNAVAILABLE,
+            message: 'upstream warming up',
+        });
+    });
+
     it('17. a default-provider outage does not silently trigger BYOK', async () => {
         // A BYOK credential exists, but the mode is Azemax Default.
         setSetting('ai.activeProvider', 'openai');

@@ -170,10 +170,15 @@ export function buildDirectChain(
     const direct = configuredDirectProviders();
     const chain: string[] = [];
 
-    const primary = requestedModel || defaultModelFor(direct[0] || 'groq');
-    if (inferProvider(primary) !== 'nvidia') {
-        chain.push(primary);
+    if (requestedModel && inferProvider(requestedModel) !== 'nvidia') {
+        // An explicitly requested direct model is honoured even before the
+        // key check: the caller selected it, and resolveDirectEndpoint will
+        // report a real configuration error if no credential exists.
+        chain.push(requestedModel);
     } else if (direct.length > 0) {
+        // NVIDIA is backend-only. When it (or nothing) was requested, start
+        // with the first DIRECTLY CONFIGURED provider — never a fabricated
+        // default for a provider with no key.
         chain.push(defaultModelFor(direct[0]));
     }
 

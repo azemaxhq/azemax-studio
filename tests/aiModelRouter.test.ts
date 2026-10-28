@@ -13,6 +13,10 @@ import { check, finish } from './_harness';
 // (routing logic only — the value is never used for network). Each test file
 // runs isolated, so this does not leak into other suites.
 if (!process.env.GROQ_API_KEY) process.env.GROQ_API_KEY = 'unit-test-routing-stub';
+// The registry lists only configured providers. CI has no NVIDIA key, so the
+// primary entry would be absent for an environmental reason rather than a
+// routing defect. A stub key marks it configured; no network call is made.
+if (!process.env.NVIDIA_API_KEY) process.env.NVIDIA_API_KEY = 'unit-test-routing-stub';
 
 // ============================================================================
 // Server router (CJS)

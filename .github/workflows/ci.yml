@@ -148,8 +148,18 @@ jobs:
 
       - name: Check for hardcoded secrets
         run: |
-          # Scan for common secret patterns in tracked files (excluding .env.example, LICENSE, NOTICE)
-          if git ls-files | xargs grep -l -E "(api[_-]?key|secret|password|token)\s*[:=]\s*[\"'][^\"']{8,}" -- ':(exclude).env.example' ':(exclude)LICENSE' ':(exclude)NOTICE' 2>/dev/null; then
+          # Scan tracked source for credential-shaped assignments. The value
+          # must be a single token (no whitespace) so user-facing validation
+          # copy such as "Enter your password." is not reported. Syntax-
+          # highlighting maps are excluded: their `token: '<scope>'` entries
+          # are grammar scopes, not credentials.
+          if git ls-files -z -- . \
+              ':(exclude).env.example' \
+              ':(exclude)LICENSE' \
+              ':(exclude)NOTICE' \
+              ':(exclude)src/core/editor/azemaxDarkPlusTheme.ts' \
+              ':(exclude)src/core/editor/darkPlusTokenizers/**' \
+            | xargs -0 grep -l -E "(api[_-]?key|secret|password|token)[[:space:]]*[:=][[:space:]]*[\"'][^ \"']{8,}[\"']" 2>/dev/null; then
             echo "::error::Potential hardcoded secrets found in tracked files"
             exit 1
           fi

@@ -13,6 +13,9 @@ export default defineConfig({
     ],
     testTimeout: 30000,
     hookTimeout: 10000,
+    // Never inherit provider credentials from a developer's .env — see
+    // tests/setup.ts. CI runs without keys and must take the same path.
+    setupFiles: ['tests/setup.ts'],
     // Fail loudly on leaked handles from server-style tests.
     teardownTimeout: 5000,
   },

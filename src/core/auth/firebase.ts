@@ -29,18 +29,18 @@ export interface FirebaseClientConfig {
 
 function readClientConfig(): FirebaseClientConfig {
     try {
-        // Reference `import.meta.env` literally so Vite injects it (contextual
-        // note: the optional-chained form on `import.meta` itself is fine, but
-        // an indirect reference would break env injection, leaving Firebase
-        // unconfigured in every build).
-        const env = import.meta.env as Record<string, string | undefined> | undefined;
+        // Access each key directly. Referencing `import.meta.env` as a whole
+        // makes Vite inline the entire environment object, which leaks the
+        // *names* of unrelated (provider) variables into the production
+        // bundle and trips the CI secret-name scan. Direct member access lets
+        // Vite inline only the Firebase values.
         return {
-            apiKey: env?.VITE_FIREBASE_API_KEY,
-            authDomain: env?.VITE_FIREBASE_AUTH_DOMAIN,
-            projectId: env?.VITE_FIREBASE_PROJECT_ID,
-            storageBucket: env?.VITE_FIREBASE_STORAGE_BUCKET,
-            messagingSenderId: env?.VITE_FIREBASE_MESSAGING_SENDER_ID,
-            appId: env?.VITE_FIREBASE_APP_ID,
+            apiKey: import.meta.env?.VITE_FIREBASE_API_KEY,
+            authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN,
+            projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID,
+            storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET,
+            messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID,
+            appId: import.meta.env?.VITE_FIREBASE_APP_ID,
         };
     } catch {
         return {};

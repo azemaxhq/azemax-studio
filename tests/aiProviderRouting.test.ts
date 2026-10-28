@@ -1,8 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { inferProvider, buildDirectChain, configuredDirectProviders, defaultModelFor } from '../src/core/ai/modelRouter';
 import { getTaskConfig } from '../src/core/ai/taskConfigClient';
 
 describe('AI Provider Routing', () => {
+    // A configured direct provider is a routing fixture, not a credential:
+    // the transport is never called in these tests. CI has no provider keys,
+    // so the chain would otherwise be empty and the NVIDIA-primary case could
+    // not be asserted deterministically.
+    beforeEach(() => {
+        vi.stubEnv('VITE_GROQ_API_KEY', 'unit-test-routing-stub');
+    });
+
     describe('inferProvider', () => {
         it('should identify NVIDIA models', () => {
             expect(inferProvider('nvidia/nemotron-3-super-120b-a12b')).toBe('nvidia');

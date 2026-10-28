@@ -339,7 +339,13 @@ await (async () => {
                     history: [],
                     previousTask: prior,
                 });
-                check('9. follow-up "continue" applies to the same task', Boolean(res.taskContext?.followUps.includes('add dark mode')));
+                check(
+                    '9. follow-up "continue" applies to the same task',
+                    Boolean(
+                        res.taskContext?.followUps.includes('continue') &&
+                        res.taskContext?.followUps.includes('make it responsive'),
+                    ),
+                );
             },
         );
     }

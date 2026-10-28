@@ -268,6 +268,14 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
      * still has something truthful to report instead of an empty turn.
      */
     let lastModelContent = '';
+    /**
+     * Consecutive retryable model-call failures. `sendChatResult` returns
+     * provider errors as a union instead of throwing, so `withRetry` above
+     * cannot see them. This counter gives those verdicts the same bounded
+     * retry treatment: enough attempts to ride out a transient 5xx/rate limit,
+     * never an unbounded loop.
+     */
+    let transientModelFailures = 0;
 
     const finish = (
         stopReason: AgentLoopResult['stopReason'],
@@ -407,8 +415,26 @@ export async function runAgentLoop(req: AgentLoopRequest): Promise<AgentLoopResu
             if (result.error?.retryable === false && /abort/i.test(result.error.message)) {
                 return finish('cancelled', false);
             }
-            return finish('error', false, result.error.message);
+            // A transient provider verdict is recoverable when the task already
+            // has verified work to preserve. Retry within the same bounded
+            // step budget (the outer withRetry only sees thrown errors, and
+            // AIClient deliberately returns typed errors through its union).
+            if (
+                result.error?.retryable === true &&
+                changedWorkspace &&
+                transientModelFailures < RETRY_CONFIG.maxRetries
+            ) {
+                transientModelFailures++;
+                console.warn(
+                    `[AgentLoop] Transient provider failure after tool execution, retrying (${transientModelFailures}/${RETRY_CONFIG.maxRetries}): ${result.error.message}`,
+                );
+                req.onStatus?.('thinking');
+                continue;
+            }
+            return finish('error', false, result.error?.message ?? 'The assistant request failed');
         }
+
+        transientModelFailures = 0;
 
         // ---- 3. identify STRUCTURED tool calls ----------------------------
         const toolCalls = result.toolCalls ?? [];
