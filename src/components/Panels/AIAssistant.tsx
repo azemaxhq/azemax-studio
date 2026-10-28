@@ -1886,7 +1886,7 @@ Efficient: Get to the point in 2-3 short paragraphs or bullets. No preamble. Cod
                 if (code === AI_ERROR_CODES.AI_PROVIDER_CONFIG_ERROR || error?.message?.includes('No AI providers are configured')) {
                     what = 'AI not configured';
                     why = 'No API keys found.';
-                    friendlyError = 'No AI providers are configured. Add NVIDIA_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY or HF_TOKEN to .env and restart the server. Deterministic tasks like “Remove comments” and “/// hello world” work offline.';
+                    friendlyError = 'No AI providers are configured. Ask the administrator to configure a server-side AI provider. Deterministic tasks like “Remove comments” and “/// hello world” work offline.';
                 } else if (code === AI_ERROR_CODES.AI_PROVIDER_AUTH_ERROR || error?.message?.includes('API key') || error?.message?.includes('auth')) {
                     what = 'Authentication failed';
                     why = 'API key rejected.';

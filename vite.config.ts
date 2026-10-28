@@ -1,33 +1,52 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'node:path'
 
 // https://vite.dev/config/
-function productionSecretGuard() {
+function clientEnvGuard() {
   return {
-    name: 'azemax-prod-secret-guard',
-    config(_config: unknown, { command }: { command: string }) {
+    name: 'azemax-client-env-guard',
+    config(_config: unknown, { command, mode }: { command: string; mode: string }) {
       if (command !== 'build') return;
-      const rawBackend = process.env.VITE_USE_BACKEND_AI;
-      const backendAI = rawBackend === undefined ? 'true' : rawBackend;
-      if (backendAI === 'false') return;
-      // Strip provider keys from the Vite define/env so they are never inlined into dist/
-      // even if .env contains them.  Vite reads .env into process.env AND into its
-      // internal `env` object — we blank both.  The blanking is done via `define`
-      // override which wins over Vite's env injection.
-      const hasViteKeys = !!(process.env.VITE_GROQ_API_KEY || process.env.VITE_OPENROUTER_API_KEY || process.env.VITE_HF_TOKEN || process.env.VITE_KILO_API_KEY);
+      // Vite inlines the ENTIRE `import.meta.env` object whenever the browser
+      // references a key that is absent at build time. That object includes the
+      // names (and, without blanking, the values) of server-only provider
+      // variables. Define every key the client reads with an explicit fallback
+      // so Vite never needs the full object.
+      const env = loadEnv(mode, process.cwd(), 'VITE_');
+      const value = (key: string, fallback = '') => JSON.stringify(env[key] ?? fallback);
+
+      const hasViteKeys = !!(env.VITE_GROQ_API_KEY || env.VITE_OPENROUTER_API_KEY || env.VITE_HF_TOKEN || env.VITE_KILO_API_KEY);
       if (hasViteKeys) {
-        console.warn('\n⚠️  [azemax] VITE_ provider keys detected — blanking for production bundle (backend holds keys).');
+        console.warn('\n⚠️  [azemax] VITE_ provider keys detected — not embedding them in the bundle (backend/BYOK holds credentials).');
       }
+      if (env.VITE_USE_BACKEND_AI === 'false') {
+        console.warn('\n⚠️  [azemax] VITE_USE_BACKEND_AI=false is a dev-server-only mode; shipped builds do not embed provider keys and must use the backend or BYOK.');
+      }
+      // Defense in depth: remove provider credentials from process.env so
+      // Vite's environment object cannot pick them up either. Direct-provider
+      // access is a dev-server-only fallback; shipped builds have
+      // `import.meta.env.DEV === false`, so blanking these does not remove a
+      // supported production path.
       delete process.env.VITE_GROQ_API_KEY;
       delete process.env.VITE_OPENROUTER_API_KEY;
       delete process.env.VITE_HF_TOKEN;
       delete process.env.VITE_KILO_API_KEY;
-      // Force Vite's define to blank them even if .env is re-loaded internally
+
       const blank = JSON.stringify('');
       return {
         define: {
+          'import.meta.env.VITE_API_URL': value('VITE_API_URL', '/api'),
+          'import.meta.env.VITE_USE_BACKEND_AI': value('VITE_USE_BACKEND_AI', 'true'),
+          'import.meta.env.VITE_WS_URL': value('VITE_WS_URL'),
+          'import.meta.env.VITE_WS_PORT': value('VITE_WS_PORT', '3001'),
+          'import.meta.env.VITE_FIREBASE_API_KEY': value('VITE_FIREBASE_API_KEY'),
+          'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': value('VITE_FIREBASE_AUTH_DOMAIN'),
+          'import.meta.env.VITE_FIREBASE_PROJECT_ID': value('VITE_FIREBASE_PROJECT_ID'),
+          'import.meta.env.VITE_FIREBASE_STORAGE_BUCKET': value('VITE_FIREBASE_STORAGE_BUCKET'),
+          'import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID': value('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+          'import.meta.env.VITE_FIREBASE_APP_ID': value('VITE_FIREBASE_APP_ID'),
           'import.meta.env.VITE_GROQ_API_KEY': blank,
           'import.meta.env.VITE_OPENROUTER_API_KEY': blank,
           'import.meta.env.VITE_HF_TOKEN': blank,
@@ -64,7 +83,7 @@ function validateApiUrl() {
 export default defineConfig({
   plugins: [
     react(),
-    productionSecretGuard(),
+    clientEnvGuard(),
     validateApiUrl(),
     ...(process.env.ANALYZE ? [visualizer({
       filename: 'dist/stats.html',
