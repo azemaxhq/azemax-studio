@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { CORS_ORIGIN, LIMITS, isProd } = require('./config/index.cjs');
+const { CORS_ORIGIN, LIMITS, TRUST_PROXY_HOPS, isProd } = require('./config/index.cjs');
 const { registerRoutes } = require('./routes/index.cjs');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler.cjs');
 const { requestIdMiddleware } = require('./middleware/requestId.cjs');
@@ -56,6 +56,22 @@ function identityKey(prefix) {
     };
 }
 
+/**
+ * Match a request path against API scopes case-insensitively.
+ *
+ * Express routing is case-insensitive by default, so a case-sensitive
+ * `startsWith` check lets `/API/EXECUTE/run` bypass the limiter while still
+ * reaching the handler. Compare normalized paths and require a segment
+ * boundary so `/api/execute` never matches `/api/executables`.
+ */
+function pathInScope(prefixes) {
+    const normalized = prefixes.map((p) => p.toLowerCase().replace(/\/+$/, ''));
+    return (req) => {
+        const path = String(req.path || '').toLowerCase().replace(/\/+$/, '');
+        return normalized.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+    };
+}
+
 function createApp() {
     const app = express();
 
@@ -77,8 +93,11 @@ function createApp() {
 
     app.disable('x-powered-by');
 
-    if (isProd) {
-        app.set('trust proxy', 1);
+    if (TRUST_PROXY_HOPS > 0) {
+        // Number of trusted reverse-proxy hops. With `true` (Express default
+        // when enabled) a client can spoof X-Forwarded-For; a hop count makes
+        // the client IP deterministic for per-IP limits.
+        app.set('trust proxy', TRUST_PROXY_HOPS);
     }
 
     app.use(cors({
@@ -92,10 +111,14 @@ function createApp() {
     app.use(authenticateRequest);
 
     app.use(express.json({ limit: '1mb' }));
-    // HPP-lite: collapse duplicate query keys to last value
-    app.use((req, _, next) => {
-        for (const k of Object.keys(req.query)) {
-            if (Array.isArray(req.query[k])) req.query[k] = req.query[k][req.query[k].length - 1];
+    // Reject duplicate query keys instead of silently picking one. No route
+    // consumes query parameters today; accepting arrays would make future
+    // parameter handling ambiguous (HPP).
+    app.use((req, res, next) => {
+        for (const key of Object.keys(req.query)) {
+            if (Array.isArray(req.query[key])) {
+                return res.status(400).json({ error: `Duplicate query parameter: ${key}` });
+            }
         }
         next();
     });
@@ -106,7 +129,7 @@ function createApp() {
         max: LIMITS.AUTH_RATE_PER_MINUTE,
         keyOf: (req) => `auth:ip:${req.ip || req.socket.remoteAddress || 'unknown'}`,
         message: 'Too many authentication attempts. Try again later.',
-        scope: (req) => req.path.startsWith('/api/auth/sync'),
+        scope: pathInScope(['/api/auth/sync']),
     }));
     // AI: per-user (or per-IP for unauthenticated, though routes require auth).
     app.use(createPolicyLimiter({
@@ -114,7 +137,7 @@ function createApp() {
         max: LIMITS.AI_REQUESTS_PER_MINUTE,
         keyOf: identityKey('ai'),
         message: 'AI rate limit exceeded. Try again shortly.',
-        scope: (req) => req.path.startsWith('/api/ai/'),
+        scope: pathInScope(['/api/ai']),
     }));
     // Execution: per-user.
     app.use(createPolicyLimiter({
@@ -122,7 +145,7 @@ function createApp() {
         max: LIMITS.EXEC_REQUESTS_PER_MINUTE,
         keyOf: identityKey('exec'),
         message: 'Execution rate limit exceeded. Try again shortly.',
-        scope: (req) => req.path.startsWith('/api/execute'),
+        scope: pathInScope(['/api/execute']),
     }));
     // Projects / account sync writes hit disk/DB: per-user, generous but bounded.
     app.use(createPolicyLimiter({
@@ -130,7 +153,7 @@ function createApp() {
         max: 180,
         keyOf: identityKey('proj'),
         message: 'Too many sync requests. Try again shortly.',
-        scope: (req) => req.path.startsWith('/api/projects') || req.path.startsWith('/api/account/'),
+        scope: pathInScope(['/api/projects', '/api/account']),
     }));
 
     registerRoutes(app);

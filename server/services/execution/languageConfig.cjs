@@ -2,7 +2,8 @@ const path = require('path');
 const { RUNTIMES } = require('./runtimeDetection.cjs');
 
 function getLanguageConfig(language, filePath, tmpDir) {
-    const baseName = path.basename(filePath, path.extname(filePath));
+    const key = String(language || '').toLowerCase();
+    const baseName = path.basename(String(filePath || ''), path.extname(String(filePath || '')));
     const outputBinary = path.join(tmpDir, baseName);
 
     const configs = {
@@ -110,7 +111,10 @@ function getLanguageConfig(language, filePath, tmpDir) {
         },
     };
 
-    return configs[language] || null;
+    // Own-property lookup only: language comes from client input, and a bare
+    // `configs[language]` would resolve prototype keys such as `__proto__` or
+    // `constructor` to non-null values.
+    return Object.prototype.hasOwnProperty.call(configs, key) ? configs[key] : null;
 }
 
 function canRunLocally(config) {

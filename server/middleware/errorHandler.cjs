@@ -1,9 +1,12 @@
 const { AIError, AI_ERROR_CODES } = require('../services/ai/aiError.cjs');
+const { isProd } = require('../config/index.cjs');
 
 function notFoundHandler(req, res) {
     res.status(404).json({
         error: 'Not found',
-        path: req.originalUrl,
+        // Path only: the query string can contain tokens or other secrets and
+        // must not be reflected into a response/log by the 404 handler.
+        path: req.path,
     });
 }
 
@@ -21,7 +24,6 @@ function errorHandler(err, req, res, _next) {
     }
 
     const status = err.status || err.statusCode || 500;
-    const isProd = process.env.NODE_ENV === 'production';
     console.error(`[API] ${req.method} ${req.path}:`, err.message || err);
 
     res.status(status).json({

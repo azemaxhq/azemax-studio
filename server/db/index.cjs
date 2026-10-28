@@ -123,14 +123,30 @@ function nowIso() {
 
 function openDatabase(dbPath = DATABASE_PATH) {
     if (db) return db;
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const isMemory = dbPath === ':memory:';
+    if (!isMemory) {
+        fs.mkdirSync(path.dirname(dbPath), { recursive: true, mode: 0o700 });
+        try { fs.chmodSync(path.dirname(dbPath), 0o700); } catch { /* unsupported */ }
+    }
     const instance = new DatabaseSync(dbPath);
     // Crash-safe + concurrent-friendly pragmas for a single-process server.
     instance.exec('PRAGMA journal_mode = WAL;');
     instance.exec('PRAGMA foreign_keys = ON;');
     instance.exec('PRAGMA busy_timeout = 5000;');
     instance.exec('PRAGMA synchronous = FULL;');
+    // The database contains user identities and synced account state. Keep it
+    // owner-only even when the parent directory is created by a platform.
+    if (!isMemory) {
+        for (const file of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+            try { fs.chmodSync(file, 0o600); } catch { /* not created yet / unsupported */ }
+        }
+    }
     runMigrations(instance);
+    if (!isMemory) {
+        for (const file of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+            try { fs.chmodSync(file, 0o600); } catch { /* not created yet / unsupported */ }
+        }
+    }
     db = instance;
     logger.info('db opened', { path: dbPath, schemaVersion: SCHEMA_VERSION });
     return db;

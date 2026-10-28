@@ -54,40 +54,56 @@ function summarizeTree(tree) {
     const files = [];
     let totalBytes = 0;
     if (!Array.isArray(tree)) throw error(400, 'Project tree must be an array');
-    const stack = [...tree];
+    const stack = tree.map((node) => ({ node, prefix: '' }));
     const seen = new Set();
+    const seenPaths = new Set();
+    let fileCount = 0;
     let nodes = 0;
     while (stack.length > 0) {
-        const node = stack.pop();
+        const { node, prefix } = stack.pop();
         if (!node || typeof node !== 'object' || seen.has(node)) continue;
         seen.add(node);
         nodes++;
         if (nodes > LIMITS.MAX_FILES_PER_WORKSPACE * 4) {
             throw error(413, 'Project structure too large');
         }
+        const name = String(node.name || '').slice(0, 200);
+        // Full path (not basename) keeps same-named files in different
+        // directories distinct in the materialized index.
+        const path = prefix ? `${prefix}/${name}` : name;
         if (node.type === 'file') {
             const content = typeof node.content === 'string' ? node.content : '';
             const size = Buffer.byteLength(content, 'utf8');
             if (size > LIMITS.MAX_FILE_BYTES) {
                 throw error(413, `File "${String(node.name || 'unnamed').slice(0, 80)}" exceeds the ${LIMITS.MAX_FILE_BYTES}-byte file limit`);
             }
-            files.push({ name: String(node.name || ''), size });
+            fileCount++;
+            // The index key is unique per tree node even when two files in the
+            // same folder share a name (the tree is authoritative; the index is
+            // only for quota accounting). Duplicate names must still count
+            // toward the per-project file limit.
+            let key = path.slice(0, 500);
+            if (seenPaths.has(key)) key = `${key.slice(0, 480)}#${fileCount}`;
+            seenPaths.add(key);
+            files.push({ name: key, size });
             totalBytes += size;
         }
         if (Array.isArray(node.children)) {
-            for (const child of node.children) stack.push(child);
+            for (const child of node.children) stack.push({ node: child, prefix: path });
         }
     }
-    if (files.length > LIMITS.MAX_FILES_PER_WORKSPACE) {
+    if (fileCount > LIMITS.MAX_FILES_PER_WORKSPACE) {
         throw error(413, `Project exceeds the ${LIMITS.MAX_FILES_PER_WORKSPACE}-file limit`);
     }
-    return { files, totalBytes, fileCount: files.length };
+    return { files, totalBytes, fileCount };
 }
 
 function userStorageBytes(ownerId) {
     const db = getDb();
+    // LENGTH(text) counts characters; CAST to BLOB makes it count UTF-8 bytes,
+    // matching the byte quotas used everywhere else.
     const row = db.prepare(
-        `SELECT COALESCE(SUM(LENGTH(tree_json)), 0) AS bytes, COUNT(*) AS n FROM projects WHERE owner_id = ?`,
+        `SELECT COALESCE(SUM(LENGTH(CAST(tree_json AS BLOB))), 0) AS bytes, COUNT(*) AS n FROM projects WHERE owner_id = ?`,
     ).get(ownerId);
     return { bytes: Number(row.bytes || 0), count: Number(row.n || 0) };
 }
@@ -130,13 +146,6 @@ function createProject(ownerId, { name, tree }) {
         throw error(413, `Project too large (max ${LIMITS.MAX_WORKSPACE_BYTES} bytes)`);
     }
     const summary = summarizeTree(cleanTree);
-    const usage = userStorageBytes(ownerId);
-    if (usage.count >= LIMITS.MAX_WORKSPACES_PER_USER) {
-        throw error(403, `Project limit reached (${LIMITS.MAX_WORKSPACES_PER_USER})`);
-    }
-    if (usage.bytes + Buffer.byteLength(serialized, 'utf8') > LIMITS.MAX_USER_STORAGE_BYTES) {
-        throw error(403, 'Storage quota exceeded');
-    }
     const db = getDb();
     const id = crypto.randomUUID();
     const now = nowIso();
@@ -148,6 +157,15 @@ function createProject(ownerId, { name, tree }) {
         'INSERT INTO project_files (project_id, path, size_bytes, updated_at) VALUES (?, ?, ?, ?)',
     );
     const txn = () => transaction(() => {
+        // Authoritative quota check inside the write transaction: two concurrent
+        // creates can no longer both pass a pre-transaction read.
+        const usage = userStorageBytes(ownerId);
+        if (usage.count >= LIMITS.MAX_WORKSPACES_PER_USER) {
+            throw error(403, `Project limit reached (${LIMITS.MAX_WORKSPACES_PER_USER})`);
+        }
+        if (usage.bytes + Buffer.byteLength(treeJson, 'utf8') > LIMITS.MAX_USER_STORAGE_BYTES) {
+            throw error(403, 'Storage quota exceeded');
+        }
         insertProject.run(id, ownerId, cleanName, treeJson, now, now);
         for (const f of summary.files) insertFile.run(id, f.name.slice(0, 500), f.size, now);
     });
@@ -176,24 +194,30 @@ function saveProject(ownerId, id, { name, tree }) {
         throw error(413, `Project too large (max ${LIMITS.MAX_WORKSPACE_BYTES} bytes)`);
     }
     const summary = summarizeTree(nextTree);
-    const usage = userStorageBytes(ownerId);
-    const oldSize = Buffer.byteLength(existing.tree_json || '[]', 'utf8');
-    if (usage.bytes - oldSize + Buffer.byteLength(serialized, 'utf8') > LIMITS.MAX_USER_STORAGE_BYTES) {
-        throw error(403, 'Storage quota exceeded');
-    }
     const now = nowIso();
     const treeJson = JSON.stringify(nextTree);
     const updateProject = db.prepare('UPDATE projects SET name = ?, tree_json = ?, updated_at = ? WHERE id = ? AND owner_id = ?');
     const deleteFiles = db.prepare('DELETE FROM project_files WHERE project_id = ?');
     const insertFile = db.prepare('INSERT INTO project_files (project_id, path, size_bytes, updated_at) VALUES (?, ?, ?, ?)');
     const txn = () => transaction(() => {
+        // Re-read and re-check inside the transaction so the quota decision is
+        // based on the committed state, not a pre-transaction snapshot.
+        const current = db.prepare('SELECT tree_json, created_at FROM projects WHERE id = ? AND owner_id = ?')
+            .get(pid, ownerId);
+        if (!current) throw error(404, 'Project not found');
+        const usage = userStorageBytes(ownerId);
+        const oldSize = Buffer.byteLength(current.tree_json || '[]', 'utf8');
+        if (usage.bytes - oldSize + Buffer.byteLength(treeJson, 'utf8') > LIMITS.MAX_USER_STORAGE_BYTES) {
+            throw error(403, 'Storage quota exceeded');
+        }
         const res = updateProject.run(nextName, treeJson, now, pid, ownerId);
         if (res.changes === 0) throw error(404, 'Project not found');
         deleteFiles.run(pid);
         for (const f of summary.files) insertFile.run(pid, f.name.slice(0, 500), f.size, now);
+        return current.created_at;
     });
-    txn();
-    return { id: pid, name: nextName, tree: nextTree, createdAt: existing.created_at, updatedAt: now };
+    const createdAt = txn();
+    return { id: pid, name: nextName, tree: nextTree, createdAt, updatedAt: now };
 }
 
 function deleteProject(ownerId, id) {

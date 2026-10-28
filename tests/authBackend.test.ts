@@ -102,7 +102,8 @@ fb.__setVerifyIdTokenForTests(async (idToken: string) => {
 
 const svcMod = await import('../server/services/auth/authService.cjs');
 const svc = (svcMod as unknown as { default?: typeof svcMod }).default ?? svcMod;
-const { syncFirebaseUser, findUserByFirebaseUid, findUserById } = svc;
+const { syncFirebaseUser, findUserByFirebaseUid, findUserById, reserveDaily, getTodayUsage } = svc;
+const { LIMITS } = await import('../server/config/index.cjs');
 
 const authMod = await import('../server/middleware/auth.cjs');
 const auth = (authMod as unknown as { default?: typeof authMod }).default ?? authMod;
@@ -190,7 +191,7 @@ function countByUid(uid: string): number {
 
     // Stored credential is a non-reversible placeholder, never a password.
     const stored = rawDb.prepare('SELECT password_hash FROM users WHERE firebase_uid = ?').get(testUid);
-    check('stores no plaintext password (placeholder only)', String(stored?.password_hash).startsWith('firebase:'));
+    check('stores no plaintext password (placeholder only)', String(stored?.password_hash).startsWith('!firebase:'));
 
     // Idempotent re-sync updates fields without duplicates.
     const updated = syncFirebaseUser({
@@ -217,6 +218,28 @@ function countByUid(uid: string): number {
 }
 
 {
+    // Provider continuity: a different sign-in method cannot promote an
+    // unverified row on the strength of a bare email_verified flag. It must be
+    // linked to the same Firebase account (token identities).
+    syncFirebaseUser({ uid: 'svc-uid-provider', email: 'provider@example.com', emailVerified: false, providerId: 'password' });
+    let mismatch: { status?: number; code?: string } | null = null;
+    try {
+        syncFirebaseUser({ uid: 'svc-uid-provider', email: 'provider@example.com', emailVerified: true, providerId: 'google.com' });
+    } catch (e) {
+        mismatch = e as { status?: number; code?: string };
+    }
+    check('unlinked provider cannot self-verify', mismatch?.status === 409 && mismatch?.code === 'auth/provider-mismatch');
+    const linked = syncFirebaseUser({
+        uid: 'svc-uid-provider',
+        email: 'provider@example.com',
+        emailVerified: true,
+        providerId: 'google.com',
+        providerIds: ['password', 'google.com'],
+    });
+    check('linked provider can verify', linked.emailVerified === true);
+}
+
+{
     // Account linking by verified email.
     const preExistingEmail = 'legacy.person@example.com';
     const preExistingId = `pre-${Date.now()}`;
@@ -237,10 +260,19 @@ function countByUid(uid: string): number {
     check('associates new firebase_uid', findUserByFirebaseUid(linkedUid)?.id === preExistingId);
     check('email link keeps a single row for the uid', countByUid(linkedUid) === 1);
 
-    // A second provider identity with the SAME email resolves to the same
-    // application user (no duplicate account created).
-    const second = syncFirebaseUser({ uid: 'fb-link-legacy-2', email: preExistingEmail, emailVerified: true, providerId: 'google.com' });
-    check('same email never creates a second account', second.id === preExistingId);
+    // A second Firebase identity with the SAME email must NOT be allowed to
+    // take over an already-bound row. Email is not proof of identity; only the
+    // original Firebase UID owns the account.
+    let rebindConflict: { status?: number; code?: string } | null = null;
+    try {
+        syncFirebaseUser({ uid: 'fb-link-legacy-2', email: preExistingEmail, emailVerified: true, providerId: 'google.com' });
+    } catch (e) {
+        rebindConflict = e as { status?: number; code?: string };
+    }
+    check('second UID cannot rebind a bound account', rebindConflict?.status === 409
+        && rebindConflict?.code === 'auth/email-already-in-use');
+    check('original binding is unchanged', findUserByFirebaseUid(linkedUid)?.id === preExistingId
+        && findUserByFirebaseUid('fb-link-legacy-2') === null);
 
     // Validation: rejects missing or invalid inputs.
     let missingUidThrown = false;
@@ -456,6 +488,32 @@ const A = await listen(createApp());
     check('rate-limit: 429 carries Retry-After', typeof retryAfter === 'string' && retryAfter.length > 0);
     check('rate-limit: requests allowed up to the configured maximum', allowed > 0 && allowed <= 30);
     await new Promise<void>((resolve) => B.server.close(() => resolve()));
+}
+
+// ---------------------------------------------------------------------------
+// Atomic daily quota reservation (charged BEFORE provider/execution work)
+// ---------------------------------------------------------------------------
+{
+    const quotaUser = syncFirebaseUser({
+        uid: 'quota-uid',
+        email: 'quota.user@example.com',
+        emailVerified: true,
+        providerId: 'password',
+    });
+
+    check('quota: full daily execution reservation succeeds',
+        reserveDaily(quotaUser.id, { executions: LIMITS.EXEC_REQUESTS_PER_DAY }) === true);
+    check('quota: one more execution is rejected',
+        reserveDaily(quotaUser.id, { executions: 1 }) === false);
+    check('quota: execution counter stops exactly at the cap',
+        getTodayUsage(quotaUser.id).executions === LIMITS.EXEC_REQUESTS_PER_DAY);
+
+    check('quota: full daily AI reservation succeeds',
+        reserveDaily(quotaUser.id, { aiRequests: LIMITS.AI_REQUESTS_PER_DAY }) === true);
+    check('quota: one more AI request is rejected',
+        reserveDaily(quotaUser.id, { aiRequests: 1 }) === false);
+    check('quota: AI counter stops exactly at the cap',
+        getTodayUsage(quotaUser.id).ai_requests === LIMITS.AI_REQUESTS_PER_DAY);
 }
 
 await new Promise<void>((resolve) => A.server.close(() => resolve()));

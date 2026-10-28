@@ -1,7 +1,8 @@
 const { TerminalManager, STATES, getDefaultShell, getDefaultShellArgs } = require('../services/terminal/terminalManager.cjs');
-const { findUserByFirebaseUid, syncFirebaseUser, recordUsage } = require('../services/auth/authService.cjs');
+const { findUserByFirebaseUid, syncFirebaseUser, reserveDaily } = require('../services/auth/authService.cjs');
 const { verifyIdToken, isFirebaseConfigured } = require('../services/auth/firebaseAdmin.cjs');
-const { CORS_LIST, LIMITS, ALLOW_SHELL } = require('../config/index.cjs');
+const { CORS_LIST, LIMITS, ALLOW_SHELL, TRUST_PROXY_HOPS, FIREBASE_CHECK_REVOKED } = require('../config/index.cjs');
+const { truncateUtf8, byteLength } = require('../lib/bytes.cjs');
 const logger = require('../lib/logger.cjs');
 
 // Terminal states after which the session id is safely reusable (process gone
@@ -36,7 +37,27 @@ function originAllowed(req) {
 }
 
 function clientIp(req) {
+    // Match Express's `trust proxy` hop count. With a trusted edge (default 1
+    // in production) the rightmost X-Forwarded-For entry is the client; without
+    // it, only the socket peer is trustworthy.
+    if (TRUST_PROXY_HOPS > 0) {
+        const raw = req.headers && req.headers['x-forwarded-for'];
+        if (typeof raw === 'string' && raw.trim()) {
+            const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+            // Match proxy-addr's hop counting: with N trusted proxies, the
+            // client is the Nth entry from the right.
+            const index = Math.max(0, parts.length - Math.max(1, TRUST_PROXY_HOPS));
+            const candidate = parts[index];
+            if (candidate) return candidate;
+        }
+    }
     return (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+
+function providerIdsFromDecoded(decoded) {
+    const identities = decoded && decoded.firebase && decoded.firebase.identities;
+    if (!identities || typeof identities !== 'object') return [];
+    return Object.keys(identities);
 }
 
 /** Verify the socket's Firebase ID token and resolve the application user. */
@@ -45,7 +66,7 @@ async function authenticateSocket(req) {
     if (!token || token.length > 8192 || !isFirebaseConfigured()) return null;
     let decoded;
     try {
-        decoded = await verifyIdToken(token);
+        decoded = await verifyIdToken(token, FIREBASE_CHECK_REVOKED);
     } catch {
         return null;
     }
@@ -53,7 +74,9 @@ async function authenticateSocket(req) {
 
     let user = findUserByFirebaseUid(decoded.uid);
     const verificationChanged = Boolean(user) && Boolean(user.emailVerified) !== Boolean(decoded.email_verified);
-    if ((!user || verificationChanged) && typeof decoded.email === 'string' && decoded.email) {
+    const emailChanged = Boolean(user) && Boolean(decoded.email)
+        && String(decoded.email).trim().toLowerCase() !== String(user.email || '').trim().toLowerCase();
+    if ((!user || verificationChanged || emailChanged) && typeof decoded.email === 'string' && decoded.email) {
         try {
             user = syncFirebaseUser({
                 uid: decoded.uid,
@@ -62,6 +85,7 @@ async function authenticateSocket(req) {
                 photoUrl: decoded.picture,
                 emailVerified: Boolean(decoded.email_verified),
                 providerId: (decoded.firebase && decoded.firebase.sign_in_provider) || 'password',
+                providerIds: providerIdsFromDecoded(decoded),
             });
         } catch {
             user = null;
@@ -133,9 +157,20 @@ function attachExecutionWebSocket(wss) {
 
         // Frames that arrive before async auth settles are buffered and replayed
         // once the socket is authenticated (avoids a handshake race that would
-        // silently drop an early client message).
+        // silently drop an early client message). The buffer is bounded so an
+        // unauthenticated peer cannot queue arbitrary memory.
         const queuedFrames = [];
-        const queueFrame = (message) => { queuedFrames.push(message); };
+        let queuedBytes = 0;
+        const queueFrame = (message) => {
+            const size = typeof message === 'string' ? byteLength(message) : (message && message.length) || 0;
+            if (queuedFrames.length >= LIMITS.WS_PREAUTH_MAX_FRAMES
+                || queuedBytes + size > LIMITS.WS_PREAUTH_MAX_BYTES) {
+                try { ws.close(1009, 'Too many pre-auth frames'); } catch { /* ignore */ }
+                return;
+            }
+            queuedFrames.push(message);
+            queuedBytes += size;
+        };
         ws.on('message', queueFrame);
 
         void (async () => {
@@ -169,7 +204,12 @@ function attachExecutionWebSocket(wss) {
 
         const sendRaw = (payload) => {
             if (ws.readyState === ws.OPEN) {
-                ws.send(JSON.stringify({ sessionId: legacySessionId || payload.sessionId || null, ...payload }));
+                if (typeof ws.bufferedAmount === 'number' && ws.bufferedAmount > LIMITS.WS_MAX_BUFFERED_BYTES) {
+                    return;
+                }
+                try {
+                    ws.send(JSON.stringify({ sessionId: legacySessionId || payload.sessionId || null, ...payload }));
+                } catch { /* socket closed mid-send */ }
             }
         };
 
@@ -189,6 +229,10 @@ function attachExecutionWebSocket(wss) {
             try {
                 data = typeof message === 'string' ? JSON.parse(message) : JSON.parse(message.toString());
             } catch {
+                sendRaw({ type: 'terminal.error', message: 'Malformed message' });
+                return;
+            }
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
                 sendRaw({ type: 'terminal.error', message: 'Malformed message' });
                 return;
             }
@@ -229,21 +273,63 @@ function attachExecutionWebSocket(wss) {
                     const cols = Math.max(10, Math.min(500, Math.floor(Number(data.cols) || 80)));
                     const rows = Math.max(5, Math.min(200, Math.floor(Number(data.rows) || 30)));
                     const kind = data.kind === 'shell' ? 'shell' : 'code';
+                    const language = typeof data.language === 'string' ? data.language.slice(0, 50) : undefined;
+                    const code = typeof data.code === 'string'
+                        ? truncateUtf8(data.code, LIMITS.MAX_CODE_BYTES)
+                        : undefined;
+                    const stdinInput = typeof data.stdinInput === 'string'
+                        ? truncateUtf8(data.stdinInput, LIMITS.MAX_STDIN_BYTES)
+                        : '';
+                    const preStdin = typeof data.preStdin === 'string'
+                        ? truncateUtf8(data.preStdin, LIMITS.MAX_STDIN_BYTES)
+                        : null;
+
+                    if (kind === 'code' && (!language || !code)) {
+                        sendRaw({ type: 'terminal.error', message: 'Language and code required\r\n' });
+                        sendRaw({ type: 'terminal.exit', code: 1, signal: null });
+                        return;
+                    }
+
                     const session = manager.createSession(id, {
                         kind,
                         title: typeof data.title === 'string' ? data.title.slice(0, 120) : undefined,
-                        language: typeof data.language === 'string' ? data.language.slice(0, 50) : undefined,
-                        code: typeof data.code === 'string' ? data.code.slice(0, LIMITS.MAX_CODE_BYTES) : undefined,
+                        language,
+                        code,
                         cwd: typeof data.cwd === 'string' ? data.cwd.slice(0, 500) : undefined,
                         cols,
                         rows,
-                        stdinInput: typeof data.stdinInput === 'string' ? data.stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : '',
-                        preStdin: typeof data.preStdin === 'string' ? data.preStdin.slice(0, LIMITS.MAX_STDIN_BYTES) : null,
+                        stdinInput,
+                        preStdin,
                         ownerId: user.id,
                         ownerIp: ip,
                     });
                     legacySessionId = session.id;
                     manager.attachTransport(session.id, ws);
+
+                    // Enforce the daily execution quota on the WebSocket path
+                    // before any compiler/provider work. Charged on attempt.
+                    if (kind === 'code') {
+                        let allowed = false;
+                        try {
+                            allowed = reserveDaily(user.id, { executions: 1 });
+                        } catch {
+                            manager.dispose(session.id);
+                            sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Quota check failed' });
+                            sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
+                            return;
+                        }
+                        if (!allowed) {
+                            sendRaw({
+                                sessionId: session.id,
+                                type: 'terminal.error',
+                                message: `Daily execution limit reached (${LIMITS.EXEC_REQUESTS_PER_DAY}). Try again tomorrow.`,
+                            });
+                            sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
+                            manager.dispose(session.id);
+                            return;
+                        }
+                    }
+
                     sendRaw({ sessionId: session.id, type: 'terminal.ready', state: session.state });
 
                     if (kind === 'shell') {
@@ -260,18 +346,13 @@ function attachExecutionWebSocket(wss) {
                         const shellArgs = getDefaultShellArgs(shell);
                         manager.spawnPty(session, shell, shellArgs);
                     } else if (kind === 'code') {
-                        if (!session.language || !session.code) {
-                            manager.setState(session.id, STATES.FAILED);
-                            sendRaw({ sessionId: session.id, type: 'terminal.error', message: 'Language and code required\r\n' });
-                            sendRaw({ sessionId: session.id, type: 'terminal.exit', code: 1, signal: null });
-                            return;
-                        }
-                        recordUsage(user.id, { executions: 1 });
-                        const stdinValue = data.stdinInput || data.preStdin || '';
+                        const stdinValue = stdinInput || preStdin || '';
                         await manager.executeCode(session, {
                             language: session.language,
                             code: session.code,
-                            stdinInput: typeof stdinValue === 'string' ? stdinValue.slice(0, LIMITS.MAX_STDIN_BYTES) : '',
+                            stdinInput: typeof stdinValue === 'string'
+                                ? truncateUtf8(stdinValue, LIMITS.MAX_STDIN_BYTES)
+                                : '',
                             preStdin: null,
                             filename: typeof data.filename === 'string' ? data.filename.slice(0, 120) : null,
                         });
@@ -332,32 +413,73 @@ function attachExecutionWebSocket(wss) {
                     }
                     // Legacy run path: auto-create a code session scoped to this socket.
                     const { language, files, stdinInput } = data;
-                    if (typeof language !== 'string' || !files?.length) {
+                    if (typeof language !== 'string' || !language.trim()
+                        || !Array.isArray(files) || files.length === 0) {
                         sendRaw({ type: 'terminal.error', message: 'Language and files required\r\n' });
                         sendRaw({ type: 'terminal.exit', code: 1, signal: null });
                         return;
                     }
-                    const code = String(files[0].content || '').slice(0, LIMITS.MAX_CODE_BYTES);
-                    const legacyFilename = typeof files[0].name === 'string' ? files[0].name.slice(0, 120) : (typeof data.filename === 'string' ? data.filename.slice(0, 120) : null);
+                    const first = files[0];
+                    if (!first || typeof first !== 'object' || Array.isArray(first)
+                        || (first.content !== undefined && typeof first.content !== 'string')) {
+                        sendRaw({ type: 'terminal.error', message: 'Invalid file entry\r\n' });
+                        sendRaw({ type: 'terminal.exit', code: 1, signal: null });
+                        return;
+                    }
+                    const code = truncateUtf8(
+                        typeof first.content === 'string' ? first.content : '',
+                        LIMITS.MAX_CODE_BYTES,
+                    );
+                    if (!code) {
+                        sendRaw({ type: 'terminal.error', message: 'Language and files required\r\n' });
+                        sendRaw({ type: 'terminal.exit', code: 1, signal: null });
+                        return;
+                    }
+                    const input = typeof stdinInput === 'string'
+                        ? truncateUtf8(stdinInput, LIMITS.MAX_STDIN_BYTES)
+                        : '';
+                    const legacyFilename = typeof first.name === 'string'
+                        ? first.name.slice(0, 120)
+                        : (typeof data.filename === 'string' ? data.filename.slice(0, 120) : null);
                     const id = Math.random().toString(36).substring(2, 10);
                     const session = manager.createSession(id, {
                         kind: 'code',
-                        language: language.slice(0, 50),
+                        language: language.trim().slice(0, 50),
                         code,
-                        stdinInput: typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : '',
-                        preStdin: typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : null,
+                        stdinInput: input,
+                        preStdin: input || null,
                         ownerId: user.id,
                         ownerIp: ip,
                     });
                     legacySessionId = id;
                     manager.attachTransport(id, ws);
-                    recordUsage(user.id, { executions: 1 });
+
+                    let allowed = false;
+                    try {
+                        allowed = reserveDaily(user.id, { executions: 1 });
+                    } catch {
+                        manager.dispose(id);
+                        sendRaw({ sessionId: id, type: 'terminal.error', message: 'Quota check failed' });
+                        sendRaw({ sessionId: id, type: 'terminal.exit', code: 1, signal: null });
+                        return;
+                    }
+                    if (!allowed) {
+                        sendRaw({
+                            sessionId: id,
+                            type: 'terminal.error',
+                            message: `Daily execution limit reached (${LIMITS.EXEC_REQUESTS_PER_DAY}). Try again tomorrow.`,
+                        });
+                        sendRaw({ sessionId: id, type: 'terminal.exit', code: 1, signal: null });
+                        manager.dispose(id);
+                        return;
+                    }
+
                     sendRaw({ sessionId: id, type: 'terminal.ready', state: session.state });
                     await manager.executeCode(session, {
                         language: session.language,
                         code,
-                        stdinInput: session.code ? (typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : '') : '',
-                        preStdin: typeof stdinInput === 'string' ? stdinInput.slice(0, LIMITS.MAX_STDIN_BYTES) : null,
+                        stdinInput: input,
+                        preStdin: null,
                         filename: legacyFilename,
                     });
                     return;
@@ -394,7 +516,9 @@ function attachExecutionWebSocket(wss) {
         });
 
         // Replay any frames that raced ahead of authentication.
-        for (const queued of queuedFrames) void handleMessage(queued);
+        if (ws.readyState === ws.OPEN) {
+            for (const queued of queuedFrames) void handleMessage(queued);
+        }
         queuedFrames.length = 0;
     }
 

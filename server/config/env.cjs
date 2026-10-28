@@ -24,10 +24,25 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
+// Load `.env` for local development/test only. Production must use the
+// platform-provided environment; a stray .env must never override it.
+const initialEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+if (initialEnv !== 'production' && initialEnv !== 'prod') {
+    dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
+}
 
-const isProd = process.env.NODE_ENV === 'production';
-const isTest = process.env.NODE_ENV === 'test';
+// NODE_ENV is security-relevant: every fail-closed production gate keys off it.
+// Normalize case/whitespace and reject unknown values instead of silently
+// treating them as development (which would enable host execution).
+const rawNodeEnv = String(process.env.NODE_ENV || '').trim();
+const nodeEnv = rawNodeEnv.toLowerCase();
+const ALLOWED_NODE_ENVS = new Set(['development', 'dev', 'test', 'production', 'prod']);
+if (rawNodeEnv && !ALLOWED_NODE_ENVS.has(nodeEnv)) {
+    console.error(`\n[FATAL] Refusing to start: NODE_ENV must be one of development, test, production (got "${rawNodeEnv}").\n`);
+    process.exit(1);
+}
+const isProd = nodeEnv === 'production' || nodeEnv === 'prod';
+const isTest = nodeEnv === 'test';
 
 function fail(message) {
     // Intentionally loud + non-zero exit. Never include values.
@@ -76,9 +91,15 @@ if (isProd) {
             fail('CORS_ORIGIN must not contain localhost in production. Set it to your public frontend origin.');
         }
         if (!/^https:\/\//i.test(origin)) {
-            warn(`CORS origin "${origin}" is not https — production origins should be https.`);
+            fail(`CORS origin "${origin}" must use https in production: credentials are enabled and plaintext origins allow token interception.`);
         }
     }
+}
+
+// Firebase Auth emulator is a development-only trust bypass. Refuse to boot with
+// it in production rather than silently accepting emulator-issued tokens.
+if (isProd && process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    fail('FIREBASE_AUTH_EMULATOR_HOST must not be set in production: emulator tokens are not real identities.');
 }
 const CORS_ORIGIN = CORS_LIST.length === 1 ? CORS_LIST[0] : CORS_LIST;
 
@@ -201,15 +222,31 @@ const LIMITS = {
     WS_IP_MAX_SESSIONS: num('WS_IP_MAX_SESSIONS', 20, { min: 1, max: 200 }),
     WS_HEARTBEAT_MS: num('WS_HEARTBEAT_MS', 30000, { min: 5000, max: 120000 }),
     WS_IDLE_TIMEOUT_MS: num('WS_IDLE_TIMEOUT_MS', 10 * 60 * 1000, { min: 60000, max: 3600000 }),
+    // Bound frames buffered before the WS handshake is authenticated, and the
+    // amount of unread data queued on a socket before the session is stopped.
+    WS_PREAUTH_MAX_FRAMES: num('WS_PREAUTH_MAX_FRAMES', 16, { min: 1, max: 256 }),
+    WS_PREAUTH_MAX_BYTES: num('WS_PREAUTH_MAX_BYTES', 64 * 1024, { min: 1024, max: 1024 * 1024 }),
+    WS_MAX_BUFFERED_BYTES: num('WS_MAX_BUFFERED_BYTES', 1024 * 1024, { min: 64 * 1024, max: 16 * 1024 * 1024 }),
     // Auth hardening
     AUTH_RATE_PER_MINUTE: num('AUTH_RATE_PER_MINUTE', 10, { min: 1, max: 100 }),
     SESSION_TTL_MS: num('SESSION_TTL_MS', 30 * 24 * 3600 * 1000, { min: 3600000, max: 90 * 24 * 3600 * 1000 }),
 };
 
+// Number of reverse-proxy hops to trust for req.ip / X-Forwarded-For. Express's
+// default (`false`) makes every request appear to come from the proxy, which
+// collapses all per-IP limits into one shared bucket. Default to 1 in
+// production (the platform edge) and 0 locally.
+const TRUST_PROXY_HOPS = num('TRUST_PROXY_HOPS', isProd ? 1 : 0, { min: 0, max: 10 });
+
+// Revalidate revoked/disabled Firebase accounts with the identity provider.
+// Enabled in production by default; opt out with FIREBASE_CHECK_REVOKED=false.
+const FIREBASE_CHECK_REVOKED = process.env.FIREBASE_CHECK_REVOKED === 'true'
+    || (isProd && process.env.FIREBASE_CHECK_REVOKED !== 'false');
+
 // Public / non-secret summary for startup logging (names + counts only).
 function publicSummary() {
     return {
-        env: process.env.NODE_ENV || 'development',
+        env: nodeEnv || 'development',
         port: PORT,
         providersConfigured: configuredProviders,
         allowLocalExecution: ALLOW_LOCAL_EXECUTION,
@@ -240,6 +277,8 @@ module.exports = {
     ALLOW_SHELL,
     AI_MODELS,
     LIMITS,
+    TRUST_PROXY_HOPS,
+    FIREBASE_CHECK_REVOKED,
     publicSummary,
     fail,
 };

@@ -18,8 +18,17 @@ class AIRequestManager {
     /**
      * Registers a stream request and returns the per-attempt controller.
      * The controller is wired to the client's abort signal (once).
+     *
+     * Request ids are server-generated UUIDs, but the registry still refuses to
+     * overwrite an in-flight record: a duplicate key must never let one request
+     * abort another request's upstream fetch.
      */
     register(requestId, clientSignal) {
+        if (this.active.has(requestId)) {
+            const err = new Error('Duplicate AI request id');
+            err.status = 409;
+            throw err;
+        }
         const controller = new AbortController();
         const onClientAbort = () => {
             if (!controller.signal.aborted) controller.abort();
@@ -33,10 +42,12 @@ class AIRequestManager {
 
     /**
      * Resets the idle timer for a request (call on every received chunk).
+     * The controller argument scopes the update to the owning attempt.
      */
-    touch(requestId) {
+    touch(requestId, controller) {
         const record = this.active.get(requestId);
         if (!record) return;
+        if (controller && record.controller !== controller) return;
         if (record.idleTimer) clearTimeout(record.idleTimer);
         record.idleTimer = setTimeout(() => {
             if (!record.controller.signal.aborted) {
@@ -47,10 +58,12 @@ class AIRequestManager {
 
     /**
      * Detaches client-abort wiring (must be called when the request completes).
+     * Only the owning attempt may release the record.
      */
-    release(requestId) {
+    release(requestId, controller) {
         const record = this.active.get(requestId);
         if (!record) return;
+        if (controller && record.controller !== controller) return;
         if (record.idleTimer) clearTimeout(record.idleTimer);
         record.clientSignal.removeEventListener('abort', record.onClientAbort);
         this.active.delete(requestId);
@@ -59,9 +72,11 @@ class AIRequestManager {
     /**
      * Aborts a request's upstream fetch (e.g. client went away).
      */
-    abort(requestId) {
+    abort(requestId, controller) {
         const record = this.active.get(requestId);
-        if (record && !record.controller.signal.aborted) record.controller.abort();
+        if (!record) return;
+        if (controller && record.controller !== controller) return;
+        if (!record.controller.signal.aborted) record.controller.abort();
     }
 
     /** Aborts every tracked request. Used on server shutdown. */

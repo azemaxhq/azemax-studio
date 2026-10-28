@@ -3,8 +3,9 @@ const { asyncHandler } = require('../lib/asyncHandler.cjs');
 const { requireVerifiedEmail } = require('../middleware/auth.cjs');
 const { executeCode } = require('../services/execution/httpExecutor.cjs');
 const { listDetectedRuntimes } = require('../services/execution/runtimeDetection.cjs');
-const { getTodayUsage, recordUsage } = require('../services/auth/authService.cjs');
+const { reserveDaily } = require('../services/auth/authService.cjs');
 const { LIMITS } = require('../config/index.cjs');
+const { byteLength } = require('../lib/bytes.cjs');
 
 const router = express.Router();
 
@@ -33,29 +34,47 @@ router.get('/runtimes', gate, (_req, res) => {
 });
 
 router.post('/execute', gate, asyncHandler(async (req, res) => {
-    const cap = LIMITS.EXEC_REQUESTS_PER_DAY;
-    const usage = getTodayUsage(req.user.id);
-    if (usage.executions >= cap) {
-        return res.status(429).json({ error: `Daily execution limit reached (${cap}). Try again tomorrow.` });
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { language, files, stdin } = body;
+
+    // Input validation + size limits (beta abuse protection). Validate BEFORE
+    // reserving quota so malformed requests do not consume a daily execution.
+    if (typeof language !== 'string' || !language.trim() || language.length > 50) {
+        return res.status(400).json({ error: 'Invalid language' });
     }
-    // Input validation + size limits (beta abuse protection)
-    const { language, files, stdin } = req.body || {};
-    if (stdin && Buffer.byteLength(String(stdin), 'utf8') > MAX_STDIN_BYTES) {
+    if (!Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ error: 'files must be a non-empty array' });
+    }
+    if (stdin !== undefined && typeof stdin !== 'string') {
+        return res.status(400).json({ error: 'stdin must be a string' });
+    }
+    if (typeof stdin === 'string' && byteLength(stdin) > MAX_STDIN_BYTES) {
         return res.status(413).json({ error: `stdin too large (max ${MAX_STDIN_BYTES} bytes)` });
     }
-    if (files && Array.isArray(files)) {
-        for (const f of files) {
-            const content = String(f?.content || '');
-            if (Buffer.byteLength(content, 'utf8') > MAX_CODE_BYTES) {
+    if (Array.isArray(files)) {
+        for (const file of files) {
+            if (!file || typeof file !== 'object' || Array.isArray(file)) {
+                return res.status(400).json({ error: 'Each file must be an object' });
+            }
+            if (file.content !== undefined && typeof file.content !== 'string') {
+                return res.status(400).json({ error: 'File content must be a string' });
+            }
+            if (byteLength(file.content || '') > MAX_CODE_BYTES) {
                 return res.status(413).json({ error: `Code too large (max ${MAX_CODE_BYTES} bytes)` });
             }
         }
     }
-    if (typeof language === 'string' && language.length > 50) {
-        return res.status(400).json({ error: 'Invalid language' });
+
+    // Reserve atomically before doing any work. The unit is charged on attempt,
+    // including provider/compiler failures and client aborts.
+    const allowed = reserveDaily(req.user.id, { executions: 1 });
+    if (!allowed) {
+        return res.status(429).json({
+            error: `Daily execution limit reached (${LIMITS.EXEC_REQUESTS_PER_DAY}). Try again tomorrow.`,
+        });
     }
-    const result = await executeCode(req.body);
-    recordUsage(req.user.id, { executions: 1 });
+
+    const result = await executeCode(body);
     res.json(result);
 }));
 

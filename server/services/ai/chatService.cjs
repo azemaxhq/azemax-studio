@@ -1,4 +1,4 @@
-const { AI_MODELS } = require('../../config/index.cjs');
+const { AI_MODELS, isProd } = require('../../config/index.cjs');
 const { chatCompletion, listModels, providerSupportsTools } = require('./aiClient.cjs');
 const {
     resolveTaskParams,
@@ -23,9 +23,10 @@ const {
     isAbortError,
 } = require('./aiError.cjs');
 const { aiRequestManager } = require('./aiRequestManager.cjs');
+const { resolveAllowedModel } = require('./aiPolicy.cjs');
 
 // Dev-only latency instrumentation. No-op in production builds.
-const perfLogEnabled = process.env.NODE_ENV !== 'production';
+const perfLogEnabled = !isProd;
 function perfLog(...args) {
     if (perfLogEnabled) console.log('[AI perf]', ...args);
 }
@@ -242,7 +243,6 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
             // Each attempt is tracked by the request manager: client-abort is
             // wired once per attempt, and the idle timer aborts the attempt if
             // no chunk arrives within STREAM_IDLE_TIMEOUT_MS.
-            aiRequestManager.release(requestId);
             const attemptController = aiRequestManager.register(requestId, clientController.signal);
 
             try {
@@ -324,7 +324,7 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                 const { tokenCount, usage, reasoningChars, toolCallCount } = await pipeProviderStream(
                     response,
                     res,
-                    () => aiRequestManager.touch(requestId),
+                    () => aiRequestManager.touch(requestId, attemptController),
                     () => {
                         // First visible content token (also marks the attempt as
                         // "already emitted" so a mid-stream failure never falls
@@ -426,11 +426,10 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
                 lastError = aiErr;
                 console.log(`[AI CHAT] fallback triggered for streaming, trying next provider`);
             } finally {
-                aiRequestManager.release(requestId);
+                aiRequestManager.release(requestId, attemptController);
             }
         }
     } finally {
-        aiRequestManager.release(requestId);
         res.removeListener('close', onClientClose);
     }
 
@@ -447,7 +446,11 @@ async function streamChat({ messages, model, temperature, top_p, maxTokens, resp
 
 /** OpenAI-compatible passthrough for legacy clients */
 async function proxyOpenRouter({ messages, model }) {
-    const modelsToTry = model ? [model] : AI_MODELS.openRouter.fallbacks;
+    // Defense in depth: this path always uses the OpenRouter credential, so the
+    // model must be on the OpenRouter allowlist even if the route already
+    // validated it. An invalid model is a definitive 403, not a fallback.
+    const canonicalModel = model ? resolveAllowedModel('openrouter', model) : null;
+    const modelsToTry = canonicalModel ? [canonicalModel] : AI_MODELS.openRouter.fallbacks;
     let _lastError = null;
 
     for (const currentModel of modelsToTry) {

@@ -1,7 +1,7 @@
 const http = require('http');
 const WebSocket = require('ws');
 const { createApp } = require('./app.cjs');
-const { PORT, LIMITS } = require('./config/index.cjs');
+const { PORT, LIMITS, isProd } = require('./config/index.cjs');
 const { attachExecutionWebSocket } = require('./websocket/executionHandler.cjs');
 const { listDetectedRuntimes } = require('./services/execution/runtimeDetection.cjs');
 const { aiRequestManager } = require('./services/ai/aiRequestManager.cjs');
@@ -15,7 +15,7 @@ const lifecycle = require('./lifecycle.cjs');
 // exposed. Missing configuration is a deployment error, never a reason to
 // allow unauthenticated access.
 const { isFirebaseConfigured } = require('./services/auth/firebaseAdmin.cjs');
-if (process.env.NODE_ENV === 'production' && !isFirebaseConfigured()) {
+if (isProd && !isFirebaseConfigured()) {
     require('./config/index.cjs').fail(
         'Firebase Admin is not configured. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY ' +
         '(or provide application default credentials) before running in production. Authentication must never be disabled.',
@@ -50,7 +50,7 @@ const { siblingPid } = lifecycle.acquireLock(PORT);
 const HOST = process.env.HOST || '0.0.0.0';
 
 // In production the platform assigns PORT; bind to 0.0.0.0 so external traffic reaches us.
-const listenOpts = process.env.NODE_ENV === 'production' ? { port: PORT, host: HOST } : PORT;
+const listenOpts = isProd ? { port: PORT, host: HOST } : PORT;
 
 lifecycle.listenWithRetry(server, listenOpts)
     .then(() => {
@@ -60,9 +60,9 @@ lifecycle.listenWithRetry(server, listenOpts)
             console.log(`[server] Port ${PORT} was released by a previous instance (PID ${siblingPid}); this instance is now serving.`);
         }
         const runtimes = listDetectedRuntimes();
-        const displayHost = process.env.NODE_ENV === 'production' ? HOST : 'localhost';
-        const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-        const wsProto = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
+        const displayHost = isProd ? HOST : 'localhost';
+        const proto = isProd ? 'https' : 'http';
+        const wsProto = isProd ? 'wss' : 'ws';
         // Structured startup line (no secrets — counts and flags only).
         const { publicSummary } = require('./config/index.cjs');
         logger.info('server listening', {

@@ -122,6 +122,17 @@ function validateRequestedModel(requestedModel, inferProvider) {
     return { provider, model: resolveAllowedModel(provider, requestedModel) };
 }
 
+/**
+ * Validate a model against a specific provider's allowlist. Used where the
+ * transport (not the model slug) determines the upstream provider, e.g. the
+ * legacy OpenRouter-compatible endpoint.
+ */
+function validateRequestedModelForProvider(requestedModel, provider) {
+    if (!requestedModel) return null; // provider default applies
+    const normalized = String(provider || '').toLowerCase();
+    return { provider: normalized, model: resolveAllowedModel(normalized, requestedModel) };
+}
+
 /** Server-side token ceiling: min(client request, task profile, absolute). */
 function capMaxTokens(requested, profileMax) {
     const base = Number.isFinite(Number(requested)) && Number(requested) > 0
@@ -259,6 +270,7 @@ module.exports = {
     huggingFaceAllowed,
     resolveAllowedModel,
     validateRequestedModel,
+    validateRequestedModelForProvider,
     capMaxTokens,
     buildServerMessages,
     sanitizeTools,

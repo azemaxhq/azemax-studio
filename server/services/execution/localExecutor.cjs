@@ -6,8 +6,9 @@ const { getLanguageConfig } = require('./languageConfig.cjs');
 const { resolveFileName } = require('./fileNaming.cjs');
 const { EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS } = require('./constants.cjs');
 const { spawnSandboxed } = require('./sandbox.cjs');
+const { LIMITS } = require('../../config/index.cjs');
 
-const MAX_OUTPUT_BYTES = Number(process.env.MAX_OUTPUT_BYTES) || 512 * 1024; // 512KB cap
+const MAX_OUTPUT_BYTES = LIMITS.MAX_OUTPUT_BYTES;
 
 function runCommand(cmd, args, { cwd, stdin, timeout = EXECUTION_TIMEOUT_MS }) {
     return new Promise((resolve) => {
@@ -16,11 +17,22 @@ function runCommand(cmd, args, { cwd, stdin, timeout = EXECUTION_TIMEOUT_MS }) {
         let truncated = false;
         // SECURITY: sandboxed spawn — minimal allowlist env (never inherits
         // process.env, so provider keys cannot leak into user programs) plus
-        // OS resource limits where available.
-        const proc = spawnSandboxed(cmd, args, { cwd });
+        // OS resource limits where available. `detached` puts the child in its
+        // own process group so a timeout can kill descendants too.
+        const detached = process.platform !== 'win32';
+        const proc = spawnSandboxed(cmd, args, { cwd, detached });
+
+        const killTree = () => {
+            if (!proc.pid) return;
+            try {
+                process.kill(-proc.pid, 'SIGKILL');
+            } catch {
+                try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+            }
+        };
 
         const timer = setTimeout(() => {
-            if (!proc.killed) proc.kill('SIGKILL');
+            killTree();
             stderr += '\nExecution timed out';
         }, timeout);
 

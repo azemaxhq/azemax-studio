@@ -5,11 +5,12 @@ const { sendChat, streamChat, proxyOpenRouter, listModels } = require('../servic
 const { inferProvider } = require('../services/ai/aiClient.cjs');
 const {
     validateRequestedModel,
+    validateRequestedModelForProvider,
     buildServerMessages,
     sanitizeTools,
     sanitizeToolChoice,
 } = require('../services/ai/aiPolicy.cjs');
-const { getTodayUsage, recordUsage } = require('../services/auth/authService.cjs');
+const { reserveDaily, recordUsage } = require('../services/auth/authService.cjs');
 const { LIMITS } = require('../config/index.cjs');
 
 const router = express.Router();
@@ -27,9 +28,9 @@ router.get('/models', gate, (_req, res) => {
     res.json({ models: listModels() });
 });
 
-const MAX_MESSAGES = 50;
-const MAX_CONTENT_CHARS = 20_000;
-const MAX_TOTAL_CHARS = 100_000;
+const MAX_MESSAGES = LIMITS.AI_MAX_MESSAGES;
+const MAX_CONTENT_CHARS = LIMITS.AI_MAX_MESSAGE_CHARS;
+const MAX_TOTAL_CHARS = LIMITS.AI_MAX_TOTAL_CHARS;
 
 function validateMessages(messages) {
     if (!Array.isArray(messages)) return 'messages array is required';
@@ -46,12 +47,14 @@ function validateMessages(messages) {
     return null;
 }
 
-/** Daily per-user quota gate (denial-of-wallet backstop). */
-function checkDailyQuota(userId) {
-    const usage = getTodayUsage(userId);
-    const cap = LIMITS.AI_REQUESTS_PER_DAY;
-    if (usage.ai_requests >= cap) {
-        const err = new Error(`Daily AI request limit reached (${cap}). Try again tomorrow.`);
+/**
+ * Atomically reserve one daily AI request BEFORE provider work. The unit is
+ * charged on attempt (including aborts and provider failures), so retries and
+ * disconnects cannot be used to exceed the daily cap.
+ */
+function reserveAiQuota(userId) {
+    if (!reserveDaily(userId, { aiRequests: 1 })) {
+        const err = new Error(`Daily AI request limit reached (${LIMITS.AI_REQUESTS_PER_DAY}). Try again tomorrow.`);
         err.status = 429;
         throw err;
     }
@@ -59,14 +62,19 @@ function checkDailyQuota(userId) {
 
 /**
  * Apply the server AI policy to untrusted client input:
- * - requested model must be on the provider allowlist (or omitted)
+ * - requested model must be on the allowlist of the provider that will serve it
+ *   (legacy OpenRouter calls validate against the OpenRouter list specifically)
  * - maxTokens capped to the absolute server ceiling
  * - messages rebuilt with the server-pinned system prompt (client `system`
  *   roles are demoted — history cannot override server behavior)
  */
-function applyPolicy({ messages, model, maxTokens, tools, toolChoice }) {
+function applyPolicy({ messages, model, maxTokens, tools, toolChoice, provider }) {
+    let resolvedModel = model;
     if (model !== undefined && model !== null) {
-        validateRequestedModel(model, inferProvider);
+        const validated = provider
+            ? validateRequestedModelForProvider(model, provider)
+            : validateRequestedModel(model, inferProvider);
+        if (validated) resolvedModel = validated.model;
     }
     const cappedTokens = maxTokens === undefined || maxTokens === null
         ? maxTokens
@@ -81,10 +89,17 @@ function applyPolicy({ messages, model, maxTokens, tools, toolChoice }) {
             err.status = 400;
             throw err;
         }
+        // Tool schemas count toward the same request-size budget as messages;
+        // otherwise a client can attach arbitrarily large schemas.
+        if (JSON.stringify(serverTools).length > MAX_TOTAL_CHARS) {
+            const err = new Error('tools payload exceeds the request size limit');
+            err.status = 413;
+            throw err;
+        }
     }
     return {
         serverMessages: buildServerMessages(messages),
-        model,
+        model: resolvedModel,
         maxTokens: cappedTokens,
         tools: serverTools,
         toolChoice: serverTools ? sanitizeToolChoice(toolChoice) : 'auto',
@@ -92,14 +107,15 @@ function applyPolicy({ messages, model, maxTokens, tools, toolChoice }) {
 }
 
 router.post('/chat', gate, asyncHandler(async (req, res) => {
-    const { messages, model, temperature, maxTokens, responseLength, stream, task, allowFallback, tools, toolChoice } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { messages, model, temperature, maxTokens, responseLength, stream, task, allowFallback, tools, toolChoice } = body;
 
     const validationError = validateMessages(messages);
     if (validationError) {
         return res.status(400).json({ error: validationError });
     }
-    checkDailyQuota(req.user.id);
     const policy = applyPolicy({ messages, model, maxTokens, tools, toolChoice });
+    reserveAiQuota(req.user.id);
 
     if (stream) {
         let streamedTokens = 0;
@@ -118,7 +134,7 @@ router.post('/chat', gate, asyncHandler(async (req, res) => {
             userId: req.user.id,
             onUsage: (u) => { streamedTokens = Number(u && u.total_tokens) || 0; },
         });
-        recordUsage(req.user.id, { aiRequests: 1, aiTokens: streamedTokens });
+        recordUsage(req.user.id, { aiTokens: streamedTokens });
         return;
     }
 
@@ -143,7 +159,7 @@ router.post('/chat', gate, asyncHandler(async (req, res) => {
         userId: req.user.id,
         signal: abortController.signal,
     });
-    recordUsage(req.user.id, { aiRequests: 1, aiTokens: Number(result.usage && result.usage.total_tokens) || 0 });
+    recordUsage(req.user.id, { aiTokens: Number(result.usage && result.usage.total_tokens) || 0 });
     // A tool-call turn has empty `content` by design — it must survive the
     // response envelope, otherwise the client cannot dispatch anything.
     const message = { role: 'assistant', content: result.content };
@@ -159,15 +175,19 @@ router.post('/chat', gate, asyncHandler(async (req, res) => {
 
 /** Legacy OpenRouter-compatible endpoint (same auth/policy as /chat). */
 router.post('/chat/legacy', gate, asyncHandler(async (req, res) => {
-    const { messages, model } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { messages, model } = body;
     const legacyError = validateMessages(messages);
     if (legacyError) {
         return res.status(400).json({ error: legacyError });
     }
-    checkDailyQuota(req.user.id);
-    const policy = applyPolicy({ messages, model });
+    // This endpoint always forwards to OpenRouter, so validate the model
+    // against the OpenRouter allowlist — not the provider inferred from the
+    // slug (an NVIDIA/Groq model must not slip through here).
+    const policy = applyPolicy({ messages, model, provider: 'openrouter' });
+    reserveAiQuota(req.user.id);
     const data = await proxyOpenRouter({ messages: policy.serverMessages, model: policy.model, userId: req.user.id });
-    recordUsage(req.user.id, { aiRequests: 1, aiTokens: Number(data && data.usage && data.usage.total_tokens) || 0 });
+    recordUsage(req.user.id, { aiTokens: Number(data && data.usage && data.usage.total_tokens) || 0 });
     res.json(data);
 }));
 

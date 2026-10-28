@@ -1,5 +1,5 @@
 const https = require('https');
-const { WANDBOX_LANGUAGES } = require('./constants.cjs');
+const { getWandboxLanguage, WANDBOX_LANGUAGES } = require('./constants.cjs');
 const { LIMITS } = require('../../config/index.cjs');
 
 // Hard timeout so a hung third-party API can never hold a socket/promise
@@ -7,6 +7,7 @@ const { LIMITS } = require('../../config/index.cjs');
 // hostile compiler response cannot exhaust server memory.
 const WANDBOX_TIMEOUT_MS = LIMITS.WANDBOX_TIMEOUT_MS;
 const WANDBOX_MAX_BODY_BYTES = 2 * 1024 * 1024;
+const WANDBOX_MAX_LINE_BYTES = 64 * 1024;
 
 function buildWandboxPayload(compilerId, language, code, stdin, filename) {
     const lang = String(language).toLowerCase();
@@ -33,7 +34,7 @@ function buildWandboxPayload(compilerId, language, code, stdin, filename) {
 }
 
 function compileViaWandbox({ language, code, stdin = '', filename = null }) {
-    const compilerId = WANDBOX_LANGUAGES[language.toLowerCase()];
+    const compilerId = getWandboxLanguage(language);
     if (!compilerId) {
         return Promise.reject(new Error(`Unsupported language for Wandbox: ${language}`));
     }
@@ -96,10 +97,15 @@ function compileViaWandbox({ language, code, stdin = '', filename = null }) {
     });
 }
 
-function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent }) {
-    const compilerId = WANDBOX_LANGUAGES[language.toLowerCase()];
+function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent, signal = null }) {
+    const compilerId = getWandboxLanguage(language);
     if (!compilerId) {
         onEvent({ type: 'error', data: `Unsupported language: ${language}\r\n` });
+        onEvent({ type: 'exit', code: 1 });
+        return Promise.resolve();
+    }
+    if (signal && signal.aborted) {
+        onEvent({ type: 'error', data: 'Execution cancelled\r\n' });
         onEvent({ type: 'exit', code: 1 });
         return Promise.resolve();
     }
@@ -107,20 +113,41 @@ function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent
     const payload = buildWandboxPayload(compilerId, language, code, stdin, filename);
     const postData = JSON.stringify(payload);
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         let settled = false;
-        const doneResolve = () => { if (!settled) { settled = true; clearTimeout(timer); resolve(); } };
-        const timer = setTimeout(() => {
-            try { req.destroy(new Error('Wandbox stream timed out')); } catch { /* ignore */ }
-            if (!settled) {
-                settled = true;
-                onEvent({ type: 'error', data: 'Wandbox request timed out\r\n' });
-                onEvent({ type: 'exit', code: 1 });
-                reject(new Error('Wandbox stream timed out'));
-            }
-        }, WANDBOX_TIMEOUT_MS);
+        let timer = null;
+        let req = null;
+
+        const cleanup = () => {
+            if (timer) clearTimeout(timer);
+            if (signal) signal.removeEventListener('abort', onAbort);
+        };
+
+        const finish = (exitCode) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            onEvent({ type: 'exit', code: exitCode });
+            resolve();
+        };
+
+        const fail = (message, exitCode = 1) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            try { if (req) req.destroy(new Error('Wandbox stream ended')); } catch { /* ignore */ }
+            onEvent({ type: 'error', data: message });
+            onEvent({ type: 'exit', code: exitCode });
+            resolve();
+        };
+
+        const onAbort = () => fail('Execution cancelled\r\n', 1);
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+
+        timer = setTimeout(() => fail('Wandbox request timed out\r\n', 1), WANDBOX_TIMEOUT_MS);
         if (timer.unref) timer.unref();
-        const req = https.request(
+
+        req = https.request(
             'https://wandbox.org/api/compile.ndjson',
             {
                 method: 'POST',
@@ -133,13 +160,34 @@ function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent
             (res) => {
                 let exitCode = 0;
                 let buffer = '';
+                let bodyBytes = 0;
 
                 res.on('data', (chunk) => {
+                    if (settled) return;
+                    bodyBytes += chunk.length;
+                    if (bodyBytes > WANDBOX_MAX_BODY_BYTES) {
+                        fail('Wandbox response too large\r\n', 1);
+                        return;
+                    }
                     buffer += chunk.toString();
+                    // A hostile/broken upstream can send an unterminated line
+                    // forever; bound the partial-line buffer too.
+                    if (buffer.length > WANDBOX_MAX_LINE_BYTES && !buffer.includes('\n')) {
+                        fail('Wandbox response line too long\r\n', 1);
+                        return;
+                    }
                     const lines = buffer.split('\n');
                     buffer = lines.pop() || '';
+                    if (buffer.length > WANDBOX_MAX_LINE_BYTES) {
+                        fail('Wandbox response line too long\r\n', 1);
+                        return;
+                    }
 
                     for (const line of lines) {
+                        if (line.length > WANDBOX_MAX_LINE_BYTES) {
+                            fail('Wandbox response line too long\r\n', 1);
+                            return;
+                        }
                         const trimmed = line.trim();
                         if (!trimmed) continue;
                         try {
@@ -160,6 +208,7 @@ function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent
                 });
 
                 res.on('end', () => {
+                    if (settled) return;
                     if (buffer.trim()) {
                         try {
                             const obj = JSON.parse(buffer.trim());
@@ -170,23 +219,16 @@ function streamViaWandbox({ language, code, stdin = '', filename = null, onEvent
                             /* ignore */
                         }
                     }
-                    onEvent({ type: 'exit', code: exitCode });
-                    doneResolve();
+                    finish(exitCode);
                 });
             },
         );
 
-        req.on('timeout', () => {
-            try { req.destroy(new Error('Wandbox stream timed out')); } catch { /* ignore */ }
-        });
+        req.on('timeout', () => fail('Wandbox request timed out\r\n', 1));
 
         req.on('error', (err) => {
             if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            onEvent({ type: 'error', data: `Wandbox API error: ${err.message}\r\n` });
-            onEvent({ type: 'exit', code: 1 });
-            reject(err);
+            fail(`Wandbox API error: ${err.message}\r\n`, 1);
         });
 
         req.write(postData);

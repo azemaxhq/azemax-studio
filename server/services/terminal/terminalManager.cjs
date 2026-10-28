@@ -8,10 +8,23 @@ const { resolveFileName, codeNeedsStdin } = require('../execution/fileNaming.cjs
 const { streamViaWandbox } = require('../execution/wandboxExecutor.cjs');
 const { EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS } = require('../execution/constants.cjs');
 const { spawnSandboxed, minimalEnv } = require('../execution/sandbox.cjs');
+const { LIMITS, ALLOW_LOCAL_EXECUTION, WORKSPACES_DIR } = require('../../config/index.cjs');
 
 // --- Constants -------------------------------------------------------------
 
 const PTY_RELAY = path.join(__dirname, 'ptyRelay.py');
+
+/** Kill a detached process group (or fall back to the direct child). */
+function killProcessTree(proc) {
+    if (!proc) return;
+    if (proc.pid && process.platform !== 'win32') {
+        try {
+            process.kill(-proc.pid, 'SIGKILL');
+            return;
+        } catch { /* fall through to direct kill */ }
+    }
+    try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+}
 // VS Code: ITerminalProfileResolverService.getDefaultShell per OS — not hard-coded '/bin/zsh'.
 // Mirrors `src/core/terminal/terminalProfiles.ts:getDefaultShell` for the backend (os-aware).
 function getDefaultShell() {
@@ -67,22 +80,30 @@ class TerminalManager {
         if (this._gcTimer.unref) this._gcTimer.unref();
     }
 
-    static MAX_SESSIONS = 50;
+    static MAX_SESSIONS = LIMITS.WS_GLOBAL_MAX_SESSIONS;
 
     createSession(id = null, { kind = 'code', title, language, code, cwd, cols = 80, rows = 30, stdinInput: _stdinInput = '', preStdin: _preStdin = null, ownerId = null, ownerIp = null }) {
         if (this.sessions.size >= TerminalManager.MAX_SESSIONS) {
             throw new Error(`Session limit reached (${TerminalManager.MAX_SESSIONS}). Close a terminal first.`);
         }
-        // cwd containment: must resolve to an existing directory under homedir/tmp or cwd is ignored
-        let safeCwd = cwd || os.homedir() || process.cwd();
-        try {
-            const resolved = path.resolve(String(safeCwd));
-            if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
-                safeCwd = os.tmpdir();
-            } else {
-                safeCwd = resolved;
-            }
-        } catch { safeCwd = os.tmpdir(); }
+        // cwd containment: only directories under the OS temp root or the
+        // server's workspace root are accepted. An arbitrary client path (e.g.
+        // `/` or the repo root) would otherwise expose host files to the shell.
+        let safeCwd = os.tmpdir();
+        if (cwd) {
+            try {
+                // Resolve symlinks before the containment check: a symlink under
+                // the temp root pointing at `/` must not become the shell cwd.
+                const resolved = fs.realpathSync(path.resolve(String(cwd)));
+                const roots = [os.tmpdir(), WORKSPACES_DIR].map((root) => {
+                    try { return fs.realpathSync(path.resolve(root)); } catch { return path.resolve(root); }
+                });
+                const contained = roots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
+                if (contained && fs.statSync(resolved).isDirectory()) {
+                    safeCwd = resolved;
+                }
+            } catch { /* fall back to tmpdir */ }
+        }
         id = id || crypto.randomBytes(8).toString('hex');
         const session = {
             id,
@@ -100,6 +121,15 @@ class TerminalManager {
             controlProc: null,
             tmpDir: null,
             wandbox: null,
+            abortController: null,
+            // Per-session output budget. Code runs get the configured cap;
+            // interactive shells get a larger (still bounded) budget because
+            // they legitimately stream more over their lifetime.
+            outputBytes: 0,
+            outputLimit: kind === 'shell'
+                ? Math.min(LIMITS.MAX_OUTPUT_BYTES * 4, 4 * 1024 * 1024)
+                : LIMITS.MAX_OUTPUT_BYTES,
+            outputTruncated: false,
             exitCode: null,
             createdAt: Date.now(),
             exitedAt: null,
@@ -137,11 +167,40 @@ class TerminalManager {
         const session = this.sessions.get(id);
         if (!session || !session.transport) return false;
         const ws = session.transport;
-        if (ws.readyState === ws.OPEN) {
+        if (ws.readyState !== ws.OPEN) return false;
+
+        if (payload && payload.type === 'terminal.output') {
+            if (session.outputTruncated) return false;
+            const bytes = Buffer.byteLength(String(payload.data || ''), 'utf8');
+            if (session.outputBytes + bytes > session.outputLimit) {
+                if (!session.outputTruncated) {
+                    session.outputTruncated = true;
+                    try {
+                        ws.send(JSON.stringify({
+                            sessionId: id,
+                            type: 'terminal.error',
+                            message: `Output limit exceeded (${session.outputLimit} bytes); stopping session.`,
+                        }));
+                    } catch { /* ignore */ }
+                    this.kill(id);
+                }
+                return false;
+            }
+            session.outputBytes += bytes;
+            // A peer that stops reading must not make the server buffer output
+            // without bound. Stop the run instead of queueing forever.
+            if (typeof ws.bufferedAmount === 'number' && ws.bufferedAmount > LIMITS.WS_MAX_BUFFERED_BYTES) {
+                this.kill(id);
+                return false;
+            }
+        }
+
+        try {
             ws.send(JSON.stringify({ sessionId: id, ...payload }));
             return true;
+        } catch {
+            return false;
         }
-        return false;
     }
 
     setState(id, state) {
@@ -159,11 +218,14 @@ class TerminalManager {
      * the pty. We also open a control fd via an extra 'pipe' stdio slot.
      */
     spawnPty(session, runCmd, runArgs) {
+        session.outputBytes = 0;
+        session.outputTruncated = false;
         const args = [PTY_RELAY, String(session.cols), String(session.rows), '--', runCmd, ...runArgs];
         // Sandboxed: minimal env + OS resource limits where available.
         const proc = spawnSandboxed('python3', args, {
             cwd: session.cwd && fs.existsSync(session.cwd) ? session.cwd : os.tmpdir(),
             stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+            detached: process.platform !== 'win32',
         });
 
         session.proc = proc;
@@ -323,13 +385,19 @@ class TerminalManager {
         if (session.wandbox) {
             session.wandbox.aborted = true;
         }
+        // Abort the upstream Wandbox request (if any). Without this the HTTP
+        // request keeps running after Stop/dispose and consumes a concurrency
+        // slot until the provider timeout.
+        if (session.abortController) {
+            try { session.abortController.abort(); } catch { /* ignore */ }
+        }
         if (session.pendingWandboxStdin) {
             session.pendingWandboxStdin = null;
         }
         // A compile subprocess must never outlive its session (killing the main
         // proc does NOT touch the compiler, so it would otherwise be orphaned).
         if (session.compileProc) {
-            try { session.compileProc.kill('SIGKILL'); } catch { /* ignore */ }
+            killProcessTree(session.compileProc);
             session.compileProc = null;
         }
         if (session.checkPty && session.proc && session.proc.stdio && session.proc.stdio[3] && session.proc.stdio[3].writable) {
@@ -340,7 +408,7 @@ class TerminalManager {
                 session.proc.stdio[3].write(`${JSON.stringify({ op: 'kill' })}\n`);
             } catch { /* ignore */ }
         } else if (session.proc && session.proc.pid) {
-            try { session.proc.kill('SIGKILL'); } catch { /* ignore */ }
+            killProcessTree(session.proc);
         }
         return true;
     }
@@ -348,13 +416,12 @@ class TerminalManager {
     dispose(id) {
         const session = this.sessions.get(id);
         if (!session) return;
-        // Detach the transport immediately: a disposed session must never emit.
+        // Stop first (kills the process tree and aborts any Wandbox request),
+        // then detach the transport so a disposed session can never emit.
+        this.kill(id);
         session.transport = null;
-        if (session.proc) {
-            this.kill(id);
-        }
-        if (session.wandbox) {
-            session.wandbox.aborted = true;
+        if (session.abortController) {
+            try { session.abortController.abort(); } catch { /* ignore */ }
         }
         if (session.pendingWandboxStdin) {
             session.pendingWandboxStdin = null;
@@ -368,27 +435,37 @@ class TerminalManager {
     /** Full code-execution path: compile (if needed), then run in PTY. */
     async executeCode(session, { language, code, stdinInput = '', preStdin = null, filename = null }) {
         const lang = String(language).toLowerCase();
+        session.outputBytes = 0;
+        session.outputTruncated = false;
 
         // Wandbox fallback for unsupported/remote (also forced in production when local execution is disabled)
         const runViaWandbox = (stdinData = '', _wasInteractive = false) => {
             session.state = STATES.RUNNING;
+            const controller = new AbortController();
             const wb = {
                 stdinData: stdinData || '',
                 aborted: false,
+                controller,
             };
             session.wandbox = wb;
-            const owner = () => this.sessions.get(session.id) === session && !wb.aborted;
+            session.abortController = controller;
+            const owner = () => this.sessions.get(session.id) === session;
+            const emitOutput = () => owner() && !wb.aborted;
             streamViaWandbox({
                 language: lang,
                 code,
                 stdin: wb.stdinData,
                 filename: filename || null,
+                signal: controller.signal,
                 onEvent: (event) => {
                     if (!owner()) return;
-                    if (event.type === 'stdout') this.send(session.id, { type: 'terminal.output', data: event.data });
-                    else if (event.type === 'stderr') this.send(session.id, { type: 'terminal.output', data: event.data });
-                    else if (event.type === 'error') this.send(session.id, { type: 'terminal.error', message: event.data });
-                    else if (event.type === 'exit') {
+                    if (event.type === 'stdout') {
+                        if (emitOutput()) this.send(session.id, { type: 'terminal.output', data: event.data });
+                    } else if (event.type === 'stderr') {
+                        if (emitOutput()) this.send(session.id, { type: 'terminal.output', data: event.data });
+                    } else if (event.type === 'error') {
+                        this.send(session.id, { type: 'terminal.error', message: event.data });
+                    } else if (event.type === 'exit') {
                         session.exitCode = event.code;
                         session.state = event.code === 0 ? STATES.EXITED : STATES.FAILED;
                         this.send(session.id, { type: 'terminal.exit', code: event.code, signal: null });
@@ -400,17 +477,13 @@ class TerminalManager {
                 this.send(session.id, { type: 'terminal.error', message: 'Wandbox execution failed' });
                 this.send(session.id, { type: 'terminal.exit', code: 1, signal: null });
             }).finally(() => {
+                if (session.abortController === controller) session.abortController = null;
                 session.wandbox = null;
             });
         };
 
         const initialConfig = getLanguageConfig(lang, path.join(os.tmpdir(), 'main'), os.tmpdir());
-        const allowLocal = process.env.ALLOW_LOCAL_EXECUTION === 'true'
-            ? true
-            : process.env.ALLOW_LOCAL_EXECUTION === 'false'
-                ? false
-                : process.env.NODE_ENV !== 'production';
-        if (!allowLocal || !canRunLocally(initialConfig)) {
+        if (!ALLOW_LOCAL_EXECUTION || !canRunLocally(initialConfig)) {
             this.setState(session.id, STATES.STARTING);
             if (stdinInput || preStdin) {
                 runViaWandbox(stdinInput || preStdin);
@@ -513,6 +586,12 @@ class TerminalManager {
                 this._cleanupSession(session);
                 return;
             }
+            // A session stopped by the output cap / timeout / client must not
+            // silently restart on the Wandbox path.
+            if (session.state === STATES.STOPPING || session.state === STATES.EXITED
+                || session.state === STATES.FAILED || session.state === STATES.DISPOSED) {
+                return;
+            }
             console.error('[EXEC] Local execution failed, using Wandbox:', err.message);
             this._cleanupSession(session);
             runViaWandbox(stdinInput || preStdin || '');
@@ -524,13 +603,14 @@ class TerminalManager {
             // Sandboxed compiler invocation (minimal env, no secret inheritance).
             const compProc = spawnSandboxed(config.compile.cmd, config.compile.args(filePath), {
                 cwd: session.tmpDir,
+                detached: process.platform !== 'win32',
             });
             // Track the compiler on the session so kill()/dispose() terminate it
             // too — an untracked compiler would be orphaned on stop/dispose.
             session.compileProc = compProc;
             const owner = () => this.sessions.get(session.id) === session;
             const timer = setTimeout(() => {
-                if (!compProc.killed) compProc.kill('SIGKILL');
+                killProcessTree(compProc);
                 if (session.compileProc === compProc) session.compileProc = null;
                 const e = new Error('Compilation timed out');
                 e.failCompile = true;
@@ -542,7 +622,7 @@ class TerminalManager {
                 // Safety: if the proc ended via 'error' or is still alive, never
                 // leave it running after the promise settles.
                 if (!compProc.killed && compProc.exitCode === null && compProc.signalCode === null) {
-                    try { compProc.kill('SIGKILL'); } catch { /* ignore */ }
+                    killProcessTree(compProc);
                 }
                 if (exitCode === 0 && !sig) resolve();
                 else {
@@ -571,7 +651,7 @@ class TerminalManager {
         if (session.execTimer) { clearTimeout(session.execTimer); session.execTimer = null; }
         if (session.pendingWandboxStdin) { session.pendingWandboxStdin = null; }
         if (session.compileProc) {
-            try { session.compileProc.kill('SIGKILL'); } catch { /* ignore */ }
+            killProcessTree(session.compileProc);
             session.compileProc = null;
         }
         if (session.tmpDir) {

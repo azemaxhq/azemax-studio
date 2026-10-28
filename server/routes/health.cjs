@@ -1,5 +1,5 @@
 const express = require('express');
-const { ALLOW_LOCAL_EXECUTION, ALLOW_SHELL } = require('../config/index.cjs');
+const { ALLOW_LOCAL_EXECUTION, ALLOW_SHELL, isProd } = require('../config/index.cjs');
 const { getDb } = require('../db/index.cjs');
 
 const router = express.Router();
@@ -25,11 +25,15 @@ router.get('/ready', (_req, res) => {
             status: 'ready',
             service: 'ai-code-editor-api',
             timestamp: new Date().toISOString(),
-            execution: {
-                // Modes only (booleans), never keys or paths.
-                sandboxedExecution: !ALLOW_LOCAL_EXECUTION,
-                shell: ALLOW_SHELL,
-            },
+            // Execution modes are reconnaissance for an attacker (they reveal
+            // whether host execution/shells are enabled). Omit in production.
+            ...(isProd ? {} : {
+                execution: {
+                    // Modes only (booleans), never keys or paths.
+                    sandboxedExecution: !ALLOW_LOCAL_EXECUTION,
+                    shell: ALLOW_SHELL,
+                },
+            }),
         });
     } catch (_err) {
         res.status(503).json({ status: 'not-ready', service: 'ai-code-editor-api' });

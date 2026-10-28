@@ -21,4 +21,12 @@ const WANDBOX_LANGUAGES = {
 const EXECUTION_TIMEOUT_MS = 60_000;
 const COMPILE_TIMEOUT_MS = 30_000;
 
-module.exports = { WANDBOX_LANGUAGES, EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS };
+/** Own-property lookup for client-supplied language names. */
+function getWandboxLanguage(language) {
+    const key = String(language || '').toLowerCase();
+    return Object.prototype.hasOwnProperty.call(WANDBOX_LANGUAGES, key)
+        ? WANDBOX_LANGUAGES[key]
+        : null;
+}
+
+module.exports = { WANDBOX_LANGUAGES, getWandboxLanguage, EXECUTION_TIMEOUT_MS, COMPILE_TIMEOUT_MS };

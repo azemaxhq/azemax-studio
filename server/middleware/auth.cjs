@@ -19,6 +19,17 @@ const {
     isAdminEmail,
 } = require('../services/auth/authService.cjs');
 const { verifyIdToken, isFirebaseConfigured } = require('../services/auth/firebaseAdmin.cjs');
+const { FIREBASE_CHECK_REVOKED } = require('../config/index.cjs');
+
+function providerIdsFromDecoded(decoded) {
+    const identities = decoded && decoded.firebase && decoded.firebase.identities;
+    if (!identities || typeof identities !== 'object') return [];
+    return Object.keys(identities);
+}
+
+function normalizedEmail(value) {
+    return String(value || '').trim().toLowerCase();
+}
 
 /** Extract a bearer credential from the Authorization header (case-insensitive scheme). */
 function bearerTokenFromRequest(req) {
@@ -41,15 +52,17 @@ async function authenticateRequest(req, _res, next) {
         if (!token || token.length > 8192 || !isFirebaseConfigured()) {
             return next();
         }
-        const decoded = await verifyIdToken(token);
+        const decoded = await verifyIdToken(token, FIREBASE_CHECK_REVOKED);
         if (!decoded || !decoded.uid) {
             return next();
         }
         let user = findUserByFirebaseUid(decoded.uid);
-        // Provision / refresh the local row only when it is missing or the
-        // provider's verification state changed. Never on every request.
+        // Provision / refresh the local row only when it is missing or a
+        // security-relevant claim changed. Never write on every request.
         const verificationChanged = Boolean(user) && Boolean(user.emailVerified) !== Boolean(decoded.email_verified);
-        if ((!user || verificationChanged) && typeof decoded.email === 'string' && decoded.email) {
+        const emailChanged = Boolean(user) && Boolean(decoded.email)
+            && normalizedEmail(decoded.email) !== normalizedEmail(user.email);
+        if ((!user || verificationChanged || emailChanged) && typeof decoded.email === 'string' && decoded.email) {
             try {
                 user = syncFirebaseUser({
                     uid: decoded.uid,
@@ -58,9 +71,11 @@ async function authenticateRequest(req, _res, next) {
                     photoUrl: decoded.picture,
                     emailVerified: Boolean(decoded.email_verified),
                     providerId: (decoded.firebase && decoded.firebase.sign_in_provider) || 'password',
+                    providerIds: providerIdsFromDecoded(decoded),
                 });
             } catch {
-                // A rejected sync (e.g. unsafe email link) must not authenticate.
+                // A rejected sync (unsafe email link, provider mismatch, or a
+                // collision with another account) must not authenticate.
                 user = null;
             }
         }

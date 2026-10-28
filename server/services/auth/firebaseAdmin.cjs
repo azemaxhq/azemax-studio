@@ -19,16 +19,27 @@
 const { initializeApp, cert, getApps, getApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const logger = require('../../lib/logger.cjs');
+const { FIREBASE_CHECK_REVOKED } = require('../../config/index.cjs');
 
 let appInstance = null;
 let isConfigured = false;
 
 /**
  * Test seam — lets unit tests inject a deterministic token verifier without
- * contacting real Firebase. Only set from tests via __setVerifyIdTokenForTests;
- * production code paths never touch it, and it is reset to null afterwards.
+ * contacting real Firebase. Disabled in production so a test hook can never
+ * become a production authentication bypass.
  */
+function testOverrideAllowed() {
+    const env = String(process.env.NODE_ENV || '').trim().toLowerCase();
+    return env === 'test' || env === 'development' || env === 'dev';
+}
+
 function __setVerifyIdTokenForTests(fn) {
+    if (!testOverrideAllowed()) {
+        globalThis.__azemax_verifyIdTokenOverride = null;
+        logger.error('Refusing to install a test auth override in production.');
+        return;
+    }
     globalThis.__azemax_verifyIdTokenOverride = typeof fn === 'function' ? fn : null;
 }
 
@@ -57,7 +68,20 @@ function initFirebaseAdmin() {
         // Reuse an already-initialized default app (e.g. another module, a test
         // harness, or a hot reload) instead of throwing "app already exists".
         if (getApps().length > 0) {
-            appInstance = getApp();
+            const existing = getApp();
+            const existingProjectId = existing.options && existing.options.projectId;
+            if (existingProjectId && existingProjectId !== projectId) {
+                // A default app initialized for another project would verify
+                // tokens for the wrong tenant. Fail closed instead of reusing.
+                logger.error('Firebase Admin default app belongs to a different project; refusing to reuse it.', {
+                    expectedProjectId: projectId,
+                    actualProjectId: existingProjectId,
+                });
+                appInstance = null;
+                isConfigured = false;
+                return null;
+            }
+            appInstance = existing;
             isConfigured = true;
             logger.info('Firebase Admin reusing existing default app', { projectId });
             return appInstance;
@@ -96,7 +120,7 @@ function initFirebaseAdmin() {
 initFirebaseAdmin();
 
 function isFirebaseConfigured() {
-    if (globalThis.__azemax_verifyIdTokenOverride) return true;
+    if (testOverrideAllowed() && globalThis.__azemax_verifyIdTokenOverride) return true;
     return isConfigured && Boolean(appInstance);
 }
 
@@ -111,10 +135,11 @@ function getFirebaseAdmin() {
  * Verify an ID token sent from the client.
  * Returns the decoded token or throws a classified error.
  */
-async function verifyIdToken(idToken, checkRevoked = false) {
+async function verifyIdToken(idToken, checkRevoked = FIREBASE_CHECK_REVOKED) {
     // Test seam first: unit tests inject a verifier so the HTTP layer can be
-    // exercised without real Firebase credentials or network access.
-    if (globalThis.__azemax_verifyIdTokenOverride) {
+    // exercised without real Firebase credentials or network access. Guarded so
+    // a stray global cannot bypass production authentication.
+    if (testOverrideAllowed() && globalThis.__azemax_verifyIdTokenOverride) {
         return globalThis.__azemax_verifyIdTokenOverride(idToken, checkRevoked);
     }
 

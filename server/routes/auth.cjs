@@ -19,8 +19,15 @@ const { asyncHandler } = require('../lib/asyncHandler.cjs');
 const { requireAuth, bearerTokenFromRequest } = require('../middleware/auth.cjs');
 const { verifyIdToken } = require('../services/auth/firebaseAdmin.cjs');
 const { syncFirebaseUser } = require('../services/auth/authService.cjs');
+const { FIREBASE_CHECK_REVOKED } = require('../config/index.cjs');
 
 const router = express.Router();
+
+function providerIdsFromDecoded(decoded) {
+    const identities = decoded && decoded.firebase && decoded.firebase.identities;
+    if (!identities || typeof identities !== 'object') return [];
+    return Object.keys(identities);
+}
 
 router.post('/sync', asyncHandler(async (req, res) => {
     // Accept the token in the body (initial exchange) or the Authorization
@@ -38,7 +45,7 @@ router.post('/sync', asyncHandler(async (req, res) => {
 
     let decoded;
     try {
-        decoded = await verifyIdToken(idToken);
+        decoded = await verifyIdToken(idToken, FIREBASE_CHECK_REVOKED);
     } catch (err) {
         // Never echo provider internals; surface a stable status only.
         const status = err && err.status ? err.status : 401;
@@ -65,6 +72,7 @@ router.post('/sync', asyncHandler(async (req, res) => {
             photoUrl: decoded.picture,
             emailVerified: Boolean(decoded.email_verified),
             providerId: (decoded.firebase && decoded.firebase.sign_in_provider) || 'password',
+            providerIds: providerIdsFromDecoded(decoded),
         });
     } catch (err) {
         const status = err && err.status ? err.status : 500;

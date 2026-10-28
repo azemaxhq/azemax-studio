@@ -14,6 +14,8 @@ module.exports = {
     CORS_LIST: env.CORS_LIST,
     ALLOW_SHELL: env.ALLOW_SHELL,
     LIMITS: env.LIMITS,
+    TRUST_PROXY_HOPS: env.TRUST_PROXY_HOPS,
+    FIREBASE_CHECK_REVOKED: env.FIREBASE_CHECK_REVOKED,
     isProd: env.isProd,
     isTest: env.isTest,
     publicSummary: env.publicSummary,

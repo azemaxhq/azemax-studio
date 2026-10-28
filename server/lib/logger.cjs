@@ -8,7 +8,9 @@
  *   pass explicit scalar summaries (lengths, counts) instead.
  */
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
-const ACTIVE_LEVEL = LEVELS[(process.env.LOG_LEVEL || '').toLowerCase()] ?? (process.env.NODE_ENV === 'production' ? 20 : 10);
+const NODE_ENV = String(process.env.NODE_ENV || '').trim().toLowerCase();
+const IS_PROD = NODE_ENV === 'production' || NODE_ENV === 'prod';
+const ACTIVE_LEVEL = LEVELS[(process.env.LOG_LEVEL || '').toLowerCase()] ?? (IS_PROD ? 20 : 10);
 
 const SENSITIVE_KEY_RE = /api[_-]?key|apikey|secret|token|password|passwd|pwd|authorization|cookie|session|bearer|private[_-]?key|client[_-]?secret/i;
 
