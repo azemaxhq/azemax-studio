@@ -52,3 +52,16 @@ data/workspaces/*.log
 
 # Compiled test binaries (build artifacts, never commit)
 test_cpp/main
+
+# Test / build reports (regenerated locally and in CI; never commit)
+test-results/
+playwright-report/
+lighthouse-*.json
+# Local server data (SQLite + workspace files — contain user data, never commit)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite
+data/*.sqlite3
+data/workspaces/
+!data/workspaces/.gitkeep

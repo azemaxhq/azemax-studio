@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22%20LTS-green.svg)](.nvmrc)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/Tests-1643%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-2244%20passing-brightgreen.svg)](#testing)
 
 **Azemax Studio** is a browser-based AI-native code editor with Monaco, real-time collaboration via Firebase, server-side AI provider routing, and secure code execution.
 
@@ -117,7 +117,7 @@ Open [http://localhost:5173](http://localhost:5173). The IDE lives at `/app` and
 | `npm run lint` | ESLint (0 errors, pre-existing warnings allowed) |
 | `npm run lint:server` | ESLint server-only |
 | `npm run typecheck` | `tsc -b --noEmit` |
-| `npm test` | `vitest run` (jsdom, 1643 tests) |
+| `npm test` | `vitest run` (jsdom, 2244 tests) |
 | `npm run test:e2e:auth` | Fail-closed auth E2E (no live Firebase needed) |
 | `npx playwright test` | Editor E2E (authenticated specs skip without real credentials) |
 | `npm run db:backup` | Backup SQLite database |
@@ -240,7 +240,7 @@ npm run build:analyze
 
 ### Build-time Security (vite.config.ts)
 
-- `productionSecretGuard` plugin blanks all `VITE_*_API_KEY` and `VITE_HF_TOKEN` in production builds
+- `clientEnvGuard` plugin (vite.config.ts) defines every client-read `VITE_*` with an explicit fallback and blanks `VITE_GROQ_API_KEY`, `VITE_OPENROUTER_API_KEY`, `VITE_HF_TOKEN`, `VITE_KILO_API_KEY` so provider credentials are never inlined into the production bundle
 - `validateApiUrl` warns if `VITE_API_URL` doesn't end in `/api` or isn't HTTPS in production
 - `esbuild` drops `console.log`/`debugger` in production
 
@@ -249,7 +249,7 @@ npm run build:analyze
 ```bash
 # Unit + integration (Vitest, jsdom)
 npm test
-# 46 test files, 1643 tests passing
+# 58 test files, 2244 tests passing
 
 # Type-check only
 npm run typecheck
@@ -341,7 +341,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 ### Security Audit
 
 Current security posture documented in [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md):
-- 1643 tests passing (auth enforcement, backend contract, transport, flow, verification)
+- 2244 tests passing (auth enforcement, backend contract, transport, flow, verification)
 - No critical/high-severity authentication vulnerabilities found
 - Residual risks documented (in-memory rate limits, single process, WebSocket token in query string)
 
