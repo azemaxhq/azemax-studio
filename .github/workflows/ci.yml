@@ -110,10 +110,19 @@ jobs:
           VITE_FIREBASE_PROJECT_ID: 'dummy-project'
           VITE_FIREBASE_APP_ID: '1:123456789:web:abcdef'
           VITE_WS_PORT: '3001'
+          # IndexNow verification key for Bing domain verification. Only this
+          # step receives the secret; it is never logged. The generated
+          # dist/indexnow-key.txt is intentionally public.
+          INDEXNOW_API_KEY: ${{ secrets.INDEXNOW_API_KEY }}
 
       - name: Verify no secrets in build output
         run: |
-          if grep -r "VITE_GROQ_API_KEY\|VITE_OPENROUTER_API_KEY\|VITE_HF_TOKEN\|VITE_KILO_API_KEY" dist/ 2>/dev/null; then
+          # Scan build output for provider API key leakage. dist/indexnow-key.txt
+          # is intentionally excluded: it contains the IndexNow verification key
+          # which is meant to be publicly accessible at
+          # https://www.azemax.com/indexnow-key.txt. Only that file is excluded;
+          # dist/assets and all other build output remain scanned.
+          if grep -r --exclude="indexnow-key.txt" "VITE_GROQ_API_KEY\|VITE_OPENROUTER_API_KEY\|VITE_HF_TOKEN\|VITE_KILO_API_KEY" dist/ 2>/dev/null; then
             echo "::error::Provider API keys found in production build!"
             exit 1
           fi
