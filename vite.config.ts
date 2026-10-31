@@ -80,11 +80,56 @@ function validateApiUrl() {
   };
 }
 
+/**
+ * Generates public/indexnow-key.txt during production builds so Vercel can
+ * serve it for Bing IndexNow domain verification.
+ *
+ * Security:
+ *  - Reads INDEXNOW_API_KEY from process.env (server-side only, NOT VITE_
+ *    prefixed), so it is never inlined into client-side JavaScript.
+ *  - Never logs the key value.
+ *  - Fails the production build clearly if the key is missing.
+ *  - The file is written to public/ and copied to dist/ by Vite's public
+ *    assets copy; it is gitignored and never committed.
+ */
+function indexnowKeyFilePlugin() {
+  let isProductionBuild = false;
+  return {
+    name: 'azemax-indexnow-keyfile',
+    configResolved(config: { command: string; mode: string }) {
+      isProductionBuild = config.command === 'build' && config.mode === 'production';
+    },
+    async buildStart() {
+      if (!isProductionBuild) return;
+
+      const apiKey = process.env.INDEXNOW_API_KEY;
+      if (!apiKey) {
+        throw new Error(
+          '\n[azemax] INDEXNOW_API_KEY is not set in the production build environment.\n' +
+          '  Obtain a key from https://www.bing.com/webmasters\n' +
+          '  Set it in Vercel: Project Settings → Environment Variables → INDEXNOW_API_KEY\n' +
+          '  Or locally: INDEXNOW_API_KEY=<key> npm run build\n'
+        );
+      }
+
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      const keyFile = path.resolve(process.cwd(), 'public/indexnow-key.txt');
+
+      // Overwrite on every production build so the deployed key always matches.
+      await fs.writeFile(keyFile, apiKey);
+
+      console.log('\n✅ [azemax] IndexNow key file generated for production build.\n');
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
     clientEnvGuard(),
     validateApiUrl(),
+    indexnowKeyFilePlugin(),
     ...(process.env.ANALYZE ? [visualizer({
       filename: 'dist/stats.html',
       open: false,

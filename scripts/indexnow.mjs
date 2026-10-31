@@ -9,15 +9,20 @@
  *    variable. It is never embedded in client-side JavaScript or the Vite
  *    bundle.
  *  - A key file is written to the public root for Bing key-file verification
- *    (https://www.azemax.com/<key>.txt).
+ *    (https://www.azemax.com/indexnow-key.txt).
  *  - Submitted URLs are deduplicated against a local state file so the same
  *    URL is not submitted more than once.
  *
  * Usage:
+ *   # Generate the verification key file (build-time, server-side only):
+ *   INDEXNOW_API_KEY=<your-key> vite-node scripts/indexnow.mjs --generate-keyfile
+ *
+ *   # Submit changed URLs after deployment:
  *   INDEXNOW_API_KEY=<your-key> vite-node scripts/indexnow.mjs \
  *     --urls https://www.azemax.com/ https://www.azemax.com/features
  *
- * Run after a successful deployment for any URLs whose content changed.
+ * Run the submission step after a successful deployment for any URLs whose
+ * content changed. The build itself never submits URLs automatically.
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -64,15 +69,14 @@ async function keyFileExists() {
  * Write the Bing key-file to the public root so the domain can be verified.
  * The file contains only the API key. It is safe to serve publicly because
  * possession of the key is the authentication mechanism itself.
+ *
+ * Always overwrites any existing file so the deployed key matches the
+ * current INDEXNOW_API_KEY. Never logs the key value.
  */
 async function ensureKeyFile(apiKey) {
-    if (await keyFileExists()) {
-        log('info', 'IndexNow key file already exists in public/');
-        return;
-    }
     await mkdir(new URL('./', KEY_FILE), { recursive: true });
     await writeFile(KEY_FILE, apiKey);
-    log('info', `IndexNow key file written to ${KEY_FILE}`);
+    log('info', 'IndexNow key file generated for domain verification.');
 }
 
 /**
@@ -125,6 +129,7 @@ async function submitUrls(apiKey, urls) {
 async function main() {
     const args = process.argv.slice(2);
     const urls = args.filter((a) => !a.startsWith('--'));
+    const generateKeyFile = args.includes('--generate-keyfile');
 
     const apiKey = process.env.INDEXNOW_API_KEY;
     if (!apiKey) {
@@ -134,10 +139,14 @@ async function main() {
         return;
     }
 
-    await ensureKeyFile(apiKey);
+    if (generateKeyFile) {
+        await ensureKeyFile(apiKey);
+        log('info', 'Key file written to public/indexnow-key.txt (do not commit to version control).');
+        return;
+    }
 
     if (urls.length === 0) {
-        log('info', 'No URLs provided. Nothing to submit.');
+        log('info', 'No URLs provided. Use --generate-keyfile to write the verification file, or pass --urls to submit.');
         return;
     }
 

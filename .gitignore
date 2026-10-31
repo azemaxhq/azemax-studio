@@ -39,6 +39,10 @@ secrets/
 .gcp/
 .azure/
 
+# IndexNow verification key file (generated at build time, never committed)
+public/indexnow-key.txt
+.indexnow-state.json
+
 # Server data (ephemeral on Render free tier)
 data/workspaces/*.json
 data/workspaces/*.log
