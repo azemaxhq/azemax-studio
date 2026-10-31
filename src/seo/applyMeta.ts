@@ -80,8 +80,8 @@ function replaceRouteSchema(schema: Record<string, unknown> | null): void {
     if (!existing) document.head.appendChild(script);
 }
 
-function applyOpenGraph(page: { title: string; description: string; ogType: string; canonical: string | null }): void {
-    const image = `${SITE.origin}${SITE.ogImagePath}`;
+function applyOpenGraph(page: { title: string; description: string; ogType: string; canonical: string | null; ogImage?: string }): void {
+    const image = `${SITE.origin}${page.ogImage ?? SITE.ogImagePath}`;
     upsertMeta('property', 'og:title', page.title);
     upsertMeta('property', 'og:description', page.description);
     upsertMeta('property', 'og:type', page.ogType);
@@ -121,11 +121,18 @@ function applyPublic(page: PublicPage): void {
         description: page.description,
         ogType: page.ogType,
         canonical,
+        ogImage: page.ogImage,
     });
     if (page.ogType === 'article') {
         upsertMeta('property', 'article:modified_time', page.lastmod);
+        if (page.publishedDate) {
+            upsertMeta('property', 'article:published_time', page.publishedDate);
+        } else {
+            removeMeta('property', 'article:published_time');
+        }
     } else {
         removeMeta('property', 'article:modified_time');
+        removeMeta('property', 'article:published_time');
     }
     replaceRouteSchema(buildStructuredData(page));
 }

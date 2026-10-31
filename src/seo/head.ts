@@ -33,8 +33,7 @@ function meta(name: string, content: string, attribute: 'name' | 'property' = 'n
     return `<meta ${attribute}="${escapeHtml(name)}" content="${escapeHtml(content)}" />`;
 }
 
-function twitterBlock(title: string, description: string): string[] {
-    const image = `${SITE.origin}${SITE.ogImagePath}`;
+function twitterBlock(title: string, description: string, image: string): string[] {
     return [
         meta('twitter:card', 'summary_large_image'),
         meta('twitter:title', title),
@@ -51,7 +50,7 @@ function twitterBlock(title: string, description: string): string[] {
  */
 export function renderPublicHead(page: PublicPage): string {
     const canonical = absoluteUrl(page.path);
-    const image = `${SITE.origin}${SITE.ogImagePath}`;
+    const image = `${SITE.origin}${page.ogImage ?? SITE.ogImagePath}`;
     const schema = buildStructuredData(page);
 
     const tags = [
@@ -73,11 +72,14 @@ export function renderPublicHead(page: PublicPage): string {
         meta('og:image:width', String(SITE.ogImageWidth), 'property'),
         meta('og:image:height', String(SITE.ogImageHeight), 'property'),
         meta('og:image:alt', SITE.ogImageAlt, 'property'),
-        ...twitterBlock(page.title, page.description),
+        ...twitterBlock(page.title, page.description, image),
     ];
 
     if (page.ogType === 'article') {
         tags.push(meta('article:modified_time', page.lastmod, 'property'));
+        if (page.publishedDate) {
+            tags.push(meta('article:published_time', page.publishedDate, 'property'));
+        }
     }
 
     tags.push(
@@ -101,7 +103,7 @@ export function renderPrivateHead(page: PrivatePage): string {
         meta('og:description', page.description, 'property'),
         meta('og:type', 'website', 'property'),
         meta('og:site_name', SITE.name, 'property'),
-        ...twitterBlock(page.title, page.description),
+        ...twitterBlock(page.title, page.description, `${SITE.origin}${SITE.ogImagePath}`),
     ];
     return `${SEO_BLOCK_START}\n  ${tags.join('\n  ')}\n  ${SEO_BLOCK_END}`;
 }

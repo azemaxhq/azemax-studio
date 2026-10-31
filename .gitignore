@@ -65,3 +65,6 @@ data/*.sqlite
 data/*.sqlite3
 data/workspaces/
 !data/workspaces/.gitkeep
+
+# Reports
+reports/

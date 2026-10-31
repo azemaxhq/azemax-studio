@@ -61,6 +61,7 @@ function organizationNode(): Record<string, unknown> {
         description:
             'Azemax is the independent developer project behind Azemax Studio, a browser-based AI code editor.',
         email: SITE.supportEmail,
+        sameAs: ['https://github.com/azemaxhq/azemax-studio'],
         founder: {
             '@type': 'Person',
             name: SITE.founderName,
@@ -147,6 +148,11 @@ function pageNode(page: PublicPage): Record<string, unknown> {
         inLanguage: SITE.language,
         dateModified: page.lastmod,
     };
+
+    // Article pages carry a genuine publication date.
+    if (page.publishedDate) {
+        base['datePublished'] = page.publishedDate;
+    }
 
     if (page.key === 'contact') {
         return {

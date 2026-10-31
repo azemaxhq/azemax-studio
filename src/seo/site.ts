@@ -45,10 +45,14 @@ export interface PublicPage {
     label: string;
     /** ISO date used by sitemap.xml. Update when the page content changes. */
     lastmod: string;
+    /** ISO date the page was first published (article pages). */
+    publishedDate?: string;
     /** Include in sitemap.xml and expose index,follow. */
     indexable: boolean;
     /** Open Graph object type. */
     ogType: 'website' | 'article';
+    /** Page-specific Open Graph image path. Falls back to SITE.ogImagePath when absent. */
+    ogImage?: string;
 }
 
 export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
@@ -114,7 +118,8 @@ export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
         description:
             'How Azemax Studio handles account data, workspace files, AI prompts, provider requests, code execution, retention, and your privacy choices.',
         label: 'Privacy Policy',
-        lastmod: '2026-10-26',
+        lastmod: '2026-10-18',
+        publishedDate: '2026-10-18',
         indexable: true,
         ogType: 'article',
     },
@@ -125,7 +130,8 @@ export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
         description:
             'The terms that govern use of Azemax Studio, including accounts, acceptable use, AI output, code execution risks, content ownership, and liability.',
         label: 'Terms of Service',
-        lastmod: '2026-10-26',
+        lastmod: '2026-10-18',
+        publishedDate: '2026-10-18',
         indexable: true,
         ogType: 'article',
     },
