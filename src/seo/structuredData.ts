@@ -49,7 +49,8 @@ function organizationNode(): Record<string, unknown> {
     return {
         '@type': 'Organization',
         '@id': ORGANIZATION_ID,
-        name: SITE.shortName,
+        name: SITE.name,
+        alternateName: [SITE.shortName],
         url: SITE.url,
         logo: {
             '@type': 'ImageObject',
