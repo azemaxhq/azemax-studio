@@ -49,7 +49,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
         <div className="az-hero-eyebrow flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-2 text-center mb-5 sm:mb-6">
           <span className="w-6 h-[1px] bg-[var(--az-blue-electric)] opacity-60" />
           <span className="rounded-full border border-[#4F8CFF]/40 bg-[#4F8CFF]/10 px-2 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#8FB4FF]">
-            azemax beta
+            Azemax Studio
           </span>
           <span className="w-6 h-[1px] bg-[var(--az-blue-electric)] opacity-60" />
         </div>
@@ -86,7 +86,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
             className="az-btn-primary group min-h-[44px] w-full sm:w-auto justify-center"
             id="hero-primary-cta"
           >
-            <span>Enter Azemax</span>
+            <span>Enter Azemax Studio</span>
             <ArrowRight size={14} className="transition-transform duration-200 group-hover:translate-x-1 text-black/70" />
           </a>
 
@@ -101,7 +101,7 @@ export const Hero: React.FC<HeroProps> = memo(({ onEnterWorkspace }) => {
 
         {/* 3. Discovery control — the core loop as navigation into the live demos */}
         <nav
-          aria-label="Explore the Azemax loop"
+          aria-label="Explore the Azemax Studio loop"
           className="az-hero-metadata mt-6 sm:mt-8 grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-center gap-1 sm:gap-x-3 sm:gap-y-2 pt-5 sm:pt-6 border-t border-[rgba(255,255,255,0.06)] w-full max-w-md sm:max-w-none"
         >
           {DISCOVERY.map((item) => (

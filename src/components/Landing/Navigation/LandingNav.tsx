@@ -341,7 +341,7 @@ export const LandingNav: React.FC<LandingNavProps> = memo(({ onEnterWorkspace, o
             />
           </span>
           <span className="text-xs font-medium uppercase tracking-[0.22em] text-white/90 transition-colors duration-200 group-hover:text-white">
-            {BRAND.name}
+            {`${BRAND.name} Studio`}
           </span>
           <span className="rounded-full border border-[#4F8CFF]/40 bg-[#4F8CFF]/10 px-1.5 py-px font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[#8FB4FF]">
             Beta

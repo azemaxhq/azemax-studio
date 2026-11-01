@@ -86,7 +86,7 @@ export const ProductSummary: React.FC = memo(() => {
 
           <p className="mb-7 text-sm leading-relaxed text-[var(--az-muted)] font-sans">
             Code runs in a hosted sandbox, and AI requests can use your own provider
-            key. Azemax is an independent developer project currently in public beta.
+            key. Azemax Studio is an independent developer project currently in public beta.
           </p>
 
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">

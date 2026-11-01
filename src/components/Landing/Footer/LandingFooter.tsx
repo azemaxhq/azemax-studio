@@ -16,7 +16,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = memo(({ onEnterWorksp
           <div className="flex items-center gap-2">
             <img
               src={BRAND.logoSrc}
-              alt={BRAND.name}
+              alt={`${BRAND.name} Studio`}
               width={20}
               height={20}
               decoding="async"
@@ -24,7 +24,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = memo(({ onEnterWorksp
               style={{ width: '20px', height: '20px', maxWidth: '20px', maxHeight: '20px' }}
             />
             <span className="font-semibold text-white tracking-widest uppercase">
-              {BRAND.name}
+              {`${BRAND.name} Studio`}
             </span>
             <span className="rounded-full border border-[#4F8CFF]/40 bg-[#4F8CFF]/10 px-1.5 py-px font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[#8FB4FF]">
               Beta
@@ -81,7 +81,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = memo(({ onEnterWorksp
 
         {/* Technical Stamp */}
         <div className="flex flex-col items-center gap-1 text-[11px] text-[var(--az-muted-dark)] md:items-end">
-          <span>Azemax Developer Environment • {BRAND.version}</span>
+          <span>Azemax Studio Developer Environment • {BRAND.version}</span>
           <span>© {new Date().getFullYear()} {LEGAL.operator}</span>
         </div>
 
