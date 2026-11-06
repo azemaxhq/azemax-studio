@@ -25,7 +25,7 @@ import { useDialog } from '../UI/DialogProvider';
 import { useSettingsSelector } from '../../context/SettingsContext';
 import { getSettings } from '../../settings/settingsStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { loadSortState, sortTreeWithState, type ExplorerSortState } from '../../utils/explorerSort';
+import { loadSortState, sortTreeWithState, subscribeSortState, type ExplorerSortState } from '../../utils/explorerSort';
 import { buildRenderForest, resolveExplorerEmptyState } from '../../core/explorer/explorerModel';
 import { requestExplorerRefresh, subscribeExplorerRefresh } from '../../core/filesystem/fileChangeService';
 import { fuzzyMatch, fuzzyHighlight } from '../../utils/fuzzySearch';
@@ -826,30 +826,26 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ isSearchOpen, onSear
     // Explorer sort — persists via localStorage, controlled from Sidebar's Sort menu
     const [sortState, setSortState] = useState<ExplorerSortState>(() => loadSortState());
     useEffect(() => {
+        const unsub = subscribeSortState((next) => setSortState(next));
         const onSort = (e: Event) => {
             const detail = (e as CustomEvent<ExplorerSortState>).detail;
             if (detail) setSortState(detail);
         };
-        const onStorage = (ev: StorageEvent) => {
-            if (ev.key === 'azemax-explorer-sort' && ev.newValue) {
-                try { setSortState(JSON.parse(ev.newValue)); } catch { /* ignore */ }
-            }
-        };
         window.addEventListener('azemax-sort-changed' as any, onSort as any);
-        window.addEventListener('storage', onStorage);
+        return () => {
+            unsub();
+            window.removeEventListener('azemax-sort-changed' as any, onSort as any);
+        };
+    }, []);
+
+    useEffect(() => {
         // Refresh requests (typed service — see fileChangeService). Preserve
         // selection/expanded; force a micro-rerender so counts stay live.
-        // (No-op for the in-browser FS beyond that; the spinner in Sidebar
-        // provides feedback.)
         const disposeRefresh = subscribeExplorerRefresh(() => {
-            // No-op for in-browser FS; the spinner in Sidebar provides feedback.
-            // We simply force a micro-rerender so counts stay live.
             setSortState(s => ({ ...s }));
         });
         return () => {
             disposeRefresh();
-            window.removeEventListener('azemax-sort-changed' as any, onSort as any);
-            window.removeEventListener('storage', onStorage);
         };
     }, []);
 

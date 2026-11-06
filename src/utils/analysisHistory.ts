@@ -1,5 +1,7 @@
 import type { AnalysisResult } from './codeAnalysisEngine';
-import { namespacedKey } from './userStorage';
+import { nsGetItem, nsSetItem, nsRemoveItem } from './userStorage';
+import { AnalysisHistorySchema, safeValidateWithSchema } from '../core/storage/storageSchema';
+import { registerQuotaEvictionHandler } from '../core/storage/storageDriver';
 
 export interface AnalysisSnapshot {
     timestamp: number;
@@ -20,7 +22,7 @@ export interface TrendData {
 }
 
 class AnalysisHistoryManager {
-    private get storageKey() { return namespacedKey('codeAnalysis_history'); }
+    private baseKey = 'codeAnalysis_history';
     private maxSnapshotsPerFile = 50; // Keep last 50 analyses per file
     private maxAgeDays = 90; // Keep data for 90 days
 
@@ -36,7 +38,7 @@ class AnalysisHistoryManager {
             };
 
             // Add or update file history
-            if (!history[fileId]) {
+            if (!history[fileId] || !Array.isArray(history[fileId].snapshots)) {
                 history[fileId] = {
                     fileId,
                     fileName,
@@ -58,8 +60,8 @@ class AnalysisHistoryManager {
             // Update trend data
             history[fileId].trend = this.calculateTrend(history[fileId].snapshots);
 
-            // Save to localStorage
-            localStorage.setItem(this.storageKey, JSON.stringify(history));
+            // Save to storage
+            nsSetItem(this.baseKey, JSON.stringify(history));
         } catch (error) {
             console.error('[AnalysisHistory] Failed to save snapshot:', error);
         }
@@ -68,17 +70,17 @@ class AnalysisHistoryManager {
     // Get all history or specific file history
     getHistory(fileId?: string): Record<string, TrendData> {
         try {
-            const stored = localStorage.getItem(this.storageKey);
-            const history = stored ? JSON.parse(stored) : {};
+            const stored = nsGetItem(this.baseKey);
+            const history = stored ? safeValidateWithSchema(AnalysisHistorySchema, JSON.parse(stored), {}) : {};
             
             if (fileId) {
-                return { [fileId]: history[fileId] || null };
+                return { [fileId]: history[fileId] || null } as unknown as Record<string, TrendData>;
             }
             
-            return history;
+            return history as unknown as Record<string, TrendData>;
         } catch (error) {
             console.error('[AnalysisHistory] Failed to load history:', error);
-            return {};
+            return fileId ? ({ [fileId]: null } as unknown as Record<string, TrendData>) : {};
         }
     }
 
@@ -91,20 +93,22 @@ class AnalysisHistoryManager {
     // Get recent snapshots for a file
     getRecentSnapshots(fileId: string, count: number = 10): AnalysisSnapshot[] {
         const trendData = this.getTrendData(fileId);
-        if (!trendData) return [];
+        if (!trendData || !Array.isArray(trendData.snapshots)) return [];
         
         return trendData.snapshots
+            .slice()
             .sort((a, b) => b.timestamp - a.timestamp)
             .slice(0, count);
     }
 
     // Clean old snapshots based on limits
     private cleanSnapshots(snapshots: AnalysisSnapshot[]): AnalysisSnapshot[] {
+        if (!Array.isArray(snapshots)) return [];
         const now = Date.now();
         const maxAge = this.maxAgeDays * 24 * 60 * 60 * 1000;
 
         // Filter by age
-        let filtered = snapshots.filter(s => now - s.timestamp < maxAge);
+        let filtered = snapshots.filter(s => s && typeof s.timestamp === 'number' && now - s.timestamp < maxAge);
 
         // If still too many, keep only the most recent
         if (filtered.length > this.maxSnapshotsPerFile) {
@@ -118,7 +122,7 @@ class AnalysisHistoryManager {
 
     // Calculate trend metrics
     private calculateTrend(snapshots: AnalysisSnapshot[]): TrendData['trend'] {
-        if (snapshots.length < 2) {
+        if (!Array.isArray(snapshots) || snapshots.length < 2) {
             return {
                 improving: true,
                 changeRate: 0,
@@ -130,13 +134,13 @@ class AnalysisHistoryManager {
         const sorted = [...snapshots].sort((a, b) => a.timestamp - b.timestamp);
         
         // Get scores over time
-        const scores = sorted.map(s => s.analysis.codeAgeing);
+        const scores = sorted.map(s => s.analysis?.codeAgeing ?? 0);
         
         // Calculate trend (is it improving?)
         const recentScores = scores.slice(-5); // Last 5 snapshots
         const olderScores = scores.slice(0, -5); // Earlier snapshots
         
-        const recentAvg = recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
+        const recentAvg = recentScores.reduce((a, b) => a + b, 0) / (recentScores.length || 1);
         const olderAvg = olderScores.length > 0 
             ? olderScores.reduce((a, b) => a + b, 0) / olderScores.length 
             : recentAvg;
@@ -147,10 +151,10 @@ class AnalysisHistoryManager {
         const changeRate = olderAvg > 0 ? ((olderAvg - recentAvg) / olderAvg) * 100 : 0;
         
         // Calculate stability (how much the scores vary)
-        const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-        const variance = scores.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / scores.length;
+        const mean = scores.reduce((a, b) => a + b, 0) / (scores.length || 1);
+        const variance = scores.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (scores.length || 1);
         const standardDeviation = Math.sqrt(variance);
-        const stability = Math.max(0, Math.min(100, 100 - (standardDeviation / mean) * 100));
+        const stability = Math.max(0, Math.min(100, 100 - (mean > 0 ? (standardDeviation / mean) * 100 : 0)));
 
         return {
             improving,
@@ -162,7 +166,7 @@ class AnalysisHistoryManager {
     // Clear all history
     clearHistory(): void {
         try {
-            localStorage.removeItem(this.storageKey);
+            nsRemoveItem(this.baseKey);
         } catch (error) {
             console.error('[AnalysisHistory] Failed to clear history:', error);
         }
@@ -173,7 +177,7 @@ class AnalysisHistoryManager {
         try {
             const history = this.getHistory();
             delete history[fileId];
-            localStorage.setItem(this.storageKey, JSON.stringify(history));
+            nsSetItem(this.baseKey, JSON.stringify(history));
         } catch (error) {
             console.error('[AnalysisHistory] Failed to clear file history:', error);
         }
@@ -189,7 +193,9 @@ class AnalysisHistoryManager {
     importHistory(data: string): boolean {
         try {
             const history = JSON.parse(data);
-            localStorage.setItem(this.storageKey, JSON.stringify(history));
+            const validated = safeValidateWithSchema(AnalysisHistorySchema, history, null);
+            if (!validated) return false;
+            nsSetItem(this.baseKey, JSON.stringify(validated));
             return true;
         } catch (error) {
             console.error('[AnalysisHistory] Failed to import history:', error);
@@ -200,3 +206,13 @@ class AnalysisHistoryManager {
 
 // Singleton instance
 export const analysisHistory = new AnalysisHistoryManager();
+
+// Register as evictable cache for quota management
+registerQuotaEvictionHandler(() => {
+    const history = analysisHistory.getHistory();
+    if (Object.keys(history).length > 0) {
+        analysisHistory.clearHistory();
+        return true;
+    }
+    return false;
+});

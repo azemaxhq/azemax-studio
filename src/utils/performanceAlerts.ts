@@ -3,6 +3,8 @@
  */
 
 import { type PerformanceReport } from './performanceService';
+import { safeGetItem, registerQuotaEvictionHandler } from '../core/storage/storageDriver';
+import { immediateLocalStorageSet } from '../core/storage/storageDebounce';
 
 export interface PerformanceAlert {
   id: string;
@@ -337,7 +339,7 @@ export class PerformanceAlertManager {
    */
   private static saveAlerts(): void {
     try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.alerts));
+      immediateLocalStorageSet(this.storageKey, JSON.stringify(this.alerts));
     } catch (error) {
       console.warn('Failed to save performance alerts:', error);
     }
@@ -348,7 +350,7 @@ export class PerformanceAlertManager {
    */
   static loadAlerts(): void {
     try {
-      const stored = localStorage.getItem(this.storageKey);
+      const stored = safeGetItem(this.storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
         // Defensive: stored data is untrusted. A non-array payload must not
@@ -361,6 +363,8 @@ export class PerformanceAlertManager {
         } else {
           this.alerts = [];
         }
+      } else {
+        this.alerts = [];
       }
     } catch (error) {
       console.warn('Failed to load performance alerts:', error);
@@ -381,3 +385,13 @@ export class PerformanceAlertManager {
 
 // Initialize alerts on load
 PerformanceAlertManager.loadAlerts();
+
+// Register as evictable cache for storage quota exhaustion
+registerQuotaEvictionHandler(() => {
+  const alerts = PerformanceAlertManager.getAlerts();
+  if (alerts.length > 5) {
+    PerformanceAlertManager.clearAlerts();
+    return true;
+  }
+  return false;
+});

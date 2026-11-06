@@ -13,7 +13,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { ErrorBoundary } from '../UI/ErrorBoundary';
 import { countTree } from '../../utils/safeTree';
 import { ROOT_NODE_ID } from '../../utils/mockFileSystem';
-import { loadSortState, saveSortState, type ExplorerSortState, type SortBy } from '../../utils/explorerSort';
+import { loadSortState, saveSortState, subscribeSortState, type ExplorerSortState, type SortBy } from '../../utils/explorerSort';
 
 // The file tree is sanitized at its entry point (ProjectContext.loadFileTree),
 // and countTree is iterative + cycle-safe, so this render path can never
@@ -138,11 +138,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     const sortRef = useRef<HTMLDivElement>(null);
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [sortState, setSortState] = useState<ExplorerSortState>(() => loadSortState());
+    const lastSavedSortRef = useRef(sortState);
 
     useEffect(() => {
-        saveSortState(sortState);
-        // Notify FileExplorer via storage event + custom event for same-tab sync
-        window.dispatchEvent(new CustomEvent('azemax-sort-changed', { detail: sortState }));
+        return subscribeSortState((next) => {
+            setSortState((prev) => {
+                if (prev.by === next.by && prev.direction === next.direction && prev.foldersFirst === next.foldersFirst) {
+                    return prev;
+                }
+                lastSavedSortRef.current = next;
+                return next;
+            });
+        });
+    }, []);
+
+    useEffect(() => {
+        if (JSON.stringify(lastSavedSortRef.current) !== JSON.stringify(sortState)) {
+            lastSavedSortRef.current = sortState;
+            saveSortState(sortState);
+            // Notify FileExplorer via storage event + custom event for same-tab sync
+            window.dispatchEvent(new CustomEvent('azemax-sort-changed', { detail: sortState }));
+        }
     }, [sortState]);
 
     // Open the sort menu on request (Explorer context menu "Sort By…").

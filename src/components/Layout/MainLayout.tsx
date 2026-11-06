@@ -23,6 +23,9 @@ import { FileTabs } from '../Editor/FileTabs';
 import { AzemaxLogo } from '../UI/AzemaxLogo';
 import { BackendStatusIndicator } from '../UI/BackendStatusIndicator';
 import { OnboardingScreen } from '../OnboardingScreen';
+import { safeGetItem, safeSetItem } from '../../core/storage/storageDriver';
+import { debouncedLocalStorageSet } from '../../core/storage/storageDebounce';
+import { notifyStorageChange } from '../../core/storage/storageBus';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -102,7 +105,8 @@ export const MainLayout: React.FC = () => {
     React.useEffect(() => {
         const persistTab = (tab: unknown) => {
             if (tab === 'terminal' || tab === 'problems' || tab === 'output') {
-                try { localStorage.setItem('bottomPanel_activeTab', tab as string); } catch { /* ignore */ }
+                safeSetItem('bottomPanel_activeTab', tab as string);
+                notifyStorageChange('bottomPanel_activeTab', tab as string);
             }
         };
         const onRun = () => {
@@ -171,7 +175,7 @@ export const MainLayout: React.FC = () => {
     // Helper to load from storage or default
     const loadState = (key: string, defaultVal: number) => {
         try {
-            const saved = localStorage.getItem(key);
+            const saved = safeGetItem(key);
             if (saved !== null) {
                 const parsed = parseInt(saved, 10);
                 return isNaN(parsed) ? defaultVal : parsed;
@@ -190,13 +194,13 @@ export const MainLayout: React.FC = () => {
     const [bottomPanelHeight, setBottomPanelHeight] = React.useState(() => loadState('layout-bottom-panel-height', 256));
     const [isAiSidebarOpen, setIsAiSidebarOpen] = React.useState(() => loadState('layout-ai-sidebar-open', 1) === 1);
     const [isLeftSidebarOpen, setIsLeftSidebarOpen] = React.useState(() => {
-        const stored = localStorage.getItem('layout-left-sidebar-open');
+        const stored = safeGetItem('layout-left-sidebar-open');
         if (stored !== null) return stored === '1';
-        return getSettings().general.sidebarDefault;
+        return getSettings().general.sidebarDefault === 'open';
     });
     const [leftSidebarView, setLeftSidebarView] = React.useState<'explorer' | 'explanation' | 'settings'>(() => {
         try {
-            const v = localStorage.getItem('layout-left-sidebar-view');
+            const v = safeGetItem('layout-left-sidebar-view');
             return (v === 'explanation' ? 'explanation' : v === 'settings' ? 'settings' : 'explorer') as 'explorer' | 'explanation' | 'settings';
         } catch { return 'explorer'; }
     });
@@ -216,37 +220,37 @@ export const MainLayout: React.FC = () => {
         startHeight: number;
     } | null>(null);
 
-    // Persistence effects
+    // Persistence effects (debounced to avoid blocking main thread on resize)
     React.useEffect(() => {
-        localStorage.setItem('layout-ai-panel-width', aiPanelWidth.toString());
+        debouncedLocalStorageSet('layout-ai-panel-width', aiPanelWidth.toString(), 200);
     }, [aiPanelWidth]);
 
     React.useEffect(() => {
-        localStorage.setItem('layout-left-sidebar-width', leftSidebarWidth.toString());
+        debouncedLocalStorageSet('layout-left-sidebar-width', leftSidebarWidth.toString(), 200);
     }, [leftSidebarWidth]);
 
     React.useEffect(() => {
-        localStorage.setItem('layout-bottom-panel-height', bottomPanelHeight.toString());
+        debouncedLocalStorageSet('layout-bottom-panel-height', bottomPanelHeight.toString(), 200);
     }, [bottomPanelHeight]);
 
     React.useEffect(() => {
-        localStorage.setItem('layout-ai-sidebar-open', isAiSidebarOpen ? '1' : '0');
+        debouncedLocalStorageSet('layout-ai-sidebar-open', isAiSidebarOpen ? '1' : '0', 0);
     }, [isAiSidebarOpen]);
 
     React.useEffect(() => {
-        localStorage.setItem('layout-left-sidebar-open', isLeftSidebarOpen ? '1' : '0');
+        debouncedLocalStorageSet('layout-left-sidebar-open', isLeftSidebarOpen ? '1' : '0', 0);
     }, [isLeftSidebarOpen]);
 
     React.useEffect(() => {
-        localStorage.setItem('layout-left-sidebar-view', leftSidebarView);
+        debouncedLocalStorageSet('layout-left-sidebar-view', leftSidebarView, 0);
     }, [leftSidebarView]);
 
     // Clean up any leftover Lookout localStorage entries
     React.useEffect(() => {
         try {
-            const savedView = localStorage.getItem('layout-left-sidebar-view');
+            const savedView = safeGetItem('layout-left-sidebar-view');
             if (savedView === 'lookout') {
-                localStorage.setItem('layout-left-sidebar-view', 'explorer');
+                safeSetItem('layout-left-sidebar-view', 'explorer');
                 setLeftSidebarView('explorer');
             }
         } catch (e) {

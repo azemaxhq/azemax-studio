@@ -11,6 +11,10 @@
  * local data when this ships.
  */
 
+import { safeGetItem, safeSetItem, safeRemoveItem } from '../core/storage/storageDriver';
+import { clearDebounceCache } from '../core/storage/storageDebounce';
+import { notifyStorageChange } from '../core/storage/storageBus';
+
 let currentUserId: string | null = null;
 let generation = 0;
 const migrated = new Set<string>();
@@ -24,11 +28,7 @@ let legacyOwner: string | null | undefined;
 
 const readLegacyOwner = (): string | null => {
     if (legacyOwner !== undefined) return legacyOwner;
-    try {
-        legacyOwner = localStorage.getItem(LEGACY_OWNER_KEY);
-    } catch {
-        legacyOwner = null;
-    }
+    legacyOwner = safeGetItem(LEGACY_OWNER_KEY);
     return legacyOwner;
 };
 
@@ -36,11 +36,11 @@ export function setCurrentUserId(id: string | null): void {
     if (currentUserId !== id) {
         currentUserId = id;
         migrated.clear();
+        clearDebounceCache();
         if (id && !readLegacyOwner()) {
-            try {
-                localStorage.setItem(LEGACY_OWNER_KEY, id);
+            if (safeSetItem(LEGACY_OWNER_KEY, id)) {
                 legacyOwner = id;
-            } catch {
+            } else {
                 legacyOwner = null;
             }
         }
@@ -75,17 +75,18 @@ function migrateOnce(base: string, fallbacks: string[]): void {
 
     const target = namespacedKey(base);
     try {
-        let hasTarget = localStorage.getItem(target) !== null;
+        let hasTarget = safeGetItem(target) !== null;
         for (const source of [base, ...fallbacks]) {
-            const existing = localStorage.getItem(source);
+            const existing = safeGetItem(source);
             if (existing === null) continue;
             if (!hasTarget) {
-                localStorage.setItem(target, existing);
+                safeSetItem(target, existing);
                 hasTarget = true;
             }
             // Remove the global copy once claimed so a later account cannot
             // read it through a code path that bypasses the owner check.
-            localStorage.removeItem(source);
+            clearDebounceCache(source);
+            safeRemoveItem(source);
         }
     } catch {
         /* storage unavailable — callers already handle null */
@@ -95,24 +96,21 @@ function migrateOnce(base: string, fallbacks: string[]): void {
 /** Namespaced read with global/legacy fallbacks (migrated on first hit). */
 export function nsGetItem(base: string, fallbacks: string[] = []): string | null {
     if (!currentUserId) {
-        try {
-            return localStorage.getItem(base) ?? fallbacks.map((f) => { try { return localStorage.getItem(f); } catch { return null; } }).find((v) => v !== null) ?? null;
-        } catch {
-            return null;
-        }
+        return safeGetItem(base) ?? fallbacks.map((f) => safeGetItem(f)).find((v) => v !== null) ?? null;
     }
     migrateOnce(base, fallbacks);
-    try {
-        return localStorage.getItem(namespacedKey(base));
-    } catch {
-        return null;
-    }
+    return safeGetItem(namespacedKey(base));
 }
 
 /** Namespaced write. */
 export function nsSetItem(base: string, value: string): void {
+    const key = namespacedKey(base);
     try {
-        localStorage.setItem(namespacedKey(base), value);
+        const success = safeSetItem(key, value);
+        if (!success) {
+            throw new Error('storage-quota');
+        }
+        notifyStorageChange(key, value);
     } catch {
         /* quota errors are surfaced by callers that care */
         throw new Error('storage-quota');
@@ -121,9 +119,8 @@ export function nsSetItem(base: string, value: string): void {
 
 /** Namespaced remove. */
 export function nsRemoveItem(base: string): void {
-    try {
-        localStorage.removeItem(namespacedKey(base));
-    } catch {
-        /* ignore */
-    }
+    const key = namespacedKey(base);
+    clearDebounceCache(key);
+    safeRemoveItem(key);
+    notifyStorageChange(key, null);
 }

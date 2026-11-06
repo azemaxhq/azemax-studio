@@ -9,6 +9,8 @@ import { analysisHistory } from '../../utils/analysisHistory';
 import { sanitizeEditorOutputWithPolicy, NO_AUTO_COMMENTS_INSTRUCTION, resolveLanguageFromFilename, aiRequestManager } from '../../core/ai';
 import { ProblemsPanel } from './ProblemsPanel';
 import { subscribeDiagnostics, getCounts } from '../../core/diagnostics/diagnosticStore';
+import { safeGetItem, safeSetItem } from '../../core/storage/storageDriver';
+import { subscribeStorageKey, notifyStorageChange } from '../../core/storage/storageBus';
 
 const PerformancePanel = lazy(() =>
     import('./PerformancePanel').then(m => ({ default: m.PerformancePanel }))
@@ -458,10 +460,22 @@ export const BottomPanel: React.FC<{
 }> = ({ isOverlay, isOpen, onToggle, onClose, isExpanded, onToggleExpand, isMobile = false, onTabSelect, isCollapsed = false }) => {
     // Persist Active Tab (mobile sheets default to Terminal on first open)
     const [activeTab, setActiveTab] = useState<BottomTab>(() => {
-        const saved = localStorage.getItem('bottomPanel_activeTab');
+        const saved = safeGetItem('bottomPanel_activeTab');
         if (isBottomTab(saved)) return saved;
         return isMobile ? 'terminal' : 'performance';
     });
+    const lastSavedTabRef = useRef(activeTab);
+
+    // Synchronize active tab across components and tabs
+    useEffect(() => {
+        return subscribeStorageKey('bottomPanel_activeTab', (newTab) => {
+            if (isBottomTab(newTab) && newTab !== lastSavedTabRef.current) {
+                lastSavedTabRef.current = newTab;
+                setActiveTab(newTab);
+            }
+        });
+    }, []);
+
     const selectTab = (tab: BottomTab) => {
         setActiveTab(tab);
         onTabSelect?.();
@@ -475,7 +489,11 @@ export const BottomPanel: React.FC<{
     }, [isMobile, activeTab]);
 
     useEffect(() => {
-        localStorage.setItem('bottomPanel_activeTab', activeTab);
+        if (lastSavedTabRef.current !== activeTab) {
+            lastSavedTabRef.current = activeTab;
+            safeSetItem('bottomPanel_activeTab', activeTab);
+            notifyStorageChange('bottomPanel_activeTab', activeTab);
+        }
     }, [activeTab]);
     
     const { activeFile } = useProjectFile();

@@ -1,5 +1,8 @@
 import type { FileNode } from './mockFileSystem';
 import { ROOT_NODE_ID } from './mockFileSystem';
+import { ExplorerSortSchema, safeValidateWithSchema } from '../core/storage/storageSchema';
+import { safeGetItem, safeSetItem } from '../core/storage/storageDriver';
+import { notifyStorageChange, subscribeStorageKey } from '../core/storage/storageBus';
 
 export type SortBy = 'name' | 'type' | 'modified' | 'size';
 export type SortDirection = 'asc' | 'desc';
@@ -10,7 +13,7 @@ export interface ExplorerSortState {
   foldersFirst: boolean;
 }
 
-const STORAGE_KEY = 'azemax-explorer-sort';
+export const STORAGE_KEY = 'azemax-explorer-sort';
 
 export const DEFAULT_SORT: ExplorerSortState = {
   by: 'name',
@@ -18,17 +21,12 @@ export const DEFAULT_SORT: ExplorerSortState = {
   foldersFirst: true,
 };
 
-const VALID_BY = new Set<SortBy>(['name', 'type', 'modified', 'size']);
-
 export function loadSortState(): ExplorerSortState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = safeGetItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const by = VALID_BY.has(parsed?.by) ? parsed.by : DEFAULT_SORT.by;
-      const direction = parsed?.direction === 'desc' ? 'desc' : 'asc';
-      const foldersFirst = typeof parsed?.foldersFirst === 'boolean' ? parsed.foldersFirst : DEFAULT_SORT.foldersFirst;
-      return { by, direction, foldersFirst };
+      return safeValidateWithSchema(ExplorerSortSchema, parsed, DEFAULT_SORT);
     }
   } catch { /* ignore */ }
   return { ...DEFAULT_SORT };
@@ -36,8 +34,26 @@ export function loadSortState(): ExplorerSortState {
 
 export function saveSortState(state: ExplorerSortState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const valid = safeValidateWithSchema(ExplorerSortSchema, state, DEFAULT_SORT);
+    const serialized = JSON.stringify(valid);
+    safeSetItem(STORAGE_KEY, serialized);
+    notifyStorageChange(STORAGE_KEY, serialized);
   } catch { /* ignore */ }
+}
+
+export function subscribeSortState(callback: (state: ExplorerSortState) => void): () => void {
+  return subscribeStorageKey(STORAGE_KEY, (newValue) => {
+    if (!newValue) {
+      callback({ ...DEFAULT_SORT });
+      return;
+    }
+    try {
+      const parsed = JSON.parse(newValue);
+      callback(safeValidateWithSchema(ExplorerSortSchema, parsed, DEFAULT_SORT));
+    } catch {
+      callback({ ...DEFAULT_SORT });
+    }
+  });
 }
 
 // Natural collator for premium IDE ordering

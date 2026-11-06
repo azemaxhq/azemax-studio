@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 
 import { loadPrism, tryHighlight } from '../../utils/prismLoader';
-import { nsGetItem, nsSetItem, nsRemoveItem } from '../../utils/userStorage';
+import { nsGetItem, nsRemoveItem, namespacedKey } from '../../utils/userStorage';
+import { debouncedLocalStorageSet } from '../../utils/localStorageDebounce';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { getActiveEditorContext } from '../../core/editor/activeEditorStore';
 import { buildWorkspaceSnapshot } from '../../core/workspace/workspaceContext';
@@ -724,15 +725,15 @@ export const AIAssistant: React.FC<{ isVisible?: boolean; onClose?: () => void }
     const deferredStreamingText = useDeferredValue(streamingText);
     void deferredStreamingText;
 
-    // Persist composer draft/mode across refresh (survives reload, cleared on send)
+    // Persist composer draft/mode across refresh (survives reload, debounced on keystrokes, cleared on send)
     useEffect(() => {
         try {
-            if (input) nsSetItem(COMPOSER_DRAFT_KEY, input);
+            if (input) debouncedLocalStorageSet(namespacedKey(COMPOSER_DRAFT_KEY), input, 300);
             else nsRemoveItem(COMPOSER_DRAFT_KEY);
         } catch { /* ignore */ }
     }, [input]);
     useEffect(() => {
-        try { nsSetItem(COMPOSER_MODE_KEY, composerMode); } catch { /* ignore */ }
+        try { debouncedLocalStorageSet(namespacedKey(COMPOSER_MODE_KEY), composerMode, 0); } catch { /* ignore */ }
     }, [composerMode]);
 
     // Task context — tracks ongoing agent task for follow-up resolution

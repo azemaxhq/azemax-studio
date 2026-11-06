@@ -2,6 +2,9 @@
  * Performance profiling service for code execution analysis
  */
 
+import { safeGetItem, safeRemoveItem, registerQuotaEvictionHandler } from '../core/storage/storageDriver';
+import { debouncedLocalStorageSet, clearDebounceCache } from '../core/storage/storageDebounce';
+
 export interface PerformanceMetrics {
   executionTime: number;
   memoryUsage: {
@@ -649,7 +652,7 @@ export class PerformanceHistory {
         history.splice(0, history.length - 20);
       }
       
-      localStorage.setItem(this.storageKey, JSON.stringify(history));
+      debouncedLocalStorageSet(this.storageKey, JSON.stringify(history), 0);
     } catch (error) {
       console.warn('Failed to save performance history:', error);
     }
@@ -657,8 +660,10 @@ export class PerformanceHistory {
   
   static getHistory(): PerformanceReport[] {
     try {
-      const stored = localStorage.getItem(this.storageKey);
-      return stored ? JSON.parse(stored) : [];
+      const stored = safeGetItem(this.storageKey);
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
       console.warn('Failed to load performance history:', error);
       return [];
@@ -666,7 +671,8 @@ export class PerformanceHistory {
   }
   
   static clear(): void {
-    localStorage.removeItem(this.storageKey);
+    clearDebounceCache(this.storageKey);
+    safeRemoveItem(this.storageKey);
   }
   
   static getLatest(): PerformanceReport | null {
@@ -679,6 +685,16 @@ export class PerformanceHistory {
     return history.length > 1 ? history[history.length - 2] : null;
   }
 }
+
+// Register as evictable cache for storage quota exhaustion
+registerQuotaEvictionHandler(() => {
+  const history = PerformanceHistory.getHistory();
+  if (history.length > 0) {
+    PerformanceHistory.clear();
+    return true;
+  }
+  return false;
+});
 
 export default {
   analyzePerformance,

@@ -1,5 +1,6 @@
-import { debouncedLocalStorageSet } from '../utils/localStorageDebounce';
+import { debouncedLocalStorageSet, clearDebounceCache } from '../utils/localStorageDebounce';
 import { nsGetItem, nsRemoveItem, nsSetItem, namespacedKey } from '../utils/userStorage';
+import { safeRemoveItem } from '../core/storage/storageDriver';
 import { createDefaultSettings } from './settingsDefaults';
 import type { Settings } from './settingsTypes';
 import { sanitizeSettings } from './settingsValidation';
@@ -64,9 +65,13 @@ const migrateToV3 = (input: unknown): unknown => {
     if (!section || typeof section !== 'object') continue;
     for (const field of Object.keys(section as Record<string, unknown>)) {
       const fullKey = `${sectionKey}.${field}`;
-      if (DROPPED_KEYS.has(fullKey)) continue;
       const mapping = LEGACY_TO_V3.find(([from]) => from === fullKey);
-      copyKey(mapping ? mapping[1] : fullKey, (section as Record<string, unknown>)[field]);
+      if (mapping) {
+        copyKey(mapping[1], (section as Record<string, unknown>)[field]);
+        continue;
+      }
+      if (DROPPED_KEYS.has(fullKey)) continue;
+      copyKey(fullKey, (section as Record<string, unknown>)[field]);
     }
   }
 
@@ -194,7 +199,9 @@ export const clearSettingsStorage = (): void => {
   try {
     for (const key of [SETTINGS_STORAGE_KEY, LEGACY_V3_STORAGE_KEY, V2_STORAGE_KEY, LEGACY_STORAGE_KEY, SETTINGS_UPDATED_AT_KEY]) {
       nsRemoveItem(key);
-      localStorage.removeItem(key);
+      safeRemoveItem(key);
+      clearDebounceCache(key);
+      clearDebounceCache(namespacedKey(key));
     }
   } catch {
     // Ignore storage errors.

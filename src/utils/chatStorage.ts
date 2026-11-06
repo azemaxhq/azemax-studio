@@ -1,6 +1,6 @@
 
 
-import { debouncedLocalStorageSet } from './localStorageDebounce';
+import { debouncedLocalStorageSet, immediateLocalStorageSet } from './localStorageDebounce';
 import { nsGetItem, nsSetItem, nsRemoveItem, namespacedKey } from './userStorage';
 
 export interface Message {
@@ -232,7 +232,7 @@ export const markChatsClearedAt = (at = Date.now()): number => {
 export const persistSessionsNow = (sessions: ChatSession[]): void => {
     try {
         const bounded = sanitizeSessions(sessions);
-        localStorage.setItem(namespacedKey(STORAGE_KEY), JSON.stringify(bounded));
+        immediateLocalStorageSet(namespacedKey(STORAGE_KEY), JSON.stringify(bounded));
     } catch (e) {
         console.warn('Failed to persist merged chat sessions:', e);
     }
