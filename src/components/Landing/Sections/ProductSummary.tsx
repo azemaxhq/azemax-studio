@@ -28,6 +28,7 @@ const PRODUCT_LINKS = [
   { href: '/features', label: 'Explore all features' },
   { href: '/docs', label: 'Read the documentation' },
   { href: '/faq', label: 'Common questions' },
+  { href: '/about', label: 'About Azemax' },
 ] as const;
 
 /**
@@ -84,9 +85,25 @@ export const ProductSummary: React.FC = memo(() => {
             assistant can inspect the workspace, edit files, and report what changed.
           </p>
 
-          <p className="mb-7 text-sm leading-relaxed text-[var(--az-muted)] font-sans">
+          <p className="mb-3 text-sm leading-relaxed text-[var(--az-muted)] font-sans">
             Code runs in a hosted sandbox, and AI requests can use your own provider
             key. Azemax Studio is an independent developer project currently in public beta.
+          </p>
+
+          <p className="mb-7 text-sm leading-relaxed text-[var(--az-muted)] font-sans">
+            Founded and led by{' '}
+            <a
+              href="/leadership/tharunkumar-t"
+              className="rounded text-[#C7D6ED] underline decoration-[#4F8CFF]/40 underline-offset-2 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4F8CFF]/60"
+            >
+              Tharunkumar T.
+            </a>
+            . Read more <a
+              href="/about"
+              className="rounded text-[#C7D6ED] underline decoration-[#4F8CFF]/40 underline-offset-2 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4F8CFF]/60"
+            >
+              about Azemax
+            </a>.
           </p>
 
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">

@@ -13,11 +13,23 @@ export const SITE = {
     url: 'https://www.azemax.com/',
     name: 'Azemax Studio',
     shortName: 'Azemax',
+    /** Organization name used for the company entity (the product is Azemax Studio). */
+    companyName: 'Azemax',
     supportEmail: 'azemaxhq@gmail.com',
     locale: 'en_US',
     language: 'en',
-    founderName: 'Tharun Kumar',
-    founderUrl: 'https://www.tharunkumar.site/',
+    /** Public name of the founder and CEO. */
+    founderName: 'Tharunkumar T.',
+    founderJobTitle: 'Founder and CEO',
+    /** Canonical, on-site profile page for the founder/CEO. */
+    founderProfilePath: '/leadership/tharunkumar-t',
+    founderUrl: 'https://www.azemax.com/leadership/tharunkumar-t',
+    /** Verified personal site already referenced by the project. */
+    founderExternalUrl: 'https://www.tharunkumar.site/',
+    /** Verified LinkedIn profile supplied by the founder. */
+    founderLinkedInUrl: 'https://www.linkedin.com/in/tharunkumar5307/',
+    /** Official public source repository for the Azemax Studio project. */
+    githubUrl: 'https://github.com/azemaxhq/azemax-studio',
     ogImagePath: '/img/azemax-studio-og.png',
     ogImageWidth: 1200,
     ogImageHeight: 630,
@@ -30,6 +42,9 @@ export type PublicPageKey =
     | 'docs'
     | 'faq'
     | 'contact'
+    | 'about'
+    | 'leadership'
+    | 'founder'
     | 'privacy'
     | 'terms';
 
@@ -43,6 +58,8 @@ export interface PublicPage {
     description: string;
     /** Visible page label used by breadcrumbs and the footer. */
     label: string;
+    /** Optional intermediate breadcrumb entry for nested routes. */
+    parent?: { label: string; path: string };
     /** ISO date used by sitemap.xml. Update when the page content changes. */
     lastmod: string;
     /** ISO date the page was first published (article pages). */
@@ -50,9 +67,11 @@ export interface PublicPage {
     /** Include in sitemap.xml and expose index,follow. */
     indexable: boolean;
     /** Open Graph object type. */
-    ogType: 'website' | 'article';
+    ogType: 'website' | 'article' | 'profile';
     /** Page-specific Open Graph image path. Falls back to SITE.ogImagePath when absent. */
     ogImage?: string;
+    /** Page-specific Open Graph image alt text. Falls back to SITE.ogImageAlt when absent. */
+    ogImageAlt?: string;
 }
 
 export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
@@ -63,7 +82,7 @@ export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
         description:
             'Azemax Studio is a browser-based AI code editor with Monaco, an agentic assistant that edits files, sandboxed code execution, and bring-your-own-key models.',
         label: 'Home',
-        lastmod: '2026-10-26',
+        lastmod: '2026-11-19',
         indexable: true,
         ogType: 'website',
     },
@@ -96,7 +115,7 @@ export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
         description:
             'Answers about Azemax Studio accounts, AI providers, bring-your-own-key keys, code execution, data handling, supported languages, and the public beta.',
         label: 'FAQ',
-        lastmod: '2026-10-26',
+        lastmod: '2026-11-19',
         indexable: true,
         ogType: 'website',
     },
@@ -107,9 +126,45 @@ export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
         description:
             'Contact Azemax Studio for product support, bug reports, account or privacy requests, and security reports. Email is the only support channel currently offered.',
         label: 'Contact',
-        lastmod: '2026-10-26',
+        lastmod: '2026-11-19',
         indexable: true,
         ogType: 'website',
+    },
+    about: {
+        key: 'about',
+        path: '/about',
+        title: 'About Azemax — What We Build and Who Leads It',
+        description:
+            'Azemax is the independent software organization behind Azemax Studio. Learn what the product does, how the organization is led, and where to find official information.',
+        label: 'About',
+        lastmod: '2026-11-19',
+        indexable: true,
+        ogType: 'website',
+    },
+    leadership: {
+        key: 'leadership',
+        path: '/leadership',
+        title: 'Azemax Leadership — Founder and CEO',
+        description:
+            'The published leadership of Azemax: Tharunkumar T., founder and CEO. Read his official role, responsibilities, and verified professional links.',
+        label: 'Leadership',
+        lastmod: '2026-11-19',
+        indexable: true,
+        ogType: 'website',
+    },
+    founder: {
+        key: 'founder',
+        path: '/leadership/tharunkumar-t',
+        title: 'Tharunkumar T. — Founder and CEO of Azemax',
+        description:
+            'Official profile of Tharunkumar T., founder and CEO of Azemax. His role, responsibilities, professional biography, and verified profiles for Azemax.',
+        label: 'Tharunkumar T.',
+        parent: { label: 'Leadership', path: '/leadership' },
+        lastmod: '2026-11-19',
+        indexable: true,
+        ogType: 'profile',
+        ogImage: '/img/tharunkumar-t-og.jpg',
+        ogImageAlt: 'Tharunkumar T. — Founder and CEO of Azemax',
     },
     privacy: {
         key: 'privacy',

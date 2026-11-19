@@ -27,6 +27,15 @@ const FaqPage = lazy(() =>
 const ContactPage = lazy(() =>
   import('./components/Public/ContactPage').then((m) => ({ default: m.ContactPage })),
 );
+const AboutPage = lazy(() =>
+  import('./components/Public/AboutPage').then((m) => ({ default: m.AboutPage })),
+);
+const LeadershipPage = lazy(() =>
+  import('./components/Public/LeadershipPage').then((m) => ({ default: m.LeadershipPage })),
+);
+const FounderProfilePage = lazy(() =>
+  import('./components/Public/FounderProfilePage').then((m) => ({ default: m.FounderProfilePage })),
+);
 
 // Firebase, the IDE providers, Monaco, and the terminal all live behind this
 // boundary. They are never part of the landing bundle.
@@ -92,6 +101,9 @@ function PublicRoute({ path }: { path: string }) {
       {page.key === 'docs' ? <DocsPage /> : null}
       {page.key === 'faq' ? <FaqPage /> : null}
       {page.key === 'contact' ? <ContactPage /> : null}
+      {page.key === 'about' ? <AboutPage /> : null}
+      {page.key === 'leadership' ? <LeadershipPage /> : null}
+      {page.key === 'founder' ? <FounderProfilePage /> : null}
     </Suspense>
   );
 }

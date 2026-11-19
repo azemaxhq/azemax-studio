@@ -6,6 +6,21 @@
   "trailingSlash": false,
   "redirects": [
     {
+      "source": "/about-us",
+      "destination": "/about",
+      "permanent": true
+    },
+    {
+      "source": "/team",
+      "destination": "/leadership",
+      "permanent": true
+    },
+    {
+      "source": "/founder",
+      "destination": "/leadership/tharunkumar-t",
+      "permanent": true
+    },
+    {
       "source": "/(.*)",
       "has": [
         {

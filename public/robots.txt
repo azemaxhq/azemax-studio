@@ -8,6 +8,9 @@ Allow: /
 Allow: /features
 Allow: /docs
 Allow: /faq
+Allow: /about
+Allow: /leadership
+Allow: /leadership/tharunkumar-t
 Allow: /contact
 Allow: /privacy
 Allow: /terms

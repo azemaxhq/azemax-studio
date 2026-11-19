@@ -27,7 +27,7 @@ export const FaqPage: React.FC = () => {
                         </p>
                     </>
                 }
-                meta="Last reviewed 26 October 2026"
+                meta="Last reviewed 19 November 2026"
             />
 
             <div className="mt-10 divide-y divide-[var(--az-border-subtle)] rounded-[var(--az-radius-lg)] border border-[var(--az-border)] bg-[var(--az-surface)]">

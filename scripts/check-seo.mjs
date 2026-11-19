@@ -68,6 +68,33 @@ function pngSize(buffer) {
   return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
 }
 
+function jpegSize(buffer) {
+  if (buffer.length < 4 || buffer.readUInt16BE(0) !== 0xffd8) return null;
+  let offset = 2;
+  while (offset + 8 < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    if (marker === 0xd8 || marker === 0xd9) {
+      offset += 2;
+      continue;
+    }
+    const length = buffer.readUInt16BE(offset + 2);
+    const isStartOfFrame =
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+    if (isStartOfFrame) {
+      return { height: buffer.readUInt16BE(offset + 5), width: buffer.readUInt16BE(offset + 7) };
+    }
+    offset += 2 + length;
+  }
+  return null;
+}
+
 const titles = new Map();
 const canonicals = new Map();
 
@@ -81,8 +108,10 @@ for (const page of PUBLIC_PAGE_LIST) {
   const canonical = match(html, /<link rel="canonical" href="([^"]*)"/);
   const robots = match(html, /<meta name="robots" content="([^"]*)"/);
   const ogImage = match(html, /<meta property="og:image" content="([^"]*)"/);
+  const ogImageType = match(html, /<meta property="og:image:type" content="([^"]*)"/);
   const ogWidth = match(html, /<meta property="og:image:width" content="([^"]*)"/);
   const ogHeight = match(html, /<meta property="og:image:height" content="([^"]*)"/);
+  const ogAlt = decodeEntities(match(html, /<meta property="og:image:alt" content="([^"]*)"/) ?? '');
   const rootStart = html.indexOf('<div id="root">');
   const rootEnd = html.lastIndexOf('</div>');
   const rootLength = rootStart === -1 || rootEnd <= rootStart ? 0 : rootEnd - rootStart;
@@ -94,8 +123,13 @@ for (const page of PUBLIC_PAGE_LIST) {
   check(description === page.description, `${file}: description does not match the route registry`);
   check(canonical === (page.path === '/' ? SITE.url : `${SITE.origin}${page.path}`), `${file}: wrong canonical (${canonical})`);
   check(robots?.includes('index') && robots?.includes('follow'), `${file}: public page is not index,follow`);
-  check(ogImage === `${SITE.origin}${SITE.ogImagePath}`, `${file}: wrong og:image (${ogImage})`);
+  check(ogImage === `${SITE.origin}${page.ogImage ?? SITE.ogImagePath}`, `${file}: wrong og:image (${ogImage})`);
+  check(
+    ogImageType === (/\.jpe?g$/i.test(page.ogImage ?? SITE.ogImagePath) ? 'image/jpeg' : 'image/png'),
+    `${file}: wrong og:image type (${ogImageType})`,
+  );
   check(ogWidth === String(SITE.ogImageWidth) && ogHeight === String(SITE.ogImageHeight), `${file}: wrong og:image dimensions`);
+  check(ogAlt === (page.ogImageAlt ?? SITE.ogImageAlt), `${file}: wrong og:image alt text`);
   check(rootLength > 2000, `${file}: #root has no prerendered content`);
   if (page.key === 'home') {
     check(html.includes('<script type="module"'), `${file}: missing the entry module script`);
@@ -145,7 +179,11 @@ for (const page of PUBLIC_PAGE_LIST) {
       const types = (data['@graph'] || []).map((node) => node['@type']);
       check(types.includes('WebSite'), `${file}: JSON-LD missing WebSite`);
       check(types.includes('Organization'), `${file}: JSON-LD missing Organization`);
-      check(types.includes('WebPage') || types.includes('ContactPage'), `${file}: JSON-LD missing page node`);
+      check(types.includes('Person'), `${file}: JSON-LD missing Person`);
+      check(
+        ['WebPage', 'ContactPage', 'AboutPage', 'CollectionPage', 'ProfilePage'].some((type) => types.includes(type)),
+        `${file}: JSON-LD missing page node`,
+      );
       if (page.path !== '/') check(types.includes('BreadcrumbList'), `${file}: JSON-LD missing BreadcrumbList`);
       if (page.key === 'faq') {
         check(types.includes('FAQPage'), `${file}: FAQ page missing FAQPage`);
@@ -153,7 +191,19 @@ for (const page of PUBLIC_PAGE_LIST) {
         check(faq?.mainEntity?.length >= 10, `${file}: FAQPage has too few questions`);
       }
       const org = data['@graph'].find((node) => node['@type'] === 'Organization');
-      check(org?.founder?.url === SITE.founderUrl, `${file}: Organization founder URL is wrong`);
+      check(org?.founder?.['@id'] === `${SITE.founderUrl}#person`, `${file}: Organization founder reference is wrong`);
+      check(org?.employee?.[0]?.['@id'] === `${SITE.founderUrl}#person`, `${file}: Organization employee reference is wrong`);
+      const person = data['@graph'].find((node) => node['@type'] === 'Person');
+      check(person?.name === SITE.founderName, `${file}: Person name is wrong`);
+      check(person?.jobTitle === SITE.founderJobTitle, `${file}: Person jobTitle is wrong`);
+      check(person?.url === SITE.founderUrl, `${file}: Person URL is wrong`);
+      check(person?.worksFor?.['@id'] === `${SITE.origin}/#organization`, `${file}: Person worksFor is wrong`);
+      if (page.key === 'founder') {
+        const profile = data['@graph'].find((node) => node['@type'] === 'ProfilePage');
+        check(profile?.mainEntity?.['@id'] === `${SITE.founderUrl}#person`, `${file}: ProfilePage mainEntity is wrong`);
+        const breadcrumb = data['@graph'].find((node) => node['@type'] === 'BreadcrumbList');
+        check(breadcrumb?.itemListElement?.length === 3, `${file}: founder breadcrumb should have three levels`);
+      }
       const software = data['@graph'].find((node) => node['@type'] === 'SoftwareApplication');
       if (software) {
         check(!software.offers, `${file}: SoftwareApplication must not claim an offer`);
@@ -211,6 +261,18 @@ for (const page of PRIVATE_PAGES) {
   const og = await readFile(new URL('img/azemax-studio-og.png', DIST));
   const size = pngSize(og);
   check(size?.width === 1200 && size?.height === 630, `og image is ${size?.width}x${size?.height}, expected 1200x630`);
+  const founderOg = await readFile(new URL('img/tharunkumar-t-og.jpg', DIST));
+  const founderSize = jpegSize(founderOg);
+  check(
+    founderSize?.width === 1200 && founderSize?.height === 630,
+    `founder og image is ${founderSize?.width}x${founderSize?.height}, expected 1200x630`,
+  );
+  for (const photo of [
+    'img/tharunkumar-t-avatar-512.webp',
+    'img/tharunkumar-t-avatar-960.webp',
+  ]) {
+    check(await exists(photo), `missing founder photo ${photo}`);
+  }
   for (const icon of [
     'img/favicon-16.png',
     'img/favicon-32.png',

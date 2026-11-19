@@ -65,6 +65,12 @@ export const LandingFooter: React.FC<LandingFooterProps> = memo(({ onEnterWorksp
           <a href="/faq" className="hover:text-white transition-colors">
             FAQ
           </a>
+          <a href="/about" className="hover:text-white transition-colors">
+            About
+          </a>
+          <a href="/leadership" className="hover:text-white transition-colors">
+            Leadership
+          </a>
           <a href={LEGAL_PATHS.privacy} className="hover:text-white transition-colors">
             Privacy
           </a>

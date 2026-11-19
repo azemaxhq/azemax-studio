@@ -31,7 +31,11 @@ import { FeaturesPage } from '../src/components/Public/FeaturesPage';
 import { DocsPage } from '../src/components/Public/DocsPage';
 import { FaqPage } from '../src/components/Public/FaqPage';
 import { ContactPage } from '../src/components/Public/ContactPage';
+import { AboutPage } from '../src/components/Public/AboutPage';
+import { LeadershipPage } from '../src/components/Public/LeadershipPage';
+import { FounderProfilePage } from '../src/components/Public/FounderProfilePage';
 import { NotFoundPage } from '../src/components/Public/NotFoundPage';
+import { LEADERSHIP } from '../src/content/leadership';
 import { LegalPage } from '../src/components/Legal/LegalPage';
 
 // --- Path normalization and route resolution ---
@@ -46,6 +50,10 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
     check('docs resolves as public', resolveRoute('/docs').kind === 'public');
     check('faq resolves as public', resolveRoute('/faq').kind === 'public');
     check('contact resolves as public', resolveRoute('/contact').kind === 'public');
+    check('about resolves as public', resolveRoute('/about').kind === 'public');
+    check('leadership resolves as public', resolveRoute('/leadership').kind === 'public');
+    check('founder profile resolves as public', resolveRoute('/leadership/tharunkumar-t').kind === 'public');
+    check('founder profile trailing slash still resolves', resolveRoute('/leadership/tharunkumar-t/').kind === 'public');
     check('privacy resolves as public', resolveRoute('/privacy').kind === 'public');
     check('terms resolves as public', resolveRoute('/terms').kind === 'public');
     check('trailing slash still resolves', resolveRoute('/privacy/').kind === 'public');
@@ -81,7 +89,7 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
         descriptions.add(page.description);
     }
 
-    check('seven public pages are registered', PUBLIC_PAGE_LIST.length === 7);
+    check('ten public pages are registered', PUBLIC_PAGE_LIST.length === 10);
     check('sitemap includes every indexable public page', sitemapPages().length === PUBLIC_PAGE_LIST.filter((p) => p.indexable).length);
     check('private routes are absent from the sitemap', sitemapPages().every((p) => !p.path.startsWith('/app') && p.path !== '/login'));
     check('canonical root has no duplicate slash', absoluteUrl('/') === SITE.url);
@@ -97,11 +105,25 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
         const types = data['@graph'].map((node) => node['@type']);
         check(`${page.key}: JSON-LD has WebSite`, types.includes('WebSite'));
         check(`${page.key}: JSON-LD has Organization`, types.includes('Organization'));
-        check(`${page.key}: JSON-LD has a page node`, types.includes('WebPage') || types.includes('ContactPage'));
+        check(`${page.key}: JSON-LD has Person`, types.includes('Person'));
+        check(
+            `${page.key}: JSON-LD has a page node`,
+            ['WebPage', 'ContactPage', 'AboutPage', 'CollectionPage', 'ProfilePage'].some((type) => types.includes(type)),
+        );
 
         const org = data['@graph'].find((node) => node['@type'] === 'Organization');
-        check(`${page.key}: Organization links the founder`, (org?.founder as { url?: string })?.url === SITE.founderUrl);
+        const person = data['@graph'].find((node) => node['@type'] === 'Person') as Record<string, unknown> | undefined;
+        check(`${page.key}: Organization links the founder`, (org?.founder as { '@id'?: string })?.['@id'] === `${SITE.founderUrl}#person`);
+        check(`${page.key}: Organization lists the founder as an employee`, (org?.employee as Array<{ '@id'?: string }>)?.[0]?.['@id'] === `${SITE.founderUrl}#person`);
         check(`${page.key}: Organization is not a corporation claim`, String(org?.description).includes('independent developer project') && org?.legalName === undefined && org?.vatID === undefined && org?.taxID === undefined);
+        check(`${page.key}: Person is the founder and CEO`, person?.name === SITE.founderName && person?.jobTitle === SITE.founderJobTitle);
+        check(`${page.key}: Person works for Azemax`, (person?.worksFor as { '@id'?: string })?.['@id'] === `${SITE.origin}/#organization`);
+        check(`${page.key}: Person profile URL is canonical`, person?.url === SITE.founderUrl);
+        check(`${page.key}: Person has the verified portrait`, (person?.image as { url?: string })?.url === `${SITE.origin}${LEADERSHIP.photo}`);
+        check(
+            `${page.key}: Person sameAs includes the verified LinkedIn profile`,
+            Array.isArray(person?.sameAs) && (person?.sameAs as string[]).includes(SITE.founderLinkedInUrl),
+        );
 
         const software = data['@graph'].find((node) => node['@type'] === 'SoftwareApplication') as Record<string, unknown> | undefined;
         if (software) {
@@ -115,6 +137,18 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
     const faq = faqData['@graph'].find((node) => node['@type'] === 'FAQPage') as { mainEntity?: unknown[] } | undefined;
     check('FAQPage is emitted on /faq', Boolean(faq));
     check('FAQPage uses the visible FAQ data', faq?.mainEntity?.length === FAQ_ITEMS.length);
+
+    const profileData = buildStructuredData(PUBLIC_PAGES.founder) as { '@graph': Array<Record<string, unknown>> };
+    const profilePage = profileData['@graph'].find((node) => node['@type'] === 'ProfilePage');
+    check('ProfilePage is emitted on the founder profile', Boolean(profilePage));
+    check('ProfilePage main entity is the CEO', (profilePage?.mainEntity as { '@id'?: string })?.['@id'] === `${SITE.founderUrl}#person`);
+    check('founder page uses a profile-specific OG image', PUBLIC_PAGES.founder.ogImage === '/img/tharunkumar-t-og.jpg');
+
+    const leadershipData = buildStructuredData(PUBLIC_PAGES.leadership) as { '@graph': Array<Record<string, unknown>> };
+    check('CollectionPage is emitted on /leadership', leadershipData['@graph'].some((node) => node['@type'] === 'CollectionPage'));
+
+    const aboutData = buildStructuredData(PUBLIC_PAGES.about) as { '@graph': Array<Record<string, unknown>> };
+    check('AboutPage is emitted on /about', aboutData['@graph'].some((node) => node['@type'] === 'AboutPage'));
 }
 
 // --- Head generation ---
@@ -156,6 +190,9 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
         ['docs', createElement(DocsPage)],
         ['faq', createElement(FaqPage)],
         ['contact', createElement(ContactPage)],
+        ['about', createElement(AboutPage)],
+        ['leadership', createElement(LeadershipPage)],
+        ['founder', createElement(FounderProfilePage)],
         ['not-found', createElement(NotFoundPage)],
         ['privacy', createElement(LegalPage, { path: '/privacy' })],
         ['terms', createElement(LegalPage, { path: '/terms' })],
@@ -191,6 +228,26 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
     const faq = renderToStaticMarkup(createElement(FaqPage));
     check('faq renders every visible answer', FAQ_ITEMS.every((item) => faq.includes(item.question)));
     check('faq answers are in the DOM, not only the schema', FAQ_ITEMS.every((item) => faq.includes(item.answer)));
+
+    const leaderName = LEADERSHIP.name;
+    const roleLabel = LEADERSHIP.roleLabel;
+    for (const [name, element] of [
+        ['about', createElement(AboutPage)],
+        ['leadership', createElement(LeadershipPage)],
+    ] as const) {
+        const html = renderToStaticMarkup(element);
+        check(`${name}: names the founder and CEO`, html.includes(leaderName) && html.includes(roleLabel));
+        check(`${name}: links the founder profile`, html.includes(`href="${LEADERSHIP.profilePath}"`));
+    }
+
+    const founder = renderToStaticMarkup(createElement(FounderProfilePage));
+    check('founder: names the founder and CEO', founder.includes(leaderName) && founder.includes(roleLabel));
+    check('founder: renders the verified portrait', founder.includes(LEADERSHIP.photo) && founder.includes(LEADERSHIP.photoAlt));
+    check('founder: states the canonical profile URL', founder.includes(LEADERSHIP.profileUrl));
+    check('founder: publishes responsibilities', LEADERSHIP.responsibilities.every((item) => founder.includes(item)));
+    check('founder: links the About page', founder.includes('href="/about"'));
+    check('founder: links the leadership page', founder.includes('href="/leadership"'));
+    check('founder: links the verified LinkedIn profile', founder.includes(SITE.founderLinkedInUrl));
 }
 
 finish('SEO, metadata, and public pages');

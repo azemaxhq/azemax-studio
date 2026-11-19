@@ -6,6 +6,8 @@ interface PublicShellProps {
     children: React.ReactNode;
     /** Visible breadcrumb label; omit on the home page. */
     breadcrumb?: string;
+    /** Optional intermediate breadcrumb for nested pages. */
+    breadcrumbParent?: { label: string; href: string };
     /** Path used to mark the active nav item. */
     path?: string;
 }
@@ -14,6 +16,8 @@ const PRODUCT_LINKS = [
     { href: '/features', label: 'Features' },
     { href: '/docs', label: 'Documentation' },
     { href: '/faq', label: 'FAQ' },
+    { href: '/about', label: 'About' },
+    { href: '/leadership', label: 'Leadership' },
     { href: '/contact', label: 'Contact' },
 ] as const;
 
@@ -41,7 +45,12 @@ function NavLink({ href, label, active }: { href: string; label: string; active:
     );
 }
 
-export const PublicShell: React.FC<PublicShellProps> = ({ children, breadcrumb, path = '' }) => {
+export const PublicShell: React.FC<PublicShellProps> = ({
+    children,
+    breadcrumb,
+    breadcrumbParent,
+    path = '',
+}) => {
     return (
         <div className="min-h-screen w-full bg-[var(--az-bg)] text-[var(--az-text)]">
             <a
@@ -117,6 +126,21 @@ export const PublicShell: React.FC<PublicShellProps> = ({ children, breadcrumb, 
                             <li aria-hidden="true" className="text-[var(--az-text-faint)]">
                                 /
                             </li>
+                            {breadcrumbParent ? (
+                                <>
+                                    <li>
+                                        <a
+                                            href={breadcrumbParent.href}
+                                            className="rounded transition-colors hover:text-[var(--az-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--az-accent)]/50"
+                                        >
+                                            {breadcrumbParent.label}
+                                        </a>
+                                    </li>
+                                    <li aria-hidden="true" className="text-[var(--az-text-faint)]">
+                                        /
+                                    </li>
+                                </>
+                            ) : null}
                             <li aria-current="page" className="text-[var(--az-text-secondary)]">
                                 {breadcrumb}
                             </li>

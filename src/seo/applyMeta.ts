@@ -80,18 +80,30 @@ function replaceRouteSchema(schema: Record<string, unknown> | null): void {
     if (!existing) document.head.appendChild(script);
 }
 
-function applyOpenGraph(page: { title: string; description: string; ogType: string; canonical: string | null; ogImage?: string }): void {
+function imageMimeType(path: string): string {
+    return /\.jpe?g$/i.test(path) ? 'image/jpeg' : 'image/png';
+}
+
+function applyOpenGraph(page: {
+    title: string;
+    description: string;
+    ogType: string;
+    canonical: string | null;
+    ogImage?: string;
+    ogImageAlt?: string;
+}): void {
     const image = `${SITE.origin}${page.ogImage ?? SITE.ogImagePath}`;
+    const imageAlt = page.ogImageAlt ?? SITE.ogImageAlt;
     upsertMeta('property', 'og:title', page.title);
     upsertMeta('property', 'og:description', page.description);
     upsertMeta('property', 'og:type', page.ogType);
     upsertMeta('property', 'og:site_name', SITE.name);
     upsertMeta('property', 'og:locale', SITE.locale);
     upsertMeta('property', 'og:image', image);
-    upsertMeta('property', 'og:image:type', 'image/png');
+    upsertMeta('property', 'og:image:type', imageMimeType(page.ogImage ?? SITE.ogImagePath));
     upsertMeta('property', 'og:image:width', String(SITE.ogImageWidth));
     upsertMeta('property', 'og:image:height', String(SITE.ogImageHeight));
-    upsertMeta('property', 'og:image:alt', SITE.ogImageAlt);
+    upsertMeta('property', 'og:image:alt', imageAlt);
 
     if (page.canonical) {
         upsertMeta('property', 'og:url', page.canonical);
@@ -103,7 +115,7 @@ function applyOpenGraph(page: { title: string; description: string; ogType: stri
     upsertMeta('name', 'twitter:title', page.title);
     upsertMeta('name', 'twitter:description', page.description);
     upsertMeta('name', 'twitter:image', image);
-    upsertMeta('name', 'twitter:image:alt', SITE.ogImageAlt);
+    upsertMeta('name', 'twitter:image:alt', imageAlt);
 }
 
 function applyPublic(page: PublicPage): void {
@@ -122,6 +134,7 @@ function applyPublic(page: PublicPage): void {
         ogType: page.ogType,
         canonical,
         ogImage: page.ogImage,
+        ogImageAlt: page.ogImageAlt,
     });
     if (page.ogType === 'article') {
         upsertMeta('property', 'article:modified_time', page.lastmod);

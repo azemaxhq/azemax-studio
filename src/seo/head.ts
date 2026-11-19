@@ -33,13 +33,22 @@ function meta(name: string, content: string, attribute: 'name' | 'property' = 'n
     return `<meta ${attribute}="${escapeHtml(name)}" content="${escapeHtml(content)}" />`;
 }
 
-function twitterBlock(title: string, description: string, image: string): string[] {
+function imageMimeType(path: string): string {
+    return /\.jpe?g$/i.test(path) ? 'image/jpeg' : 'image/png';
+}
+
+function twitterBlock(
+    title: string,
+    description: string,
+    image: string,
+    imageAlt: string = SITE.ogImageAlt,
+): string[] {
     return [
         meta('twitter:card', 'summary_large_image'),
         meta('twitter:title', title),
         meta('twitter:description', description),
         meta('twitter:image', image),
-        meta('twitter:image:alt', SITE.ogImageAlt),
+        meta('twitter:image:alt', imageAlt),
     ];
 }
 
@@ -51,6 +60,7 @@ function twitterBlock(title: string, description: string, image: string): string
 export function renderPublicHead(page: PublicPage): string {
     const canonical = absoluteUrl(page.path);
     const image = `${SITE.origin}${page.ogImage ?? SITE.ogImagePath}`;
+    const imageAlt = page.ogImageAlt ?? SITE.ogImageAlt;
     const schema = buildStructuredData(page);
 
     const tags = [
@@ -68,11 +78,11 @@ export function renderPublicHead(page: PublicPage): string {
         meta('og:site_name', SITE.name, 'property'),
         meta('og:locale', SITE.locale, 'property'),
         meta('og:image', image, 'property'),
-        meta('og:image:type', 'image/png', 'property'),
+        meta('og:image:type', imageMimeType(page.ogImage ?? SITE.ogImagePath), 'property'),
         meta('og:image:width', String(SITE.ogImageWidth), 'property'),
         meta('og:image:height', String(SITE.ogImageHeight), 'property'),
-        meta('og:image:alt', SITE.ogImageAlt, 'property'),
-        ...twitterBlock(page.title, page.description, image),
+        meta('og:image:alt', imageAlt, 'property'),
+        ...twitterBlock(page.title, page.description, image, imageAlt),
     ];
 
     if (page.ogType === 'article') {

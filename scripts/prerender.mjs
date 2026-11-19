@@ -20,6 +20,9 @@ import { FeaturesPage } from '../src/components/Public/FeaturesPage';
 import { DocsPage } from '../src/components/Public/DocsPage';
 import { FaqPage } from '../src/components/Public/FaqPage';
 import { ContactPage } from '../src/components/Public/ContactPage';
+import { AboutPage } from '../src/components/Public/AboutPage';
+import { LeadershipPage } from '../src/components/Public/LeadershipPage';
+import { FounderProfilePage } from '../src/components/Public/FounderProfilePage';
 import { NotFoundPage } from '../src/components/Public/NotFoundPage';
 import { LegalPage } from '../src/components/Legal/LegalPage';
 
@@ -46,6 +49,9 @@ const PUBLIC_COMPONENTS = {
   docs: () => createElement(DocsPage),
   faq: () => createElement(FaqPage),
   contact: () => createElement(ContactPage),
+  about: () => createElement(AboutPage),
+  leadership: () => createElement(LeadershipPage),
+  founder: () => createElement(FounderProfilePage),
   privacy: () => createElement(LegalPage, { path: '/privacy' }),
   terms: () => createElement(LegalPage, { path: '/terms' }),
 };

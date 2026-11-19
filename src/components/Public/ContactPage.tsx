@@ -2,6 +2,7 @@ import React from 'react';
 import { Mail, ShieldAlert, Bug, UserX } from 'lucide-react';
 import { ArticleSection, Callout, CardLink, PageHero, TextLink } from './Article';
 import { PublicShell, usePublicPageScroll } from './PublicShell';
+import { LEADERSHIP } from '../../content/leadership';
 import { SITE } from '../../seo/site';
 
 const SUBJECTS = [
@@ -50,7 +51,7 @@ export const ContactPage: React.FC = () => {
                         </p>
                     </>
                 }
-                meta="Last reviewed 26 October 2026"
+                meta="Last reviewed 19 November 2026"
             />
 
             <div className="mt-8 rounded-[var(--az-radius-lg)] border border-[var(--az-border)] bg-[var(--az-surface)] p-5 sm:p-6">
@@ -71,6 +72,22 @@ export const ContactPage: React.FC = () => {
             </div>
 
             <div className="mt-12 space-y-10">
+                <ArticleSection id="official-identity" title="Official company identity">
+                    <p>
+                        Azemax is the organization behind Azemax Studio. The founder and CEO is{' '}
+                        <TextLink href={LEADERSHIP.profilePath}>{LEADERSHIP.name}</TextLink>. The{' '}
+                        <TextLink href="/about">About page</TextLink> publishes the full company
+                        information, and the <TextLink href="/leadership">leadership page</TextLink>{' '}
+                        records the published leadership team.
+                    </p>
+                    <p>
+                        Use the support email above for product support, privacy requests, security
+                        reports, and company-level inquiries. Azemax does not publish a public phone
+                        number or a registered corporate address, so do not rely on third-party
+                        listings that claim otherwise.
+                    </p>
+                </ArticleSection>
+
                 <ArticleSection id="what-to-send" title="What to include">
                     <p>
                         A clear first message usually means fewer round trips. Depending on the request,

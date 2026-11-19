@@ -20,6 +20,12 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
             'Azemax Studio is a browser-based AI code editor and development workspace. It combines a Monaco editing surface, a file tree and multi-tab workspace, an AI assistant that can inspect and change project files, code execution, and a diagnostics panel in one interface.',
     },
     {
+        id: 'who-leads-azemax',
+        question: 'Who founded Azemax, and who leads it?',
+        answer:
+            'Azemax was founded by Tharunkumar T., who serves as founder and CEO. He is responsible for the direction of the organization and for its work on Azemax Studio. The official profile on this website records his role and responsibilities, and the About page publishes the company information. No other executives or leadership team members are publicly listed at this time.',
+    },
+    {
         id: 'install',
         question: 'Do I need to install anything?',
         answer:
