@@ -15,6 +15,17 @@ export const SITE = {
     shortName: 'Azemax',
     /** Organization name used for the company entity (the product is Azemax Studio). */
     companyName: 'Azemax',
+    /** One-sentence public description of the organization. Not a legal-entity claim. */
+    companyDescription:
+        'Azemax is an emerging technology startup building AI-powered software products, developer tools, and modern web applications.',
+    /** Published focus areas for the organization and its structured data. */
+    companyFocus: [
+        'Artificial intelligence and AI-powered applications',
+        'Developer tools and software engineering',
+        'Intelligent automation',
+        'Modern web technologies',
+        'Innovative software products',
+    ] as const,
     supportEmail: 'azemaxhq@gmail.com',
     locale: 'en_US',
     language: 'en',
@@ -28,6 +39,8 @@ export const SITE = {
     founderExternalUrl: 'https://www.tharunkumar.site/',
     /** Verified LinkedIn profile supplied by the founder. */
     founderLinkedInUrl: 'https://www.linkedin.com/in/tharunkumar5307/',
+    /** Official GitHub organization for Azemax. */
+    githubOrgUrl: 'https://github.com/azemaxhq',
     /** Official public source repository for the Azemax Studio project. */
     githubUrl: 'https://github.com/azemaxhq/azemax-studio',
     ogImagePath: '/img/azemax-studio-og.png',
@@ -78,66 +91,66 @@ export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
     home: {
         key: 'home',
         path: '/',
-        title: 'Azemax Studio — AI Code Editor with an Agentic Assistant',
+        title: 'Azemax Studio — AI Code Editor from Azemax',
         description:
-            'Azemax Studio is a browser-based AI code editor with Monaco, an agentic assistant that edits files, sandboxed code execution, and bring-your-own-key models.',
+            'Azemax Studio is a browser-based AI code editor from Azemax, an emerging technology startup. It combines Monaco, an agentic assistant, and sandboxed code execution.',
         label: 'Home',
-        lastmod: '2026-11-19',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'website',
     },
     features: {
         key: 'features',
         path: '/features',
-        title: 'Features — Agentic AI Code Editing | Azemax Studio',
+        title: 'Features — AI Code Editing by Azemax | Azemax Studio',
         description:
-            "Explore Azemax Studio's Monaco editor, multi-file agent workflows, sandboxed code execution, diagnostics, workspace sync, and BYOK model configuration.",
+            'Explore Azemax Studio, the AI code editor from Azemax: Monaco editing, multi-file agent workflows, sandboxed execution, diagnostics, and bring-your-own-key models.',
         label: 'Features',
-        lastmod: '2026-10-26',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'website',
     },
     docs: {
         key: 'docs',
         path: '/docs',
-        title: 'Documentation and Getting Started | Azemax Studio',
+        title: 'Documentation — Azemax Studio by Azemax',
         description:
-            'Set up Azemax Studio, open your first workspace, use the AI assistant and agent mode, configure a provider key, run code, and troubleshoot common issues.',
+            'Set up Azemax Studio, the AI code editor from Azemax. Open a workspace, use Agent and Ask modes, configure a provider key, run code, and troubleshoot common issues.',
         label: 'Documentation',
-        lastmod: '2026-10-26',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'website',
     },
     faq: {
         key: 'faq',
         path: '/faq',
-        title: 'FAQ — AI Code Editor Questions | Azemax Studio',
+        title: 'FAQ — Azemax and Azemax Studio',
         description:
-            'Answers about Azemax Studio accounts, AI providers, bring-your-own-key keys, code execution, data handling, supported languages, and the public beta.',
+            'Answers about Azemax, the emerging technology startup behind Azemax Studio, including accounts, AI providers, keys, code execution, data handling, and the public beta.',
         label: 'FAQ',
-        lastmod: '2026-11-19',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'website',
     },
     contact: {
         key: 'contact',
         path: '/contact',
-        title: 'Contact and Support | Azemax Studio',
+        title: 'Contact Azemax — Support and Inquiries',
         description:
-            'Contact Azemax Studio for product support, bug reports, account or privacy requests, and security reports. Email is the only support channel currently offered.',
+            'Contact Azemax for Azemax Studio support, bug reports, account or privacy requests, and security reports. Email is the only support channel currently offered.',
         label: 'Contact',
-        lastmod: '2026-11-19',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'website',
     },
     about: {
         key: 'about',
         path: '/about',
-        title: 'About Azemax — What We Build and Who Leads It',
+        title: 'About Azemax — Emerging AI Technology Startup',
         description:
-            'Azemax is the independent software organization behind Azemax Studio. Learn what the product does, how the organization is led, and where to find official information.',
+            'Azemax is an emerging technology startup building AI-powered software products, developer tools, and modern web applications. Learn about Azemax Studio and its founder.',
         label: 'About',
-        lastmod: '2026-11-19',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'website',
     },
@@ -146,21 +159,21 @@ export const PUBLIC_PAGES: Record<PublicPageKey, PublicPage> = {
         path: '/leadership',
         title: 'Azemax Leadership — Founder and CEO',
         description:
-            'The published leadership of Azemax: Tharunkumar T., founder and CEO. Read his official role, responsibilities, and verified professional links.',
+            'The published leadership of Azemax, an emerging technology startup: Tharunkumar T., founder and CEO. Read his official role, responsibilities, and verified profiles.',
         label: 'Leadership',
-        lastmod: '2026-11-19',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'website',
     },
     founder: {
         key: 'founder',
         path: '/leadership/tharunkumar-t',
-        title: 'Tharunkumar T. — Founder and CEO of Azemax',
+        title: 'Tharunkumar T. — Founder & CEO of Azemax | Official Profile',
         description:
-            'Official profile of Tharunkumar T., founder and CEO of Azemax. His role, responsibilities, professional biography, and verified profiles for Azemax.',
+            'Official profile of Tharunkumar T., founder and CEO of Azemax, an emerging technology startup. Read his biography, role, vision, and verified professional links.',
         label: 'Tharunkumar T.',
         parent: { label: 'Leadership', path: '/leadership' },
-        lastmod: '2026-11-19',
+        lastmod: '2026-11-20',
         indexable: true,
         ogType: 'profile',
         ogImage: '/img/tharunkumar-t-og.jpg',

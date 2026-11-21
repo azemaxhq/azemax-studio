@@ -28,32 +28,33 @@ export const AboutPage: React.FC = () => {
                 intro={
                     <>
                         <p>
-                            Azemax is the independent software organization behind{' '}
-                            <TextLink href="/">Azemax Studio</TextLink>, a browser-based AI code
-                            editor and agentic development workspace.
+                            Azemax is an emerging technology startup building AI-powered software
+                            products, developer tools, and modern web applications. Its public
+                            product is <TextLink href="/">Azemax Studio</TextLink>, a browser-based
+                            AI code editor and agentic development workspace.
                         </p>
                         <p>
-                            This page states what the organization does, who leads it, and which
-                            channels are official. It is the reference page for Azemax’s public
-                            identity.
+                            This page states what the company does, who leads it, and which channels
+                            are official. It is the reference page for Azemax’s public identity.
                         </p>
                     </>
                 }
-                meta="Last reviewed 19 November 2026"
+                meta="Last reviewed 20 November 2026"
             />
 
             <div className="mt-10 space-y-12">
                 <ArticleSection id="what-azemax-is" title="What Azemax is">
                     <p>
-                        Azemax builds and operates Azemax Studio. The product runs in a modern web
-                        browser and is aimed at writing, running, understanding, and improving real
-                        project code in one environment. It is currently in public beta.
+                        Azemax is an emerging technology startup. It builds and operates Azemax
+                        Studio, a product that runs in a modern web browser and is aimed at writing,
+                        running, understanding, and improving real project code in one environment.
+                        Azemax Studio is currently in public beta.
                     </p>
                     <p>
-                        Azemax is an independent developer project, not a large software vendor.
-                        That matters for how support works: there is no ticket portal, phone line, or
-                        live chat. Email is the official support channel, and replies are handled on
-                        a best-effort basis.
+                        Azemax is a product-focused technology organization, not a large software
+                        vendor. That matters for how support works: there is no ticket portal, phone
+                        line, or live chat. Email is the official support channel, and replies are
+                        handled on a best-effort basis.
                     </p>
                     <H3>What the product includes</H3>
                     <p>
@@ -69,10 +70,19 @@ export const AboutPage: React.FC = () => {
 
                 <ArticleSection id="mission" title="Mission and focus">
                     <p>
-                        The purpose of Azemax is to make a complete development loop available in the
-                        browser: write code, run it, understand what happened, and improve it without
-                        switching between disconnected tools. The product is built around that loop
-                        rather than around a single feature.
+                        Azemax is an ambitious, innovation-driven company focused on practical uses of
+                        modern AI. Its work spans AI-powered applications, developer tools, software
+                        engineering, intelligent automation, and modern web technologies.
+                    </p>
+                    <ul className="list-disc space-y-2 pl-5">
+                        {SITE.companyFocus.map((item) => (
+                            <li key={item}>{item}</li>
+                        ))}
+                    </ul>
+                    <p>
+                        The purpose of Azemax Studio is to make a complete development loop available
+                        in the browser: write code, run it, understand what happened, and improve it
+                        without switching between disconnected tools.
                     </p>
                     <p>
                         Because Azemax Studio is in public beta, the published documentation describes
@@ -86,8 +96,8 @@ export const AboutPage: React.FC = () => {
                     <p>
                         Azemax is founded and led by{' '}
                         <TextLink href={LEADERSHIP.profilePath}>{LEADERSHIP.name}</TextLink>, who serves
-                        as {LEADERSHIP.jobTitle}. He is responsible for the direction of the
-                        organization and for its work on Azemax Studio.
+                        as {LEADERSHIP.jobTitle}. He is responsible for the direction of the company
+                        and for its work on Azemax Studio.
                     </p>
                     <div className="not-prose mt-5 flex flex-col gap-4 rounded-[var(--az-radius-md)] border border-[var(--az-border)] bg-[var(--az-surface)] p-4 sm:flex-row sm:items-center sm:p-5">
                         <PersonAvatar
@@ -130,7 +140,12 @@ export const AboutPage: React.FC = () => {
                         caption="Official Azemax company information"
                         head={['Item', 'Official information']}
                         rows={[
-                            ['Organization', SITE.companyName],
+                            ['Company', SITE.companyName],
+                            ['Positioning', 'Emerging technology startup'],
+                            [
+                                'Focus',
+                                'AI-powered applications, developer tools, intelligent automation, and modern web technologies',
+                            ],
                             ['Product', SITE.name],
                             ['Founder and CEO', LEADERSHIP.name],
                             [
@@ -148,6 +163,12 @@ export const AboutPage: React.FC = () => {
                                 >
                                     {SITE.supportEmail}
                                 </a>,
+                            ],
+                            [
+                                'GitHub organization',
+                                <TextLink href={SITE.githubOrgUrl} external key="github-org">
+                                    github.com/azemaxhq
+                                </TextLink>,
                             ],
                             [
                                 'Public source repository',
@@ -168,10 +189,10 @@ export const AboutPage: React.FC = () => {
 
                 <ArticleSection id="official-channels" title="Official channels">
                     <p>
-                        The website and the support email above are the official Azemax channels.
-                        The public source repository is the official code location. A profile or page
-                        that is not linked from this website should not be assumed to represent
-                        Azemax.
+                        The website, support email, and GitHub organization above are the official
+                        Azemax channels. The public source repository is the official code location.
+                        A profile or page that is not linked from this website should not be assumed
+                        to represent Azemax.
                     </p>
                     <p>
                         For product support, security reports, privacy requests, or company-level

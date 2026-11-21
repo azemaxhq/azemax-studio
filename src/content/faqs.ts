@@ -15,15 +15,27 @@ export interface FaqItem {
 export const FAQ_ITEMS: readonly FaqItem[] = [
     {
         id: 'what-is-azemax',
+        question: 'What is Azemax?',
+        answer:
+            'Azemax is an emerging technology startup building AI-powered software products, developer tools, and modern web technologies. Its public product is Azemax Studio, a browser-based AI code editor and agentic development workspace. The company website is https://www.azemax.com, and its public source repository is on GitHub.',
+    },
+    {
+        id: 'what-is-azemax-studio',
         question: 'What is Azemax Studio?',
         answer:
-            'Azemax Studio is a browser-based AI code editor and development workspace. It combines a Monaco editing surface, a file tree and multi-tab workspace, an AI assistant that can inspect and change project files, code execution, and a diagnostics panel in one interface.',
+            'Azemax Studio is a browser-based AI code editor and development workspace from Azemax. It combines a Monaco editing surface, a file tree and multi-tab workspace, an AI assistant that can inspect and change project files, code execution, and a diagnostics panel in one interface.',
     },
     {
         id: 'who-leads-azemax',
         question: 'Who founded Azemax, and who leads it?',
         answer:
-            'Azemax was founded by Tharunkumar T., who serves as founder and CEO. He is responsible for the direction of the organization and for its work on Azemax Studio. The official profile on this website records his role and responsibilities, and the About page publishes the company information. No other executives or leadership team members are publicly listed at this time.',
+            'Azemax was founded by Tharunkumar T., who serves as founder and CEO. He is responsible for the direction of the company and for its work on Azemax Studio. The official profile on this website records his role and responsibilities, and the About page publishes the company information. No other executives or leadership team members are publicly listed at this time.',
+    },
+    {
+        id: 'who-is-tharunkumar-t',
+        question: 'Who is Tharunkumar T.?',
+        answer:
+            'Tharunkumar T. is the founder and CEO of Azemax, an emerging technology startup. He leads the company and its work on Azemax Studio, the browser-based AI code editor. His official profile at https://www.azemax.com/leadership/tharunkumar-t records his role, biography, and verified professional links. No other executives or leadership team members are publicly listed.',
     },
     {
         id: 'install',

@@ -190,14 +190,20 @@ for (const page of PUBLIC_PAGE_LIST) {
         const faq = data['@graph'].find((node) => node['@type'] === 'FAQPage');
         check(faq?.mainEntity?.length >= 10, `${file}: FAQPage has too few questions`);
       }
+      const website = data['@graph'].find((node) => node['@type'] === 'WebSite');
+      check(website?.name === SITE.companyName, `${file}: WebSite name is wrong`);
       const org = data['@graph'].find((node) => node['@type'] === 'Organization');
       check(org?.founder?.['@id'] === `${SITE.founderUrl}#person`, `${file}: Organization founder reference is wrong`);
       check(org?.employee?.[0]?.['@id'] === `${SITE.founderUrl}#person`, `${file}: Organization employee reference is wrong`);
+      check(String(org?.description).includes('technology startup'), `${file}: Organization is not positioned as a startup`);
+      check(org?.knowsAbout?.includes(SITE.companyFocus[0]), `${file}: Organization focus areas are missing`);
+      check(org?.sameAs?.includes(SITE.githubOrgUrl), `${file}: Organization GitHub reference is missing`);
       const person = data['@graph'].find((node) => node['@type'] === 'Person');
       check(person?.name === SITE.founderName, `${file}: Person name is wrong`);
       check(person?.jobTitle === SITE.founderJobTitle, `${file}: Person jobTitle is wrong`);
       check(person?.url === SITE.founderUrl, `${file}: Person URL is wrong`);
       check(person?.worksFor?.['@id'] === `${SITE.origin}/#organization`, `${file}: Person worksFor is wrong`);
+      check(person?.knowsAbout?.includes('Software development'), `${file}: Person focus areas are missing`);
       if (page.key === 'founder') {
         const profile = data['@graph'].find((node) => node['@type'] === 'ProfilePage');
         check(profile?.mainEntity?.['@id'] === `${SITE.founderUrl}#person`, `${file}: ProfilePage mainEntity is wrong`);
@@ -208,6 +214,8 @@ for (const page of PUBLIC_PAGE_LIST) {
       if (software) {
         check(!software.offers, `${file}: SoftwareApplication must not claim an offer`);
         check(!software.aggregateRating, `${file}: SoftwareApplication must not claim a rating`);
+        check(software?.publisher?.['@id'] === `${SITE.origin}/#organization`, `${file}: SoftwareApplication publisher is wrong`);
+        check(software?.sameAs?.includes(SITE.githubUrl), `${file}: SoftwareApplication repository link is missing`);
       }
     } catch (error) {
       fail(`${file}: invalid JSON-LD (${error.message})`);

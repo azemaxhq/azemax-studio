@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { ArrowRight, Mail } from 'lucide-react';
 import { LEGAL } from '../Legal/legalMeta';
+import { LEADERSHIP } from '../../content/leadership';
 
 interface PublicShellProps {
     children: React.ReactNode;
@@ -168,11 +169,19 @@ export const PublicShell: React.FC<PublicShellProps> = ({
                             </span>
                         </div>
                         <p className="mt-3 max-w-sm text-[12.5px] leading-relaxed text-[var(--az-text-muted)]">
-                            A browser-based AI code editor and agentic development workspace.
-                            Currently in public beta.
+                            Azemax is an emerging technology startup. Azemax Studio is its
+                            browser-based AI code editor and agentic development workspace, currently
+                            in public beta.
                         </p>
                         <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--az-text-faint)]">
-                            Azemax Studio is an independent developer project.
+                            Founded and led by{' '}
+                            <a
+                                href={LEADERSHIP.profilePath}
+                                className="rounded underline decoration-[var(--az-accent)]/40 underline-offset-2 transition-colors hover:text-[var(--az-text-secondary)]"
+                            >
+                                {LEADERSHIP.name}
+                            </a>
+                            .
                         </p>
                     </div>
 
@@ -189,6 +198,12 @@ export const PublicShell: React.FC<PublicShellProps> = ({
                                 {link.label}
                             </a>
                         ))}
+                        <a
+                            href={LEADERSHIP.profilePath}
+                            className="w-fit text-[12.5px] text-[var(--az-text-secondary)] transition-colors hover:text-[var(--az-text)]"
+                        >
+                            Founder profile
+                        </a>
                     </nav>
 
                     <nav aria-label="Footer legal links" className="flex flex-col gap-2">

@@ -37,6 +37,7 @@ import { FounderProfilePage } from '../src/components/Public/FounderProfilePage'
 import { NotFoundPage } from '../src/components/Public/NotFoundPage';
 import { LEADERSHIP } from '../src/content/leadership';
 import { LegalPage } from '../src/components/Legal/LegalPage';
+import { ProductSummary } from '../src/components/Landing/Sections/ProductSummary';
 
 // --- Path normalization and route resolution ---
 {
@@ -115,7 +116,15 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
         const person = data['@graph'].find((node) => node['@type'] === 'Person') as Record<string, unknown> | undefined;
         check(`${page.key}: Organization links the founder`, (org?.founder as { '@id'?: string })?.['@id'] === `${SITE.founderUrl}#person`);
         check(`${page.key}: Organization lists the founder as an employee`, (org?.employee as Array<{ '@id'?: string }>)?.[0]?.['@id'] === `${SITE.founderUrl}#person`);
-        check(`${page.key}: Organization is not a corporation claim`, String(org?.description).includes('independent developer project') && org?.legalName === undefined && org?.vatID === undefined && org?.taxID === undefined);
+        check(`${page.key}: Organization is positioned as a technology startup`, String(org?.description).includes('technology startup') && org?.legalName === undefined && org?.vatID === undefined && org?.taxID === undefined);
+        check(
+            `${page.key}: Organization publishes its focus areas`,
+            Array.isArray(org?.knowsAbout) && (org?.knowsAbout as string[]).includes(SITE.companyFocus[0]),
+        );
+        check(
+            `${page.key}: Organization links the GitHub organization`,
+            Array.isArray(org?.sameAs) && (org?.sameAs as string[]).includes(SITE.githubOrgUrl),
+        );
         check(`${page.key}: Person is the founder and CEO`, person?.name === SITE.founderName && person?.jobTitle === SITE.founderJobTitle);
         check(`${page.key}: Person works for Azemax`, (person?.worksFor as { '@id'?: string })?.['@id'] === `${SITE.origin}/#organization`);
         check(`${page.key}: Person profile URL is canonical`, person?.url === SITE.founderUrl);
@@ -124,12 +133,27 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
             `${page.key}: Person sameAs includes the verified LinkedIn profile`,
             Array.isArray(person?.sameAs) && (person?.sameAs as string[]).includes(SITE.founderLinkedInUrl),
         );
+        check(
+            `${page.key}: Person publishes software focus areas`,
+            Array.isArray(person?.knowsAbout) && (person?.knowsAbout as string[]).includes('Software development'),
+        );
+
+        const website = data['@graph'].find((node) => node['@type'] === 'WebSite') as Record<string, unknown> | undefined;
+        check(`${page.key}: WebSite represents Azemax`, website?.name === SITE.companyName);
 
         const software = data['@graph'].find((node) => node['@type'] === 'SoftwareApplication') as Record<string, unknown> | undefined;
         if (software) {
             check(`${page.key}: no pricing offer`, software.offers === undefined);
             check(`${page.key}: no aggregate rating`, software.aggregateRating === undefined);
             check(`${page.key}: feature list is present`, Array.isArray(software.featureList) && software.featureList.length > 0);
+            check(
+                `${page.key}: product is published by Azemax`,
+                (software.publisher as { '@id'?: string })?.['@id'] === `${SITE.origin}/#organization`,
+            );
+            check(
+                `${page.key}: product links its public repository`,
+                Array.isArray(software.sameAs) && (software.sameAs as string[]).includes(SITE.githubUrl),
+            );
         }
     }
 
@@ -221,13 +245,20 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
     check('docs explains key storage', docs.includes('Remember on this device'));
     check('docs lists execution limits', docs.includes('60 seconds') && docs.includes('30 seconds'));
 
+    const productSummary = renderToStaticMarkup(createElement(ProductSummary));
+    check('home summary positions Azemax as a startup', productSummary.includes('emerging technology startup'));
+    check('home summary names Azemax Studio as the product', productSummary.includes('product of Azemax'));
+
     const contact = renderToStaticMarkup(createElement(ContactPage));
     check('contact exposes the support email', contact.includes(`mailto:${SITE.supportEmail}`));
     check('contact offers an account-deletion subject', contact.includes('Account%20deletion'));
+    check('contact positions Azemax as a startup', contact.includes('emerging technology startup'));
 
     const faq = renderToStaticMarkup(createElement(FaqPage));
     check('faq renders every visible answer', FAQ_ITEMS.every((item) => faq.includes(item.question)));
     check('faq answers are in the DOM, not only the schema', FAQ_ITEMS.every((item) => faq.includes(item.answer)));
+    check('faq explains what Azemax is', FAQ_ITEMS.some((item) => item.id === 'what-is-azemax'));
+    check('faq explains who Tharunkumar T. is', FAQ_ITEMS.some((item) => item.id === 'who-is-tharunkumar-t'));
 
     const leaderName = LEADERSHIP.name;
     const roleLabel = LEADERSHIP.roleLabel;
@@ -238,6 +269,7 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
         const html = renderToStaticMarkup(element);
         check(`${name}: names the founder and CEO`, html.includes(leaderName) && html.includes(roleLabel));
         check(`${name}: links the founder profile`, html.includes(`href="${LEADERSHIP.profilePath}"`));
+        check(`${name}: positions Azemax as a startup`, html.includes('emerging technology startup'));
     }
 
     const founder = renderToStaticMarkup(createElement(FounderProfilePage));
@@ -245,6 +277,14 @@ import { LegalPage } from '../src/components/Legal/LegalPage';
     check('founder: renders the verified portrait', founder.includes(LEADERSHIP.photo) && founder.includes(LEADERSHIP.photoAlt));
     check('founder: states the canonical profile URL', founder.includes(LEADERSHIP.profileUrl));
     check('founder: publishes responsibilities', LEADERSHIP.responsibilities.every((item) => founder.includes(item)));
+    check('founder: states the company positioning', founder.includes('emerging technology startup'));
+    check('founder: publishes professional interests', founder.includes('Professional and software interests'));
+    check('founder: publishes the entrepreneurial journey', founder.includes('Building Azemax'));
+    check('founder: publishes the vision', founder.includes('Vision for Azemax'));
+    check('founder: publishes projects and contributions', founder.includes('Projects and contributions'));
+    check('founder: links the GitHub organization', founder.includes(SITE.githubOrgUrl));
+    check('founder: links the public repository', founder.includes(SITE.githubUrl));
+    check('founder: makes no currency or revenue claims', !/\$\s?\d/.test(founder) && !/revenue of/i.test(founder) && !/valuation of/i.test(founder));
     check('founder: links the About page', founder.includes('href="/about"'));
     check('founder: links the leadership page', founder.includes('href="/leadership"'));
     check('founder: links the verified LinkedIn profile', founder.includes(SITE.founderLinkedInUrl));

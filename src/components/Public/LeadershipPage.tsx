@@ -25,8 +25,9 @@ export const LeadershipPage: React.FC = () => {
                 intro={
                     <>
                         <p>
-                            Azemax publishes its leadership record on this site so the organization
-                            and its product can be verified against an official source.
+                            Azemax is an emerging technology startup. It publishes its leadership
+                            record on this site so the company and its product can be verified against
+                            an official source.
                         </p>
                         <p>
                             The leadership team currently consists of the founder and CEO. No other
@@ -34,7 +35,7 @@ export const LeadershipPage: React.FC = () => {
                         </p>
                     </>
                 }
-                meta="Last reviewed 19 November 2026"
+                meta="Last reviewed 20 November 2026"
             />
 
             <div className="mt-10 space-y-12">
@@ -87,8 +88,13 @@ export const LeadershipPage: React.FC = () => {
                 <ArticleSection id="role" title="The role of the founder and CEO">
                     <p>
                         {LEADERSHIP.name} founded Azemax and serves as its chief executive. The role
-                        covers the organization’s direction, product priorities for Azemax Studio,
-                        and official representation of the organization.
+                        covers the company’s direction, product priorities for Azemax Studio, and
+                        official representation of the organization.
+                    </p>
+                    <p>
+                        Azemax is an ambitious, product-focused technology startup working on
+                        AI-powered applications, developer tools, intelligent automation, and modern
+                        web technologies. The founder and CEO leads that work.
                     </p>
                     <p>
                         Azemax does not publish a separate management layer, advisory board, or

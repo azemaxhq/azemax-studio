@@ -75,7 +75,7 @@ export function renderPublicHead(page: PublicPage): string {
         meta('og:description', page.description, 'property'),
         meta('og:type', page.ogType, 'property'),
         meta('og:url', canonical, 'property'),
-        meta('og:site_name', SITE.name, 'property'),
+        meta('og:site_name', SITE.companyName, 'property'),
         meta('og:locale', SITE.locale, 'property'),
         meta('og:image', image, 'property'),
         meta('og:image:type', imageMimeType(page.ogImage ?? SITE.ogImagePath), 'property'),
@@ -112,7 +112,7 @@ export function renderPrivateHead(page: PrivatePage): string {
         meta('og:title', page.title, 'property'),
         meta('og:description', page.description, 'property'),
         meta('og:type', 'website', 'property'),
-        meta('og:site_name', SITE.name, 'property'),
+        meta('og:site_name', SITE.companyName, 'property'),
         ...twitterBlock(page.title, page.description, `${SITE.origin}${SITE.ogImagePath}`),
     ];
     return `${SEO_BLOCK_START}\n  ${tags.join('\n  ')}\n  ${SEO_BLOCK_END}`;

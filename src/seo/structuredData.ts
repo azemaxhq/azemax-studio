@@ -2,8 +2,8 @@
  * JSON-LD construction for the public site.
  *
  * Rules encoded here:
- *  - Azemax is modelled as the independent software organization behind
- *    Azemax Studio. No legal entity, address, VAT, or revenue claims are made.
+ *  - Azemax is modelled as an emerging technology startup behind Azemax
+ *    Studio. No legal entity, address, VAT, or revenue claims are made.
  *  - The founder/CEO is a single Person entity referenced by @id everywhere,
  *    so Google sees one person connected to one organization rather than
  *    duplicate person objects on different pages.
@@ -25,7 +25,7 @@ const PERSON_ID = `${SITE.founderUrl}#person`;
 const PROFILE_PAGE_ID = `${SITE.founderUrl}#webpage`;
 
 const SOFTWARE_DESCRIPTION =
-    'Azemax Studio is a browser-based AI code editor with a Monaco editing surface, an agentic assistant that can inspect and propose changes across workspace files, sandboxed code execution, diagnostics, and bring-your-own-key AI provider configuration.';
+    'Azemax Studio is a browser-based AI code editor from Azemax, an emerging technology startup. It has a Monaco editing surface, an agentic assistant that can inspect and propose changes across workspace files, sandboxed code execution, diagnostics, and bring-your-own-key AI provider configuration.';
 
 const FEATURE_LIST = [
     'Monaco-based code editor with multi-tab editing and a workspace file tree',
@@ -43,10 +43,10 @@ function websiteNode(): Record<string, unknown> {
         '@type': 'WebSite',
         '@id': WEBSITE_ID,
         url: SITE.url,
-        name: SITE.name,
-        alternateName: [SITE.shortName],
+        name: SITE.companyName,
+        alternateName: [SITE.name],
         description:
-            'Official website for Azemax Studio, a browser-based AI code editor and agentic development workspace.',
+            'Official website for Azemax, an emerging technology startup, and its product Azemax Studio.',
         inLanguage: SITE.language,
         publisher: { '@id': ORGANIZATION_ID },
     };
@@ -63,6 +63,7 @@ function personNode(): Record<string, unknown> {
         worksFor: { '@id': ORGANIZATION_ID },
         mainEntityOfPage: { '@id': PROFILE_PAGE_ID },
         sameAs: [...LEADERSHIP.sameAs],
+        knowsAbout: [...LEADERSHIP.knowsAbout],
     };
 
     if (LEADERSHIP.photo) {
@@ -83,7 +84,6 @@ function organizationNode(): Record<string, unknown> {
         '@type': 'Organization',
         '@id': ORGANIZATION_ID,
         name: SITE.companyName,
-        alternateName: [SITE.name],
         url: SITE.url,
         logo: {
             '@type': 'ImageObject',
@@ -92,10 +92,10 @@ function organizationNode(): Record<string, unknown> {
             height: 512,
             caption: 'Azemax logo',
         },
-        description:
-            'Azemax is the independent developer project behind Azemax Studio, a browser-based AI code editor.',
+        description: SITE.companyDescription,
         email: SITE.supportEmail,
-        sameAs: [SITE.githubUrl],
+        sameAs: [SITE.githubOrgUrl],
+        knowsAbout: [...SITE.companyFocus],
         founder: { '@id': PERSON_ID },
         employee: [{ '@id': PERSON_ID }],
         brand: {
@@ -121,6 +121,7 @@ function softwareNode(): Record<string, unknown> {
         description: SOFTWARE_DESCRIPTION,
         softwareVersion: '1.0.0-beta',
         publisher: { '@id': ORGANIZATION_ID },
+        sameAs: [SITE.githubUrl],
         featureList: FEATURE_LIST,
     };
 }

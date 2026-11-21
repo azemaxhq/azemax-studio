@@ -35,13 +35,13 @@ export const FounderProfilePage: React.FC = () => {
                     <>
                         <p>{LEADERSHIP.summary}</p>
                         <p>
-                            This is the official profile maintained by Azemax. It records his role
-                            and responsibilities, not a personal résumé, and it links only to
-                            profiles that Azemax has verified.
+                            This is the official profile maintained by Azemax. It records his role,
+                            company context, and verified professional links, not a personal
+                            résumé.
                         </p>
                     </>
                 }
-                meta="Last reviewed 19 November 2026"
+                meta="Last reviewed 20 November 2026"
             />
 
             <div className="mt-8 flex flex-col gap-5 rounded-[var(--az-radius-lg)] border border-[var(--az-border)] bg-[var(--az-surface)] p-5 sm:flex-row sm:items-center sm:p-6">
@@ -68,6 +68,9 @@ export const FounderProfilePage: React.FC = () => {
                         Product:{' '}
                         <TextLink href="/">Azemax Studio</TextLink>
                     </p>
+                    <p className="mt-2 text-[13px] leading-relaxed text-[var(--az-text-secondary)]">
+                        {SITE.companyDescription}
+                    </p>
                     <p className="mt-2 text-[12px] text-[var(--az-text-muted)]">
                         Canonical profile:{' '}
                         <span className="break-all font-mono">{LEADERSHIP.profileUrl}</span>
@@ -82,6 +85,64 @@ export const FounderProfilePage: React.FC = () => {
                     ))}
                 </ArticleSection>
 
+                <ArticleSection id="focus" title="Professional and software interests">
+                    <p>
+                        {LEADERSHIP.name} works at the intersection of software products, AI, and
+                        developer tooling. His professional interests include:
+                    </p>
+                    <ul className="list-disc space-y-2 pl-5">
+                        {LEADERSHIP.professionalInterests.map((item) => (
+                            <li key={item}>{item}</li>
+                        ))}
+                    </ul>
+                    <H3>Software development interests</H3>
+                    <ul className="list-disc space-y-2 pl-5">
+                        {LEADERSHIP.softwareInterests.map((item) => (
+                            <li key={item}>{item}</li>
+                        ))}
+                    </ul>
+                </ArticleSection>
+
+                <ArticleSection id="building-azemax" title="Building Azemax">
+                    {LEADERSHIP.journey.map((paragraph) => (
+                        <p key={paragraph}>{paragraph}</p>
+                    ))}
+                    <H3>Company focus</H3>
+                    <ul className="list-disc space-y-2 pl-5">
+                        {SITE.companyFocus.map((item) => (
+                            <li key={item}>{item}</li>
+                        ))}
+                    </ul>
+                </ArticleSection>
+
+                <ArticleSection id="vision" title="Vision for Azemax">
+                    {LEADERSHIP.vision.map((paragraph) => (
+                        <p key={paragraph}>{paragraph}</p>
+                    ))}
+                </ArticleSection>
+
+                <ArticleSection id="projects" title="Projects and contributions">
+                    <p>
+                        Azemax’s public work is documented through its website and GitHub
+                        organization. The current projects are:
+                    </p>
+                    <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {LEADERSHIP.projects.map((project) => (
+                            <li
+                                key={project.name}
+                                className="rounded-[var(--az-radius-md)] border border-[var(--az-border)] bg-[var(--az-surface)] p-4"
+                            >
+                                <TextLink href={project.href} external={project.external}>
+                                    {project.name}
+                                </TextLink>
+                                <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--az-text-muted)]">
+                                    {project.description}
+                                </p>
+                            </li>
+                        ))}
+                    </ul>
+                </ArticleSection>
+
                 <ArticleSection id="responsibilities" title="Role and responsibilities">
                     <p>
                         As founder and CEO, {LEADERSHIP.name} is responsible for the following
@@ -94,10 +155,10 @@ export const FounderProfilePage: React.FC = () => {
                     </ul>
                     <H3>What this page does not claim</H3>
                     <p>
-                        This profile does not publish qualifications, previous employers, awards, or
-                        client counts. Those details are not part of Azemax’s verified public record.
-                        The absence of a claim here should not be read as a claim in the other
-                        direction.
+                        This profile does not publish qualifications, previous employers, awards,
+                        client counts, funding, valuation, revenue, or growth figures. Those details
+                        are not part of Azemax’s verified public record. The absence of a claim here
+                        should not be read as a claim in the other direction.
                     </p>
                 </ArticleSection>
 
@@ -106,7 +167,7 @@ export const FounderProfilePage: React.FC = () => {
                         The links below are the external profiles and contact channels currently
                         verified by Azemax. New links are added only after the account is confirmed.
                     </p>
-                    <ul className="grid gap-3 sm:grid-cols-2">
+                    <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {LEADERSHIP.links.map((link) => (
                             <li
                                 key={link.href}
@@ -136,13 +197,12 @@ export const FounderProfilePage: React.FC = () => {
 
                 <ArticleSection id="azemax" title="Relationship to Azemax">
                     <p>
-                        Azemax is the independent software organization that builds Azemax Studio.
+                        Azemax is an emerging technology startup that builds Azemax Studio.
                         {' '}
-                        {LEADERSHIP.name} founded the organization and leads it as chief executive.
-                        The <TextLink href="/about">About page</TextLink> publishes the official
-                        company information, and the{' '}
-                        <TextLink href="/leadership">leadership page</TextLink> records the published
-                        leadership team.
+                        {LEADERSHIP.name} founded the company and leads it as chief executive. The{' '}
+                        <TextLink href="/about">About page</TextLink> publishes the official company
+                        information, and the <TextLink href="/leadership">leadership page</TextLink>{' '}
+                        records the published leadership team.
                     </p>
                     <p>
                         For product support or company-level questions, use{' '}

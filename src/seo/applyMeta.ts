@@ -97,7 +97,7 @@ function applyOpenGraph(page: {
     upsertMeta('property', 'og:title', page.title);
     upsertMeta('property', 'og:description', page.description);
     upsertMeta('property', 'og:type', page.ogType);
-    upsertMeta('property', 'og:site_name', SITE.name);
+    upsertMeta('property', 'og:site_name', SITE.companyName);
     upsertMeta('property', 'og:locale', SITE.locale);
     upsertMeta('property', 'og:image', image);
     upsertMeta('property', 'og:image:type', imageMimeType(page.ogImage ?? SITE.ogImagePath));

@@ -42,8 +42,9 @@ export const ContactPage: React.FC = () => {
                 intro={
                     <>
                         <p>
-                            Azemax Studio is an independent developer project. Email is the only support
-                            channel currently offered; there is no ticket portal, live chat, or phone line.
+                            Azemax is an emerging technology startup. Azemax Studio is its product.
+                            Email is the only support channel currently offered; there is no ticket
+                            portal, live chat, or phone line.
                         </p>
                         <p>
                             Support is handled on a best-effort basis. Including enough detail in your first
@@ -51,7 +52,7 @@ export const ContactPage: React.FC = () => {
                         </p>
                     </>
                 }
-                meta="Last reviewed 19 November 2026"
+                meta="Last reviewed 20 November 2026"
             />
 
             <div className="mt-8 rounded-[var(--az-radius-lg)] border border-[var(--az-border)] bg-[var(--az-surface)] p-5 sm:p-6">
@@ -74,7 +75,8 @@ export const ContactPage: React.FC = () => {
             <div className="mt-12 space-y-10">
                 <ArticleSection id="official-identity" title="Official company identity">
                     <p>
-                        Azemax is the organization behind Azemax Studio. The founder and CEO is{' '}
+                        Azemax is an emerging technology startup and the company behind Azemax
+                        Studio. The founder and CEO is{' '}
                         <TextLink href={LEADERSHIP.profilePath}>{LEADERSHIP.name}</TextLink>. The{' '}
                         <TextLink href="/about">About page</TextLink> publishes the full company
                         information, and the <TextLink href="/leadership">leadership page</TextLink>{' '}
